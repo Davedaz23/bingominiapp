@@ -117,7 +117,15 @@ export const useTelegram = (): UseTelegramReturn => {
 
       const tg = window.Telegram?.WebApp;
 
-      if (tg) {
+      console.log('Telegram WebApp detected:', {
+        exists: !!tg,
+        initData: tg?.initData ? 'PRESENT' : 'MISSING',
+        initDataLength: tg?.initData?.length,
+        user: tg?.initDataUnsafe?.user,
+        platform: tg?.platform
+      });
+
+      if (tg && tg.initData && tg.initData.length > 0) {
         try {
           // Initialize Telegram WebApp
           tg.ready();
@@ -125,7 +133,7 @@ export const useTelegram = (): UseTelegramReturn => {
 
           // Set user and app data
           setUser(tg.initDataUnsafe.user || null);
-          setInitData(tg.initData);
+          setInitData(tg.initData); // This should be the real Telegram initData
           setWebApp(tg);
           setPlatform(tg.platform);
 
@@ -136,11 +144,12 @@ export const useTelegram = (): UseTelegramReturn => {
           // Set up viewport handling
           setupViewport(tg);
 
-          console.log('Telegram WebApp initialized:', {
+          console.log('✅ Telegram WebApp initialized with REAL data:', {
             platform: tg.platform,
             version: tg.version,
             user: tg.initDataUnsafe.user,
-            theme: tg.themeParams
+            initDataLength: tg.initData.length,
+            hasUser: !!tg.initDataUnsafe.user
           });
 
           setIsReady(true);
@@ -149,7 +158,11 @@ export const useTelegram = (): UseTelegramReturn => {
           setupDevelopmentMode();
         }
       } else {
-        console.warn('Telegram WebApp not found. Using development mode.');
+        console.warn('❌ Telegram WebApp not found or no initData. Using development mode.', {
+          hasTelegram: !!window.Telegram,
+          hasWebApp: !!tg,
+          initDataLength: tg?.initData?.length
+        });
         setupDevelopmentMode();
       }
     };
@@ -190,7 +203,6 @@ export const useTelegram = (): UseTelegramReturn => {
 
       // Listen for viewport changes (if supported)
       if (tg.isVersionAtLeast('6.1')) {
-        // Note: Actual viewport event handling might vary
         window.addEventListener('resize', updateViewport);
       }
     };
@@ -206,32 +218,20 @@ export const useTelegram = (): UseTelegramReturn => {
       };
 
       setUser(devUser);
-      setInitData('development');
+      setInitData('development'); // This sets development mode
       setPlatform('web');
       
       // Apply default theme
       const defaultTheme = applyTheme({});
       setTheme(defaultTheme);
 
+      console.log('🔧 Development mode activated with test user');
       setIsReady(true);
     };
 
-    // Initialize with a small delay to ensure DOM is ready
-    const initTimeout = setTimeout(() => {
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initTelegram);
-      } else {
-        initTelegram();
-      }
-    }, 100);
+    // Initialize immediately
+    initTelegram();
 
-    return () => {
-      clearTimeout(initTimeout);
-      if (typeof window !== 'undefined') {
-        document.removeEventListener('DOMContentLoaded', initTelegram);
-        window.removeEventListener('resize', () => {});
-      }
-    };
   }, []);
 
   return { 
