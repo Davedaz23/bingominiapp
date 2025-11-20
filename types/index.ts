@@ -1,4 +1,6 @@
+// types/index.ts
 export interface User {
+  _id: string;
   id: string;
   telegramId: string;
   username?: string;
@@ -11,19 +13,23 @@ export interface User {
 }
 
 export interface GamePlayerUser {
-  id: string; // Add this missing property
+  _id: string;
+  id: string;
   username?: string;
   firstName?: string;
+  lastName?: string;
 }
 
 export interface GamePlayer {
+  _id: string;
   userId: string;
-  user: GamePlayerUser; // Use the new interface with id
+  user: GamePlayerUser;
   isReady: boolean;
   joinedAt: string;
 }
 
 export interface Game {
+  _id: string;
   id: string;
   code: string;
   hostId: string;
@@ -33,7 +39,7 @@ export interface Game {
   numbersCalled: number[];
   winnerId?: string;
   isPrivate: boolean;
-  host: GamePlayerUser; // Use the same interface for host
+  host: GamePlayerUser;
   players: GamePlayer[];
   bingoCards?: BingoCard[];
   createdAt: string;
@@ -41,6 +47,7 @@ export interface Game {
 }
 
 export interface BingoCard {
+  _id: string;
   id: string;
   userId: string;
   gameId: string;
@@ -48,6 +55,7 @@ export interface BingoCard {
   markedPositions: number[];
   isWinner: boolean;
   createdAt: string;
+  user?: GamePlayerUser;
 }
 
 export interface GameState {
