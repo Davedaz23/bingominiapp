@@ -80,6 +80,18 @@ export default function GamePage() {
     })
   };
 
+  // Safe access to host properties
+  const getHostName = () => {
+    if (!game?.host) return 'Unknown Host';
+    return game.host.firstName || game.host.username || 'Unknown Host';
+  };
+
+  // Check if current user is host
+  const isUserHost = () => {
+    if (!game?.host || !currentUserId) return false;
+    return game.host._id === currentUserId;
+  };
+
   if (!game) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
@@ -116,8 +128,6 @@ export default function GamePage() {
       />
     );
   }
-
-  const isUserHost = game.hostId === currentUserId;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
@@ -187,8 +197,8 @@ export default function GamePage() {
                   <span>{game.currentPlayers} players</span>
                 </div>
                 <span>•</span>
-                <span>{game.numbersCalled.length} numbers called</span>
-                {isUserHost && (
+                <span>{game.numbersCalled?.length || 0} numbers called</span>
+                {isUserHost() && (
                   <>
                     <span>•</span>
                     <div className="flex items-center gap-1">
@@ -386,18 +396,18 @@ export default function GamePage() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <div className="text-xl font-black text-white">{game.numbersCalled.length}</div>
+                <div className="text-xl font-black text-white">{game.numbersCalled?.length || 0}</div>
                 <div className="text-white/60 text-xs">Numbers Called</div>
               </div>
               <div>
                 <div className="text-xl font-black text-white">
-                  {bingoCard?.markedPositions.length || 0}
+                  {bingoCard?.markedPositions?.length || 0}
                 </div>
                 <div className="text-white/60 text-xs">Marked</div>
               </div>
               <div>
                 <div className="text-xl font-black text-white">
-                  {Math.round(((bingoCard?.markedPositions.length || 0) / 25) * 100)}%
+                  {Math.round(((bingoCard?.markedPositions?.length || 0) / 25) * 100)}%
                 </div>
                 <div className="text-white/60 text-xs">Progress</div>
               </div>
