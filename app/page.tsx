@@ -50,24 +50,27 @@ const confettiVariants = {
 }
 
 export default function Home() {
-  const { user, isReady, WebApp } = useTelegram()
+  const { user, isReady, WebApp, initData } = useTelegram()
   const router = useRouter()
   const [activeGames, setActiveGames] = useState<Game[]>([])
   const [userStats, setUserStats] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [showConfetti, setShowConfetti] = useState(false)
+  const [authAttempted, setAuthAttempted] = useState(false)
 
   useEffect(() => {
-    if (isReady && user) {
+    if (isReady && user && !authAttempted) {
       initializeUser()
       loadActiveGames()
     }
-  }, [isReady, user])
+  }, [isReady, user, authAttempted])
 
   const initializeUser = async () => {
     try {
-      const initData = WebApp?.initData || 'development'
-      const response = await authAPI.telegramLogin(initData)
+      setAuthAttempted(true)
+      
+      // Use the initData from useTelegram hook which properly handles both real and dev modes
+      const response = await authAPI.telegramLogin(initData || 'development')
       const { token, user: userData } = response.data
       
       localStorage.setItem('bingo_token', token)
@@ -79,8 +82,28 @@ export default function Home() {
         setShowConfetti(true)
         setTimeout(() => setShowConfetti(false), 3000)
       }
+
+      console.log('User authenticated successfully:', {
+        username: userData.username,
+        gamesPlayed: userData.gamesPlayed,
+        gamesWon: userData.gamesWon,
+        isTelegramUser: initData !== 'development'
+      })
     } catch (error) {
       console.error('Authentication failed:', error)
+      // Even if auth fails, we can still show the UI with limited functionality
+      const fallbackUser = {
+        _id: 'fallback',
+        id: 'fallback',
+        telegramId: user?.id?.toString() || 'fallback',
+        firstName: user?.first_name || 'Guest',
+        username: user?.username || 'guest',
+        gamesPlayed: 0,
+        gamesWon: 0,
+        totalScore: 0,
+        createdAt: new Date().toISOString()
+      }
+      setUserStats(fallbackUser as User)
     }
   }
 
@@ -99,7 +122,10 @@ export default function Home() {
   const createGame = async () => {
     try {
       const userId = localStorage.getItem('user_id')
-      if (!userId) return
+      if (!userId) {
+        console.error('No user ID found')
+        return
+      }
       
       const response = await gameAPI.createGame(userId, 10, false)
       router.push(`/game/${response.data.game._id}`)
@@ -123,6 +149,19 @@ export default function Home() {
     }
   }
 
+  // Show user info from Telegram if available (before auth completes)
+  const displayUser = userStats || (user ? {
+    _id: 'pending',
+    id: 'pending', 
+    telegramId: user.id.toString(),
+    firstName: user.first_name,
+    username: user.username,
+    gamesPlayed: 0,
+    gamesWon: 0,
+    totalScore: 0,
+    createdAt: new Date().toISOString()
+  } as User : null)
+
   if (!isReady || isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
@@ -143,8 +182,13 @@ export default function Home() {
             animate={{ opacity: [0.5, 1, 0.5] }}
             transition={{ duration: 2, repeat: Infinity }}
           >
-            Loading Bingo Magic...
+            {initData === 'development' ? 'Development Mode' : 'Loading Bingo...'}
           </motion.p>
+          {initData !== 'development' && (
+            <p className="text-white/60 text-sm mt-2">
+              Authenticating with Telegram...
+            </p>
+          )}
         </div>
       </div>
     )
@@ -196,6 +240,23 @@ export default function Home() {
         )}
       </AnimatePresence>
 
+      {/* Development Mode Banner */}
+      {initData === 'development' && (
+        <motion.div
+          initial={{ y: -50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="absolute top-4 left-4 right-4 z-20"
+        >
+          <div className="bg-yellow-500/90 backdrop-blur-lg text-yellow-900 rounded-2xl p-3 text-center border border-yellow-600/30">
+            <div className="flex items-center justify-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              <span className="font-bold text-sm">Development Mode</span>
+              <Sparkles className="w-4 h-4" />
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -221,10 +282,21 @@ export default function Home() {
             BINGO
           </h1>
           <p className="text-white/80 text-lg font-medium">Play • Win • Repeat</p>
+          {initData !== 'development' && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="flex items-center justify-center gap-2 mt-2"
+            >
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <span className="text-green-300 text-sm font-medium">Connected to Telegram</span>
+            </motion.div>
+          )}
         </motion.div>
 
         {/* User Stats Card */}
-        {userStats && (
+        {displayUser && (
           <motion.div
             initial={{ y: 20, opacity: 0, scale: 0.9 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
@@ -237,9 +309,9 @@ export default function Home() {
                 className="relative"
               >
                 <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white text-2xl font-black shadow-lg">
-                  {userStats.firstName?.[0]?.toUpperCase() || userStats.username?.[0]?.toUpperCase() || '?'}
+                  {displayUser.firstName?.[0]?.toUpperCase() || displayUser.username?.[0]?.toUpperCase() || '?'}
                 </div>
-                {userStats.gamesWon > 0 && (
+                {displayUser.gamesWon > 0 && (
                   <motion.div
                     animate={{ scale: [1, 1.2, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
@@ -248,13 +320,24 @@ export default function Home() {
                     <Crown className="w-6 h-6 fill-yellow-400 text-yellow-400" />
                   </motion.div>
                 )}
+                {initData === 'development' && (
+                  <motion.div
+                    animate={{ scale: [1, 1.1, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="absolute -bottom-1 -right-1"
+                  >
+                    <div className="bg-yellow-500 text-yellow-900 text-xs px-2 py-1 rounded-full font-bold">
+                      DEV
+                    </div>
+                  </motion.div>
+                )}
               </motion.div>
               
               <div className="flex-1">
                 <h3 className="font-black text-xl text-white">
-                  {userStats.firstName || userStats.username}
+                  {displayUser.firstName || displayUser.username}
                 </h3>
-                <p className="text-white/70">@{userStats.username}</p>
+                <p className="text-white/70">@{displayUser.username}</p>
                 <motion.div 
                   className="flex items-center gap-1 mt-1"
                   initial={{ opacity: 0 }}
@@ -263,7 +346,7 @@ export default function Home() {
                 >
                   <Sparkles className="w-4 h-4 text-yellow-400" />
                   <span className="text-yellow-400 text-sm font-bold">
-                    Level {Math.floor(userStats.totalScore / 100) + 1}
+                    Level {Math.floor((displayUser.totalScore || 0) / 100) + 1}
                   </span>
                 </motion.div>
               </div>
@@ -276,7 +359,7 @@ export default function Home() {
                 transition={{ type: "spring", stiffness: 400 }}
               >
                 <div className="text-2xl font-black text-white">
-                  {userStats.gamesPlayed}
+                  {displayUser.gamesPlayed || 0}
                 </div>
                 <div className="text-white/70 text-xs font-medium">Played</div>
               </motion.div>
@@ -287,8 +370,8 @@ export default function Home() {
                 transition={{ type: "spring", stiffness: 400 }}
               >
                 <div className="text-2xl font-black text-white flex items-center justify-center gap-1">
-                  {userStats.gamesWon}
-                  {userStats.gamesWon > 0 && <Trophy className="w-4 h-4 fill-yellow-400 text-yellow-400" />}
+                  {displayUser.gamesWon || 0}
+                  {displayUser.gamesWon > 0 && <Trophy className="w-4 h-4 fill-yellow-400 text-yellow-400" />}
                 </div>
                 <div className="text-white/70 text-xs font-medium">Wins</div>
               </motion.div>
@@ -299,14 +382,14 @@ export default function Home() {
                 transition={{ type: "spring", stiffness: 400 }}
               >
                 <div className="text-2xl font-black text-white">
-                  {userStats.totalScore}
+                  {displayUser.totalScore || 0}
                 </div>
                 <div className="text-white/70 text-xs font-medium">Score</div>
               </motion.div>
             </div>
 
             {/* Win Rate */}
-            {userStats.gamesPlayed > 0 && (
+            {(displayUser.gamesPlayed || 0) > 0 && (
               <motion.div 
                 className="mt-4 bg-white/10 rounded-xl p-3"
                 initial={{ opacity: 0 }}
@@ -316,14 +399,14 @@ export default function Home() {
                 <div className="flex justify-between items-center text-sm mb-2">
                   <span className="text-white/80 font-medium">Win Rate</span>
                   <span className="text-white font-bold">
-                    {((userStats.gamesWon / userStats.gamesPlayed) * 100).toFixed(1)}%
+                    {(((displayUser.gamesWon || 0) / (displayUser.gamesPlayed || 1)) * 100).toFixed(1)}%
                   </span>
                 </div>
                 <div className="w-full bg-white/20 rounded-full h-2">
                   <motion.div 
                     className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full"
                     initial={{ width: 0 }}
-                    animate={{ width: `${(userStats.gamesWon / userStats.gamesPlayed) * 100}%` }}
+                    animate={{ width: `${((displayUser.gamesWon || 0) / (displayUser.gamesPlayed || 1)) * 100}%` }}
                     transition={{ duration: 1.5, delay: 1 }}
                   />
                 </div>
@@ -485,7 +568,10 @@ export default function Home() {
           className="text-center mt-8 pb-8"
         >
           <p className="text-white/40 text-sm">
-            Made with ❤️ for Bingo lovers
+            {initData === 'development' 
+              ? 'Development Mode - Test users only' 
+              : 'Made with ❤️ for Bingo lovers'
+            }
           </p>
         </motion.div>
       </motion.div>
