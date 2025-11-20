@@ -39,8 +39,19 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     }
   };
 
-  const isHost = game.hostId === currentUserId;
-  const canStart = game.players.length >= 2;
+  // Safe access to host properties
+  const getHostName = () => {
+    if (!game?.host) return 'Unknown Host';
+    return game.host.firstName || game.host.username || 'Unknown Host';
+  };
+
+  // Check if current user is host
+  const isHost = () => {
+    if (!game?.host || !currentUserId) return false;
+    return game.host._id === currentUserId;
+  };
+
+  const canStart = game.players?.length >= 2;
 
   // Fixed animation variants for background elements
   const getBackgroundAnimation = (index: number) => {
@@ -62,6 +73,22 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         delay: Math.random() * 2,
       }
     };
+  };
+
+  // Safe player access
+  const getPlayerDisplayName = (player: GamePlayer) => {
+    if (!player?.user) return 'Unknown Player';
+    return player.user.firstName || player.user.username || 'Unknown Player';
+  };
+
+  const getPlayerInitial = (player: GamePlayer) => {
+    if (!player?.user) return '?';
+    return (player.user.firstName?.[0] || player.user.username?.[0] || '?').toUpperCase();
+  };
+
+  const isPlayerHost = (player: GamePlayer) => {
+    if (!player?.user || !game?.host) return false;
+    return player.user._id === game.host._id;
   };
 
   return (
@@ -100,7 +127,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 Game {game.code}
               </motion.h1>
               <p className="text-white/80">
-                Hosted by {game.host.firstName || game.host.username}
+                Hosted by {getHostName()}
               </p>
             </div>
             
@@ -170,7 +197,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-xl text-white">
-              Players ({game.players.length})
+              Players ({game.players?.length || 0})
             </h3>
             <motion.div
               animate={{ scale: [1, 1.1, 1] }}
@@ -178,12 +205,12 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1"
             >
               <Users className="w-4 h-4 text-white" />
-              <span className="text-white font-bold text-sm">{game.players.length}</span>
+              <span className="text-white font-bold text-sm">{game.players?.length || 0}</span>
             </motion.div>
           </div>
           
           <div className="space-y-3">
-            {game.players.map((player: GamePlayer, index: number) => (
+            {game.players?.map((player: GamePlayer, index: number) => (
               <motion.div
                 key={player._id}
                 initial={{ opacity: 0, x: -20 }}
@@ -196,9 +223,9 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                   className="relative"
                 >
                   <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white font-black text-lg shadow-lg">
-                    {player.user.firstName?.[0]?.toUpperCase() || player.user.username?.[0]?.toUpperCase() || '?'}
+                    {getPlayerInitial(player)}
                   </div>
-                  {player.user._id === game.hostId && (
+                  {isPlayerHost(player) && (
                     <motion.div
                       animate={{ scale: [1, 1.2, 1] }}
                       transition={{ duration: 2, repeat: Infinity }}
@@ -212,16 +239,16 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-black text-white text-lg">
-                      {player.user.firstName || player.user.username}
+                      {getPlayerDisplayName(player)}
                     </span>
-                    {player.user._id === game.hostId && (
+                    {isPlayerHost(player) && (
                       <span className="px-2 py-1 bg-yellow-400/20 text-yellow-300 text-xs rounded-full font-bold border border-yellow-400/30">
                         HOST
                       </span>
                     )}
                   </div>
                   <p className="text-white/60 text-sm">
-                    @{player.user.username}
+                    @{player.user?.username || 'user'}
                   </p>
                 </div>
                 
@@ -239,7 +266,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 
         {/* Start Game Button */}
         <AnimatePresence>
-          {isHost && (
+          {isHost() && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -276,7 +303,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 ) : (
                   <>
                     <Users className="w-6 h-6" />
-                    NEED {2 - game.players.length} MORE PLAYERS
+                    NEED {2 - (game.players?.length || 0)} MORE PLAYERS
                   </>
                 )}
               </motion.button>
@@ -296,7 +323,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         </AnimatePresence>
 
         {/* Waiting for Host Message */}
-        {!isHost && (
+        {!isHost() && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -313,7 +340,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 Waiting for Host
               </h4>
               <p className="text-white/70">
-                {game.host.firstName} will start the game soon...
+                {getHostName()} will start the game soon...
               </p>
             </div>
           </motion.div>
