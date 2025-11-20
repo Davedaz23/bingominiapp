@@ -27,6 +27,14 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error.response?.data || error.message);
+    
+    // Handle specific error cases
+    if (error.response?.status === 401) {
+      // Clear invalid token
+      localStorage.removeItem('bingo_token');
+      localStorage.removeItem('user_id');
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -34,6 +42,12 @@ api.interceptors.response.use(
 export const authAPI = {
   telegramLogin: (initData: string) => 
     api.post<{ success: boolean; token: string; user: User }>('/auth/telegram', { initData }),
+  
+  getProfile: (userId: string) =>
+    api.get<{ success: boolean; user: User }>(`/auth/profile/${userId}`),
+  
+  getStats: (userId: string) =>
+    api.get<{ success: boolean; stats: any }>(`/auth/stats/${userId}`),
 };
 
 export const gameAPI = {
@@ -60,6 +74,13 @@ export const gameAPI = {
   
   getGameByCode: (code: string) =>
     api.get<{ success: boolean; game: Game }>(`/games/code/${code}`),
+  
+  // ADD THESE MISSING ENDPOINTS:
+  getUserBingoCard: (gameId: string, userId: string) =>
+    api.get<{ success: boolean; bingoCard: BingoCard }>(`/games/${gameId}/card/${userId}`),
+  
+  leaveGame: (gameId: string, userId: string) =>
+    api.post<{ success: boolean; game: Game }>(`/games/${gameId}/leave`, { userId }),
 };
 
 export default api;
