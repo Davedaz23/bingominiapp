@@ -51,7 +51,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             </div>
             <div className="flex items-center gap-1">
               <Clock size={16} />
-              <span>Waiting...</span>
+              <span>Waiting....</span>
             </div>
           </div>
         </div>
