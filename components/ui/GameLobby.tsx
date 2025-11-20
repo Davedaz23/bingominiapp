@@ -51,7 +51,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     return game.host._id === currentUserId;
   };
 
-  const canStart = game.players?.length >= 2;
+  // FIX: Use currentPlayers instead of players.length
+  const canStart = game.currentPlayers >= 2;
 
   // Fixed animation variants for background elements
   const getBackgroundAnimation = (index: number) => {
@@ -197,7 +198,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-xl text-white">
-              Players ({game.players?.length || 0})
+              Players ({game.currentPlayers}) {/* FIX: Use currentPlayers */}
             </h3>
             <motion.div
               animate={{ scale: [1, 1.1, 1] }}
@@ -205,7 +206,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1"
             >
               <Users className="w-4 h-4 text-white" />
-              <span className="text-white font-bold text-sm">{game.players?.length || 0}</span>
+              <span className="text-white font-bold text-sm">{game.currentPlayers}</span> {/* FIX: Use currentPlayers */}
             </motion.div>
           </div>
           
@@ -303,7 +304,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 ) : (
                   <>
                     <Users className="w-6 h-6" />
-                    NEED {2 - (game.players?.length || 0)} MORE PLAYERS
+                    NEED {2 - game.currentPlayers} MORE PLAYERS {/* FIX: Use currentPlayers */}
                   </>
                 )}
               </motion.button>
@@ -340,7 +341,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 Waiting for Host
               </h4>
               <p className="text-white/70">
-                {getHostName()} will start the game soon...
+                {getHostName()} will start the game when there are at least 2 players...
               </p>
             </div>
           </motion.div>
