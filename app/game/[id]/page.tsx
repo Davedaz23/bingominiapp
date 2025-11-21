@@ -1,4 +1,4 @@
-// app/game/[id]/page.tsx - CORRECTED VERSION
+// app/game/[id]/page.tsx - UPDATED to show all players
 'use client'
 
 import { useParams, useRouter } from 'next/navigation';
@@ -10,7 +10,7 @@ import { NumberGrid } from '../../../components/ui/NumberGrid';
 import { GameLobby } from '../../../components/ui/GameLobby';
 import { gameAPI } from '../../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Users, Volume2, Home, Crown, Sparkles, Zap, Gamepad2, ArrowLeft, Clock } from 'lucide-react';
+import { Trophy, Users, Volume2, Home, Crown, Sparkles, Zap, Gamepad2, ArrowLeft, Clock, User, Eye } from 'lucide-react';
 
 export default function GamePage() {
   const params = useParams();
@@ -23,6 +23,7 @@ export default function GamePage() {
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [winnerInfo, setWinnerInfo] = useState<any>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [showPlayersPanel, setShowPlayersPanel] = useState(false);
 
   useEffect(() => {
     const userId = localStorage.getItem('user_id');
@@ -41,13 +42,11 @@ export default function GamePage() {
     if (game?.status === 'FINISHED' && game.winner) {
       const fetchWinnerInfo = async () => {
         try {
-          // OPTION 1: Use the hook's getWinnerInfo function
           const winnerData = await getWinnerInfo();
           if (winnerData) {
             setWinnerInfo(winnerData);
             setShowWinnerModal(true);
           } else {
-            // Fallback to basic winner info
             setWinnerInfo({
               winner: game.winner,
               gameCode: game.code,
@@ -58,7 +57,6 @@ export default function GamePage() {
           }
         } catch (error) {
           console.error('Error fetching winner info:', error);
-          // Fallback to basic winner info
           setWinnerInfo({
             winner: game.winner,
             gameCode: game.code,
@@ -122,6 +120,10 @@ export default function GamePage() {
     refreshGame();
   };
 
+  const togglePlayersPanel = () => {
+    setShowPlayersPanel(!showPlayersPanel);
+  };
+
   // Calculate time since last number
   const getTimeSinceLastNumber = useCallback(() => {
     if (!gameState.lastCalledAt) return 'Waiting for first number...';
@@ -134,6 +136,121 @@ export default function GamePage() {
     
     return `${Math.floor(diffInSeconds / 60)}m ago`;
   }, [gameState.lastCalledAt]);
+
+  // Get player display name
+  const getPlayerDisplayName = (player: any) => {
+    if (!player.user) return 'Unknown Player';
+    return player.user.firstName || player.user.username || 'Unknown Player';
+  };
+
+  // Check if player is the current user
+  const isCurrentUser = (player: any) => {
+    return player.userId === currentUserId || player.user?._id === currentUserId;
+  };
+
+  // Players Panel Component
+  const PlayersPanel = () => (
+    <AnimatePresence>
+      {showPlayersPanel && game?.players && (
+        <motion.div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 border border-white/30 shadow-2xl w-full max-w-sm max-h-96 overflow-hidden"
+            initial={{ scale: 0.8, y: 50 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.8, y: 50 }}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-bold text-xl">Players ({game.players.length})</h3>
+              <motion.button
+                onClick={togglePlayersPanel}
+                className="text-white/80 hover:text-white transition-colors"
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+              >
+                ✕
+              </motion.button>
+            </div>
+            
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {game.players.map((player, index) => (
+                <motion.div
+                  key={player._id || index}
+                  className={`flex items-center justify-between p-3 rounded-2xl border ${
+                    isCurrentUser(player) 
+                      ? 'bg-blue-500/20 border-blue-500/30' 
+                      : 'bg-white/10 border-white/20'
+                  }`}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      isCurrentUser(player) ? 'bg-blue-500' : 'bg-white/20'
+                    }`}>
+                      <User className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <div className="text-white font-medium">
+                        {getPlayerDisplayName(player)}
+                        {isCurrentUser(player) && (
+                          <span className="ml-2 text-blue-300 text-sm">(You)</span>
+                        )}
+                      </div>
+                      <div className="text-white/60 text-xs flex items-center gap-1">
+                        {player.playerType === 'SPECTATOR' ? (
+                          <>
+                            <Eye className="w-3 h-3" />
+                            Spectator
+                          </>
+                        ) : (
+                          <>
+                            <User className="w-3 h-3" />
+                            Player
+                            {/* {player.isLateJoiner && (
+                              <span className="text-yellow-400"> • Late</span>
+                            )} */}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {player.playerType === 'PLAYER' && (
+                    <div className="text-right">
+                      <div className="text-white text-sm">
+                        {bingoCard?.markedPositions?.length || 0}/25
+                      </div>
+                      <div className="text-white/60 text-xs">marked</div>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+            
+            {/* Game info footer */}
+            <div className="mt-4 pt-4 border-t border-white/20">
+              <div className="grid grid-cols-2 gap-4 text-center text-white/80 text-sm">
+                <div>
+                  <div className="font-bold text-white">{game.players.filter(p => p.playerType === 'PLAYER').length}</div>
+                  <div>Players</div>
+                </div>
+                <div>
+                  <div className="font-bold text-white">{game.players.filter(p => p.playerType === 'SPECTATOR').length}</div>
+                  <div>Spectators</div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 
   // Winner Modal Component
   const WinnerModal = () => (
@@ -284,9 +401,14 @@ export default function GamePage() {
   const calledNumbers = gameState.calledNumbers || game?.numbersCalled || [];
   const calledNumbersCount = calledNumbers.length;
   const currentNumber = gameState.currentNumber;
+  const activePlayers = game.players?.filter(p => p.playerType === 'PLAYER') || [];
+  const spectators = game.players?.filter(p => p.playerType === 'SPECTATOR') || [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
+      {/* Players Panel */}
+      <PlayersPanel />
+
       {/* Winner Modal */}
       <WinnerModal />
 
@@ -330,15 +452,27 @@ export default function GamePage() {
             <span className="font-bold">Home</span>
           </motion.button>
 
-          <motion.button
-            onClick={handleManualRefresh}
-            className="flex items-center gap-2 px-4 py-3 bg-white/20 backdrop-blur-lg text-white rounded-2xl border border-white/30 hover:bg-white/30 transition-all"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Clock className="w-5 h-5" />
-            <span className="font-bold">Refresh</span>
-          </motion.button>
+          <div className="flex gap-2">
+            <motion.button
+              onClick={togglePlayersPanel}
+              className="flex items-center gap-2 px-4 py-3 bg-white/20 backdrop-blur-lg text-white rounded-2xl border border-white/30 hover:bg-white/30 transition-all"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Users className="w-5 h-5" />
+              <span className="font-bold">{game.players?.length || 0}</span>
+            </motion.button>
+
+            <motion.button
+              onClick={handleManualRefresh}
+              className="flex items-center gap-2 px-4 py-3 bg-white/20 backdrop-blur-lg text-white rounded-2xl border border-white/30 hover:bg-white/30 transition-all"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Clock className="w-5 h-5" />
+              <span className="font-bold">Refresh</span>
+            </motion.button>
+          </div>
         </motion.div>
 
         {/* Game Header */}
@@ -359,7 +493,13 @@ export default function GamePage() {
               <div className="flex items-center gap-3 text-white/80 text-sm">
                 <div className="flex items-center gap-1">
                   <Users className="w-4 h-4" />
-                  <span>{game.currentPlayers} players</span>
+                  <span>{activePlayers.length} players</span>
+                  {spectators.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Eye className="w-3 h-3" />
+                      {spectators.length} spectators
+                    </span>
+                  )}
                 </div>
                 <span>•</span>
                 <span>{calledNumbersCount} numbers called</span>
@@ -381,7 +521,7 @@ export default function GamePage() {
               className="flex items-center gap-2 bg-white/20 rounded-2xl px-4 py-2"
             >
               <Zap className="w-5 h-5 text-yellow-400" />
-              <span className="text-white font-black text-lg">{game.currentPlayers}</span>
+              <span className="text-white font-black text-lg">{activePlayers.length}</span>
             </motion.div>
           </div>
 
@@ -408,7 +548,7 @@ export default function GamePage() {
         {/* Current Number Display */}
         {currentNumber && (
           <motion.div
-            key={currentNumber} // This ensures re-animation when number changes
+            key={currentNumber}
             className="bg-white/20 backdrop-blur-lg rounded-3xl p-8 text-center mb-6 border border-white/30 shadow-2xl"
             initial={{ scale: 0, rotate: -180 }}
             animate={{ scale: 1, rotate: 0 }}
