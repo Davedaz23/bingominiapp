@@ -28,18 +28,7 @@ export default function GamePage() {
     }
   }, []);
 
-  // ADD THIS: Debug logging to see what's happening
-  useEffect(() => {
-    console.log('🎮 Game State Debug:', {
-      gameStatus: game?.status,
-      numbersCalled: game?.numbersCalled,
-      gameStateCalledNumbers: gameState?.calledNumbers,
-      currentNumber: gameState?.currentNumber,
-      isHost: isHost,
-      gameId: game?._id,
-      calledNumbersCount: calledNumbersCount
-    });
-  }, [game, gameState, isHost]);
+  
 
   useEffect(() => {
     if (game?.status === 'FINISHED' && bingoCard?.isWinner) {

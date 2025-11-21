@@ -6,19 +6,17 @@ import { useTelegram } from '../../hooks/useTelegram';
 import { gameAPI } from '../../services/api';
 import { Game } from '../../types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Users, Clock, Plus, Zap, Crown, Sparkles, Gamepad2 } from 'lucide-react';
+import { Users, Play, Crown, Sparkles, Gamepad2 } from 'lucide-react';
 
 export default function GamesPage() {
   const { user, isReady } = useTelegram();
   const router = useRouter();
   const [activeGames, setActiveGames] = useState<Game[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string>('');
 
   useEffect(() => {
     if (isReady) {
-      // Get user ID from localStorage (set during authentication)
       const userId = localStorage.getItem('user_id');
       if (userId) {
         setCurrentUserId(userId);
@@ -51,30 +49,11 @@ export default function GamesPage() {
     }
   };
 
-  const createGame = async () => {
-    try {
-      const userId = localStorage.getItem('user_id');
-      if (!userId) return;
-      
-      const response = await gameAPI.createGame(userId, 10, false);
-      router.push(`/game/${response.data.game._id}`);
-    } catch (error) {
-      console.error('Failed to create game:', error);
-    }
-  };
-
-  const joinRandomGame = async () => {
+  const joinFirstGame = async () => {
     if (activeGames.length > 0) {
-      const randomGame = activeGames[Math.floor(Math.random() * activeGames.length)];
-      await joinGame(randomGame);
+      await joinGame(activeGames[0]);
     }
   };
-
-  const filteredGames = activeGames.filter(game =>
-    game.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    game.host.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    game.host.username?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   // Animation variants
   const backgroundVariants = {
@@ -87,12 +66,6 @@ export default function GamesPage() {
         delay: Math.random() * 2,
       }
     })
-  };
-
-  // Helper function to check if current user is the host
-  const isUserHost = (game: Game): boolean => {
-    if (!currentUserId) return false;
-    return game.host._id === currentUserId;
   };
 
   if (!isReady || isLoading) {
@@ -163,76 +136,49 @@ export default function GamesPage() {
             🎮
           </motion.div>
           <h1 className="text-5xl font-black text-white mb-3 drop-shadow-lg">
-            JOIN GAME
+            GAME SESSIONS
           </h1>
-          <p className="text-white/80 text-lg font-medium">Find • Join • Play</p>
+          <p className="text-white/80 text-lg font-medium">Join • Play • Win</p>
         </motion.div>
 
-        {/* Search Bar */}
+        {/* Main Join Button */}
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-white/30 shadow-2xl"
-        >
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white/60" size={20} />
-            <input
-              type="text"
-              placeholder="Search by game code or host..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/30 focus:border-transparent"
-            />
-            {searchTerm && (
-              <motion.button
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                onClick={() => setSearchTerm('')}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white/60 hover:text-white transition-colors"
-              >
-                ✕
-              </motion.button>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Action Buttons */}
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="grid grid-cols-2 gap-4 mb-6"
+          className="mb-6"
         >
           <motion.button
-            onClick={createGame}
-            className="bg-white text-purple-600 py-4 rounded-2xl font-black text-lg shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden"
-            whileHover={{ 
-              scale: 1.05,
+            onClick={joinFirstGame}
+            disabled={activeGames.length === 0}
+            className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${
+              activeGames.length > 0 
+                ? 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl' 
+                : 'bg-white/20 text-white/60 cursor-not-allowed'
+            }`}
+            whileHover={activeGames.length > 0 ? { 
+              scale: 1.02,
               y: -2
-            }}
-            whileTap={{ scale: 0.95 }}
+            } : {}}
+            whileTap={activeGames.length > 0 ? { scale: 0.98 } : {}}
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-            <Plus className="w-6 h-6" />
-            Create
+            {activeGames.length > 0 && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+            )}
+            
+            <Play className="w-6 h-6" />
+            {activeGames.length > 0 ? 'JOIN MAIN SESSION' : 'NO SESSIONS AVAILABLE'}
+            
+            {activeGames.length > 0 && (
+              <motion.div
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+              >
+                {activeGames[0].currentPlayers} online
+              </motion.div>
+            )}
           </motion.button>
-          
-          {activeGames.length > 0 && (
-            <motion.button
-              onClick={joinRandomGame}
-              className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-4 rounded-2xl font-black text-lg shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden"
-              whileHover={{ 
-                scale: 1.05,
-                y: -2
-              }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-              <Zap className="w-6 h-6 fill-white" />
-              Quick Join
-            </motion.button>
-          )}
         </motion.div>
 
         {/* Games List */}
@@ -246,7 +192,7 @@ export default function GamesPage() {
             <div className="flex items-center gap-3">
               <Gamepad2 className="w-6 h-6 text-white" />
               <h3 className="font-black text-xl text-white">
-                Available Games
+                Available Sessions
               </h3>
             </div>
             <motion.div
@@ -255,12 +201,12 @@ export default function GamesPage() {
               className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1"
             >
               <Users className="w-4 h-4 text-white" />
-              <span className="text-white text-sm font-bold">{filteredGames.length}</span>
+              <span className="text-white text-sm font-bold">{activeGames.length}</span>
             </motion.div>
           </div>
           
           <AnimatePresence>
-            {filteredGames.length === 0 ? (
+            {activeGames.length === 0 ? (
               <motion.div 
                 className="text-center py-8"
                 initial={{ opacity: 0 }}
@@ -268,18 +214,18 @@ export default function GamesPage() {
                 exit={{ opacity: 0 }}
               >
                 <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Clock className="text-white/50 w-8 h-8" />
+                  <Sparkles className="text-white/50 w-8 h-8" />
                 </div>
                 <p className="text-white/80 font-medium mb-2">
-                  {searchTerm ? 'No games found' : 'No active games available'}
+                  No active sessions
                 </p>
                 <p className="text-white/60 text-sm">
-                  {searchTerm ? 'Try a different search term' : 'Create the first game!'}
+                  Check back soon for new sessions
                 </p>
               </motion.div>
             ) : (
-              <div className="space-y-3 max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
-                {filteredGames.map((game, index) => (
+              <div className="space-y-3">
+                {activeGames.map((game, index) => (
                   <motion.div
                     key={game._id}
                     initial={{ opacity: 0, x: -20 }}
@@ -294,7 +240,7 @@ export default function GamesPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
                           <h4 className="font-black text-white group-hover:text-yellow-300 transition-colors">
-                            {game.code}
+                            Session {game.code}
                           </h4>
                           <span className={`px-2 py-1 rounded-full text-xs font-black ${
                             game.status === 'ACTIVE' 
@@ -315,19 +261,10 @@ export default function GamesPage() {
                             <span className="text-white/70 text-sm">
                               Host: {game.host.firstName || game.host.username}
                             </span>
-                            {isUserHost(game) && (
+                            {game.host._id === currentUserId && (
                               <Crown className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                             )}
                           </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-2 mt-2">
-                          <div className="text-xs text-white/50">
-                            Created: {new Date(game.createdAt).toLocaleDateString()}
-                          </div>
-                          {game.isPrivate && (
-                            <Sparkles className="w-3 h-3 text-purple-300" />
-                          )}
                         </div>
                       </div>
                       
@@ -335,14 +272,14 @@ export default function GamesPage() {
                         className="w-12 h-12 bg-gradient-to-br from-purple-400 to-pink-400 rounded-2xl flex items-center justify-center text-white font-black text-sm shadow-lg"
                         whileHover={{ rotate: 5, scale: 1.1 }}
                       >
-                        {game.currentPlayers}
+                        <Play className="w-5 h-5" />
                       </motion.div>
                     </div>
 
                     {/* Game Progress Bar */}
                     <div className="mt-3">
                       <div className="flex justify-between items-center text-xs mb-1">
-                        <span className="text-white/70">Progress</span>
+                        <span className="text-white/70">Session Progress</span>
                         <span className="text-white font-bold">
                           {Math.round((game.currentPlayers / game.maxPlayers) * 100)}%
                         </span>
@@ -374,7 +311,7 @@ export default function GamesPage() {
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-2xl font-black text-white">{activeGames.length}</div>
-                <div className="text-white/60 text-xs">Total Games</div>
+                <div className="text-white/60 text-xs">Total Sessions</div>
               </div>
               <div>
                 <div className="text-2xl font-black text-white">
@@ -386,7 +323,7 @@ export default function GamesPage() {
                 <div className="text-2xl font-black text-white">
                   {activeGames.filter(g => g.status === 'ACTIVE').length}
                 </div>
-                <div className="text-white/60 text-xs">Playing Now</div>
+                <div className="text-white/60 text-xs">Live Now</div>
               </div>
             </div>
           </div>

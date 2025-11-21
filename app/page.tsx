@@ -9,8 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Trophy, 
   Users, 
-  Plus, 
-  Search, 
+  Play, 
   Zap, 
   Crown, 
   Sparkles,
@@ -18,7 +17,7 @@ import {
   Gamepad2
 } from 'lucide-react'
 
-// Define animation variants for better TypeScript support
+// Animation variants
 const backgroundVariants = {
   animate: (i: number) => ({
     y: [0, -100, 0],
@@ -69,7 +68,6 @@ export default function Home() {
     try {
       setAuthAttempted(true)
       
-      // Use the initData from useTelegram hook which properly handles both real and dev modes
       const response = await authAPI.telegramLogin(initData || 'development')
       const { token, user: userData } = response.data
       
@@ -77,21 +75,14 @@ export default function Home() {
       localStorage.setItem('user_id', userData.id)
       setUserStats(userData)
 
-      // Show confetti for new users or high achievers
       if (userData.gamesWon > 0) {
         setShowConfetti(true)
         setTimeout(() => setShowConfetti(false), 3000)
       }
 
-      console.log('User authenticated successfully:', {
-        username: userData.username,
-        gamesPlayed: userData.gamesPlayed,
-        gamesWon: userData.gamesWon,
-        isTelegramUser: initData !== 'development'
-      })
+      console.log('User authenticated successfully')
     } catch (error) {
       console.error('Authentication failed:', error)
-      // Even if auth fails, we can still show the UI with limited functionality
       const fallbackUser = {
         _id: 'fallback',
         id: 'fallback',
@@ -119,37 +110,21 @@ export default function Home() {
     }
   }
 
-  const createGame = async () => {
-    try {
-      const userId = localStorage.getItem('user_id')
-      if (!userId) {
-        console.error('No user ID found')
-        return
-      }
-      
-      const response = await gameAPI.createGame(userId, 10, false)
-      router.push(`/game/${response.data.game._id}`)
-    } catch (error) {
-      console.error('Failed to create game:', error)
-    }
-  }
-
-  const joinRandomGame = async () => {
+  const joinFirstGame = async () => {
     if (activeGames.length > 0) {
-      const randomGame = activeGames[Math.floor(Math.random() * activeGames.length)]
+      const firstGame = activeGames[0]
       const userId = localStorage.getItem('user_id')
       if (!userId) return
       
       try {
-        await gameAPI.joinGame(randomGame.code, userId)
-        router.push(`/game/${randomGame._id}`)
+        await gameAPI.joinGame(firstGame.code, userId)
+        router.push(`/game/${firstGame._id}`)
       } catch (error) {
         console.error('Failed to join game:', error)
       }
     }
   }
 
-  // Show user info from Telegram if available (before auth completes)
   const displayUser = userStats || (user ? {
     _id: 'pending',
     id: 'pending', 
@@ -184,11 +159,6 @@ export default function Home() {
           >
             {initData === 'development' ? 'Development Mode' : 'Loading Bingo...'}
           </motion.p>
-          {initData !== 'development' && (
-            <p className="text-white/60 text-sm mt-2">
-              Authenticating with Telegram...
-            </p>
-          )}
         </div>
       </div>
     )
@@ -281,18 +251,7 @@ export default function Home() {
           <h1 className="text-5xl font-black text-white mb-3 drop-shadow-lg">
             BINGO
           </h1>
-          <p className="text-white/80 text-lg font-medium">Play • Win • Repeat</p>
-          {initData !== 'development' && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="flex items-center justify-center gap-2 mt-2"
-            >
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-green-300 text-sm font-medium">Connected to Telegram</span>
-            </motion.div>
-          )}
+          <p className="text-white/80 text-lg font-medium">Always Ready • Always Fun</p>
         </motion.div>
 
         {/* User Stats Card */}
@@ -318,17 +277,6 @@ export default function Home() {
                     className="absolute -top-2 -right-2"
                   >
                     <Crown className="w-6 h-6 fill-yellow-400 text-yellow-400" />
-                  </motion.div>
-                )}
-                {initData === 'development' && (
-                  <motion.div
-                    animate={{ scale: [1, 1.1, 1] }}
-                    transition={{ duration: 1.5, repeat: Infinity }}
-                    className="absolute -bottom-1 -right-1"
-                  >
-                    <div className="bg-yellow-500 text-yellow-900 text-xs px-2 py-1 rounded-full font-bold">
-                      DEV
-                    </div>
                   </motion.div>
                 )}
               </motion.div>
@@ -415,64 +363,56 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* Quick Actions */}
+        {/* Main Play Button */}
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.4 }}
-          className="grid grid-cols-2 gap-4 mb-6"
+          className="mb-6"
         >
           <motion.button
-            onClick={createGame}
-            className="bg-white text-purple-600 py-4 rounded-2xl font-black text-lg shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden"
-            whileHover={{ 
-              scale: 1.05,
-              y: -2
-            }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-            <Plus className="w-6 h-6" />
-            Create
-          </motion.button>
-          
-          <motion.button
-            onClick={() => router.push('/games')}
-            className="bg-black/30 backdrop-blur-lg text-white py-4 rounded-2xl font-black text-lg border border-white/20 shadow-2xl flex items-center justify-center gap-3 hover:bg-black/40 transition-all"
-            whileHover={{ 
-              scale: 1.05,
-              y: -2
-            }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Search className="w-6 h-6" />
-            Join
-          </motion.button>
-        </motion.div>
-
-        {/* Quick Play Button */}
-        {activeGames.length > 0 && (
-          <motion.button
-            onClick={joinRandomGame}
-            className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-4 rounded-2xl font-black text-lg shadow-2xl mb-6 flex items-center justify-center gap-3 group relative overflow-hidden"
-            whileHover={{ 
+            onClick={joinFirstGame}
+            disabled={activeGames.length === 0}
+            className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${
+              activeGames.length > 0 
+                ? 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl' 
+                : 'bg-white/20 text-white/60 cursor-not-allowed'
+            }`}
+            whileHover={activeGames.length > 0 ? { 
               scale: 1.02,
               y: -2
-            }}
-            whileTap={{ scale: 0.98 }}
+            } : {}}
+            whileTap={activeGames.length > 0 ? { scale: 0.98 } : {}}
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-            <Zap className="w-6 h-6 fill-white" />
-            Quick Play
-            <motion.div
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-              className="px-2 py-1 bg-white/20 rounded-full text-xs"
-            >
-              {activeGames.length} active
-            </motion.div>
+            {activeGames.length > 0 && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+            )}
+            
+            <Play className="w-6 h-6" />
+            {activeGames.length > 0 ? 'PLAY NOW' : 'LOADING GAME...'}
+            
+            {activeGames.length > 0 && (
+              <motion.div
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+              >
+                {activeGames[0].currentPlayers} playing
+              </motion.div>
+            )}
           </motion.button>
-        )}
+          
+          {activeGames.length === 0 && (
+            <motion.p 
+              className="text-center text-white/60 mt-3 text-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.6 }}
+            >
+              Preparing your game experience...
+            </motion.p>
+          )}
+        </motion.div>
 
         {/* Active Games Section */}
         <motion.div
@@ -484,7 +424,7 @@ export default function Home() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <Gamepad2 className="w-6 h-6 text-white" />
-              <h3 className="font-black text-xl text-white">Active Games</h3>
+              <h3 className="font-black text-xl text-white">Current Session</h3>
             </div>
             <motion.div
               animate={{ scale: [1, 1.1, 1] }}
@@ -505,11 +445,11 @@ export default function Home() {
               <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <TrendingUp className="text-white/50 w-8 h-8" />
               </div>
-              <p className="text-white/80 font-medium mb-2">No active games yet</p>
-              <p className="text-white/60 text-sm">Be the first to create a game!</p>
+              <p className="text-white/80 font-medium mb-2">Game session loading</p>
+              <p className="text-white/60 text-sm">Ready in a moment...</p>
             </motion.div>
           ) : (
-            <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+            <div className="space-y-3">
               {activeGames.map((game, index) => (
                 <motion.div
                   key={game._id}
@@ -517,47 +457,94 @@ export default function Home() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.1 }}
                   className="bg-white/10 hover:bg-white/20 rounded-2xl p-4 border border-white/10 hover:border-white/30 transition-all duration-300 cursor-pointer group backdrop-blur-sm"
-                  onClick={() => router.push(`/game/${game._id}`)}
+                  onClick={joinFirstGame}
                   whileHover={{ scale: 1.02 }}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <h4 className="font-black text-white group-hover:text-yellow-300 transition-colors">
-                          {game.code}
+                          Game {game.code}
                         </h4>
                         <span className={`px-2 py-1 rounded-full text-xs font-black ${
                           game.status === 'ACTIVE' 
                             ? 'bg-green-500/20 text-green-300 border border-green-500/30'
                             : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
                         }`}>
-                          {game.status}
+                          {game.status === 'ACTIVE' ? 'LIVE' : 'WAITING'}
                         </span>
                       </div>
                       
                       <div className="flex items-center gap-4 text-sm">
                         <div className="flex items-center gap-1 text-white/70">
                           <Users className="w-4 h-4" />
-                          <span>{game.currentPlayers}/{game.maxPlayers}</span>
+                          <span>{game.currentPlayers} players online</span>
                         </div>
                         <span className="text-white/50">•</span>
                         <span className="text-white/70 text-sm">
-                          Host: {game.host.firstName}
+                          Click to join instantly
                         </span>
                       </div>
                     </div>
                     
                     <motion.div 
-                      className="w-12 h-12 bg-gradient-to-br from-purple-400 to-pink-400 rounded-2xl flex items-center justify-center text-white font-black text-sm shadow-lg"
+                      className="w-12 h-12 bg-gradient-to-br from-green-400 to-teal-400 rounded-2xl flex items-center justify-center text-white font-black text-sm shadow-lg"
                       whileHover={{ rotate: 5, scale: 1.1 }}
                     >
-                      {game.currentPlayers}
+                      <Play className="w-5 h-5" />
                     </motion.div>
+                  </div>
+
+                  {/* Game Progress Bar */}
+                  <div className="mt-3">
+                    <div className="flex justify-between items-center text-xs mb-1">
+                      <span className="text-white/70">Session Progress</span>
+                      <span className="text-white font-bold">
+                        {Math.round((game.currentPlayers / game.maxPlayers) * 100)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-white/20 rounded-full h-1.5">
+                      <motion.div 
+                        className="bg-gradient-to-r from-green-400 to-cyan-400 h-1.5 rounded-full"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(game.currentPlayers / game.maxPlayers) * 100}%` }}
+                        transition={{ duration: 1, delay: index * 0.1 + 0.5 }}
+                      />
+                    </div>
                   </div>
                 </motion.div>
               ))}
             </div>
           )}
+        </motion.div>
+
+        {/* Stats Footer */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8 }}
+          className="text-center mt-6"
+        >
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-black text-white">{activeGames.length}</div>
+                <div className="text-white/60 text-xs">Active Sessions</div>
+              </div>
+              <div>
+                <div className="text-2xl font-black text-white">
+                  {activeGames.reduce((sum, game) => sum + game.currentPlayers, 0)}
+                </div>
+                <div className="text-white/60 text-xs">Players Online</div>
+              </div>
+              <div>
+                <div className="text-2xl font-black text-white">
+                  {activeGames.filter(g => g.status === 'ACTIVE').length}
+                </div>
+                <div className="text-white/60 text-xs">Live Games</div>
+              </div>
+            </div>
+          </div>
         </motion.div>
 
         {/* Footer */}
@@ -568,10 +555,7 @@ export default function Home() {
           className="text-center mt-8 pb-8"
         >
           <p className="text-white/40 text-sm">
-            {initData === 'development' 
-              ? 'Development Mode - Test users only' 
-              : 'Made with ❤️ for Bingo lovers'
-            }
+            Jump in and play anytime!
           </p>
         </motion.div>
       </motion.div>
