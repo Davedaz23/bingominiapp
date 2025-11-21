@@ -1,8 +1,8 @@
-// app/game/[id]/page.tsx - UPDATED for late joiners
+// app/game/[id]/page.tsx - COMPLETE FIXED VERSION
 'use client'
 
 import { useParams, useRouter } from 'next/navigation';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { useTelegram } from '../../../hooks/useTelegram';
 import { BingoCard } from '../../../components/ui/BingoCard';
@@ -17,7 +17,10 @@ export default function GamePage() {
   const router = useRouter();
   const id = params.id as string;
   const { user, WebApp } = useTelegram();
+  
+  // Use useGame hook with stable references
   const { game, bingoCard, gameState, markNumber, refreshGame, isLoading, getWinnerInfo } = useGame(id);
+  
   const [showWinAnimation, setShowWinAnimation] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [showWinnerModal, setShowWinnerModal] = useState(false);
@@ -25,40 +28,45 @@ export default function GamePage() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [showPlayersPanel, setShowPlayersPanel] = useState(false);
 
+  // Stable currentUserId setup
   useEffect(() => {
     const userId = localStorage.getItem('user_id');
-    if (userId) {
+    if (userId && userId !== currentUserId) {
       setCurrentUserId(userId);
     }
-  }, []);
+  }, [currentUserId]);
 
-  // Check if current user is a late joiner
-  const isLateJoiner = bingoCard?.isLateJoiner || false;
-  const numbersCalledAtJoin = bingoCard?.numbersCalledAtJoin || [];
+  // Memoize late joiner status to prevent unnecessary re-renders
+  const isLateJoiner = useMemo(() => 
+    bingoCard?.isLateJoiner || false, 
+    [bingoCard?.isLateJoiner]
+  );
+  
+  const numbersCalledAtJoin = useMemo(() => 
+    bingoCard?.numbersCalledAtJoin || [], 
+    [bingoCard?.numbersCalledAtJoin]
+  );
 
-  // Update timestamp when game state changes
+  // Optimized timestamp updates - only update when meaningful changes occur
   useEffect(() => {
-    setLastUpdate(new Date());
-  }, [gameState.currentNumber, game?.numbersCalled]);
+    if (gameState.currentNumber || game?.numbersCalled?.length) {
+      setLastUpdate(new Date());
+    }
+  }, [gameState.currentNumber, game?.numbersCalled?.length]);
 
-  // Check for winner when game finishes
+  // Optimized winner check
   useEffect(() => {
-    if (game?.status === 'FINISHED' && game.winner) {
+    if (game?.status === 'FINISHED' && game.winner && !showWinnerModal) {
       const fetchWinnerInfo = async () => {
         try {
           const winnerData = await getWinnerInfo();
-          if (winnerData) {
-            setWinnerInfo(winnerData);
-            setShowWinnerModal(true);
-          } else {
-            setWinnerInfo({
-              winner: game.winner,
-              gameCode: game.code,
-              totalPlayers: game.currentPlayers,
-              numbersCalled: game.numbersCalled?.length || 0
-            });
-            setShowWinnerModal(true);
-          }
+          setWinnerInfo(winnerData || {
+            winner: game.winner,
+            gameCode: game.code,
+            totalPlayers: game.currentPlayers,
+            numbersCalled: game.numbersCalled?.length || 0
+          });
+          setShowWinnerModal(true);
         } catch (error) {
           console.error('Error fetching winner info:', error);
           setWinnerInfo({
@@ -73,16 +81,17 @@ export default function GamePage() {
       
       fetchWinnerInfo();
     }
-  }, [game?.status, game?.winner, game?._id, game?.code, game?.currentPlayers, game?.numbersCalled, getWinnerInfo]);
+  }, [game?.status, game?.winner, showWinnerModal, getWinnerInfo]);
 
-  // Show win animation when current user wins
+  // Optimized win animation check
   useEffect(() => {
-    if (game?.status === 'FINISHED' && bingoCard?.isWinner) {
+    if (game?.status === 'FINISHED' && bingoCard?.isWinner && !showWinAnimation) {
       setShowWinAnimation(true);
     }
-  }, [game?.status, bingoCard?.isWinner]);
+  }, [game?.status, bingoCard?.isWinner, showWinAnimation]);
 
-  const handleStartGame = async () => {
+  // Stable callback functions
+  const handleStartGame = useCallback(async () => {
     if (!game) return;
     
     try {
@@ -91,44 +100,40 @@ export default function GamePage() {
     } catch (error) {
       console.error('Failed to start game:', error);
     }
-  };
+  }, [game, refreshGame]);
 
-  const handleMarkNumber = async (number: number) => {
+  const handleMarkNumber = useCallback(async (number: number) => {
     if (!currentUserId) return;
     
     try {
       const isWinner = await markNumber(number);
-      if (isWinner) {
+      if (isWinner && !showWinAnimation) {
         setShowWinAnimation(true);
       }
     } catch (error) {
       console.error('Error marking number:', error);
     }
-  };
+  }, [currentUserId, markNumber, showWinAnimation]);
 
-  const handleBackToLobby = () => {
+  const handleBackToLobby = useCallback(() => {
     router.push('/');
-  };
+  }, [router]);
 
-  const handleBackToGames = () => {
-    router.push('/games');
-  };
-
-  const handlePlayAgain = () => {
+  const handlePlayAgain = useCallback(() => {
     setShowWinAnimation(false);
     setShowWinnerModal(false);
     router.push('/games');
-  };
+  }, [router]);
 
-  const handleManualRefresh = () => {
+  const handleManualRefresh = useCallback(() => {
     refreshGame();
-  };
+  }, [refreshGame]);
 
-  const togglePlayersPanel = () => {
-    setShowPlayersPanel(!showPlayersPanel);
-  };
+  const togglePlayersPanel = useCallback(() => {
+    setShowPlayersPanel(prev => !prev);
+  }, []);
 
-  // Calculate time since last number
+  // Optimized time calculation
   const getTimeSinceLastNumber = useCallback(() => {
     if (!gameState.lastCalledAt) return 'Waiting for first number...';
     
@@ -141,27 +146,41 @@ export default function GamePage() {
     return `${Math.floor(diffInSeconds / 60)}m ago`;
   }, [gameState.lastCalledAt]);
 
-  // Get player display name
-  const getPlayerDisplayName = (player: any) => {
+  // Memoized player data
+  const getPlayerDisplayName = useCallback((player: any) => {
     if (!player.user) return 'Unknown Player';
     return player.user.firstName || player.user.username || 'Unknown Player';
-  };
+  }, []);
 
-  // Check if player is the current user
-  const isCurrentUser = (player: any) => {
+  const isCurrentUser = useCallback((player: any) => {
     return player.userId === currentUserId || player.user?._id === currentUserId;
-  };
+  }, [currentUserId]);
 
-  // Get player's bingo card to check if they're late joiners
-  const getPlayerLateJoinerStatus = (player: any) => {
-    // This would need to be fetched from the backend or stored in player data
+  const getPlayerLateJoinerStatus = useCallback((player: any) => {
     return player.isLateJoiner || false;
-  };
+  }, []);
 
-  // Players Panel Component - UPDATED with late joiner info
-  const PlayersPanel = () => (
-    <AnimatePresence>
-      {showPlayersPanel && game?.players && (
+  // Memoize derived game data
+  const calledNumbers = useMemo(() => 
+    gameState.calledNumbers || game?.numbersCalled || [], 
+    [gameState.calledNumbers, game?.numbersCalled]
+  );
+  
+  const calledNumbersCount = useMemo(() => calledNumbers.length, [calledNumbers]);
+  const currentNumber = gameState.currentNumber;
+  
+  const playersData = useMemo(() => ({
+    active: game?.players?.filter(p => p.playerType === 'PLAYER') || [],
+    spectators: game?.players?.filter(p => p.playerType === 'SPECTATOR') || [],
+    total: game?.players?.length || 0
+  }), [game?.players]);
+
+  // Players Panel Component - Memoized
+  const PlayersPanel = useMemo(() => {
+    if (!showPlayersPanel || !game?.players) return null;
+
+    return (
+      <AnimatePresence>
         <motion.div
           className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           initial={{ opacity: 0 }}
@@ -175,7 +194,7 @@ export default function GamePage() {
             exit={{ scale: 0.8, y: 50 }}
           >
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-white font-bold text-xl">Players ({game.players.length})</h3>
+              <h3 className="text-white font-bold text-xl">Players ({playersData.total})</h3>
               <motion.button
                 onClick={togglePlayersPanel}
                 className="text-white/80 hover:text-white transition-colors"
@@ -188,7 +207,7 @@ export default function GamePage() {
             
             <div className="space-y-3 max-h-64 overflow-y-auto">
               {game.players.map((player, index) => {
-                const isLateJoiner = getPlayerLateJoinerStatus(player);
+                const isLate = getPlayerLateJoinerStatus(player);
                 return (
                   <motion.div
                     key={player._id || index}
@@ -224,7 +243,7 @@ export default function GamePage() {
                             <>
                               <User className="w-3 h-3" />
                               Player
-                              {isLateJoiner && (
+                              {isLate && (
                                 <span className="text-yellow-400 flex items-center gap-1">
                                   <Clock3 className="w-3 h-3" />
                                   Late Joiner
@@ -249,24 +268,18 @@ export default function GamePage() {
               })}
             </div>
             
-            {/* Game info footer */}
             <div className="mt-4 pt-4 border-t border-white/20">
               <div className="grid grid-cols-2 gap-4 text-center text-white/80 text-sm">
                 <div>
-                  <div className="font-bold text-white">
-                    {game.players.filter(p => p.playerType === 'PLAYER').length}
-                  </div>
+                  <div className="font-bold text-white">{playersData.active.length}</div>
                   <div>Players</div>
                 </div>
                 <div>
-                  <div className="font-bold text-white">
-                    {game.players.filter(p => p.playerType === 'SPECTATOR').length}
-                  </div>
+                  <div className="font-bold text-white">{playersData.spectators.length}</div>
                   <div>Spectators</div>
                 </div>
               </div>
               
-              {/* Late joiner info */}
               {isLateJoiner && (
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -282,14 +295,16 @@ export default function GamePage() {
             </div>
           </motion.div>
         </motion.div>
-      )}
-    </AnimatePresence>
-  );
+      </AnimatePresence>
+    );
+  }, [showPlayersPanel, game?.players, playersData, isLateJoiner, togglePlayersPanel, getPlayerLateJoinerStatus, isCurrentUser, getPlayerDisplayName, bingoCard?.markedPositions?.length]);
 
-  // Winner Modal Component - UPDATED with late joiner info
-  const WinnerModal = () => (
-    <AnimatePresence>
-      {showWinnerModal && winnerInfo && (
+  // Winner Modal Component - Memoized
+  const WinnerModal = useMemo(() => {
+    if (!showWinnerModal || !winnerInfo) return null;
+
+    return (
+      <AnimatePresence>
         <motion.div
           className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           initial={{ opacity: 0 }}
@@ -302,7 +317,6 @@ export default function GamePage() {
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 200, damping: 15 }}
           >
-            {/* Confetti Effect */}
             <div className="absolute inset-0 overflow-hidden rounded-3xl">
               {[...Array(30)].map((_, i) => (
                 <motion.div
@@ -352,7 +366,6 @@ export default function GamePage() {
                 </div>
                 <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
                 
-                {/* Show if winner was a late joiner */}
                 {bingoCard?.isLateJoiner && winnerInfo.winner?._id === currentUserId && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
@@ -390,12 +403,12 @@ export default function GamePage() {
             </motion.div>
           </motion.div>
         </motion.div>
-      )}
-    </AnimatePresence>
-  );
+      </AnimatePresence>
+    );
+  }, [showWinnerModal, winnerInfo, game?.currentPlayers, game?.numbersCalled?.length, bingoCard?.isLateJoiner, currentUserId, handlePlayAgain]);
 
-  // Late Joiner Info Banner
-  const LateJoinerInfo = () => {
+  // Late Joiner Info Banner - Memoized
+  const LateJoinerInfo = useMemo(() => {
     if (!isLateJoiner || game?.status !== 'ACTIVE') return null;
 
     return (
@@ -418,8 +431,9 @@ export default function GamePage() {
         </div>
       </motion.div>
     );
-  };
+  }, [isLateJoiner, game?.status, numbersCalledAtJoin.length]);
 
+  // Loading state
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
@@ -453,7 +467,7 @@ export default function GamePage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-white mb-4">Game Not Found</h1>
           <button 
-            onClick={() => router.push('/games')}
+            onClick={handleBackToLobby}
             className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold"
           >
             Back to Games
@@ -473,22 +487,12 @@ export default function GamePage() {
     );
   }
 
-  const calledNumbers = gameState.calledNumbers || game?.numbersCalled || [];
-  const calledNumbersCount = calledNumbers.length;
-  const currentNumber = gameState.currentNumber;
-  const activePlayers = game.players?.filter(p => p.playerType === 'PLAYER') || [];
-  const spectators = game.players?.filter(p => p.playerType === 'SPECTATOR') || [];
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
-      {/* Players Panel */}
-      <PlayersPanel />
-
-      {/* Winner Modal */}
-      <WinnerModal />
-
-      {/* Late Joiner Info Banner */}
-      <LateJoinerInfo />
+      {/* Memoized Components */}
+      {PlayersPanel}
+      {WinnerModal}
+      {LateJoinerInfo}
 
       {/* Animated Background */}
       <div className="absolute inset-0">
@@ -538,7 +542,7 @@ export default function GamePage() {
               whileTap={{ scale: 0.95 }}
             >
               <Users className="w-5 h-5" />
-              <span className="font-bold">{game.players?.length || 0}</span>
+              <span className="font-bold">{playersData.total}</span>
             </motion.button>
 
             <motion.button
@@ -553,7 +557,7 @@ export default function GamePage() {
           </div>
         </motion.div>
 
-        {/* Game Header - UPDATED with late joiner indicator */}
+        {/* Game Header */}
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -571,11 +575,11 @@ export default function GamePage() {
               <div className="flex items-center gap-3 text-white/80 text-sm">
                 <div className="flex items-center gap-1">
                   <Users className="w-4 h-4" />
-                  <span>{activePlayers.length} players</span>
-                  {spectators.length > 0 && (
+                  <span>{playersData.active.length} players</span>
+                  {playersData.spectators.length > 0 && (
                     <span className="flex items-center gap-1">
                       <Eye className="w-3 h-3" />
-                      {spectators.length} spectators
+                      {playersData.spectators.length} spectators
                     </span>
                   )}
                 </div>
@@ -608,7 +612,7 @@ export default function GamePage() {
               className="flex items-center gap-2 bg-white/20 rounded-2xl px-4 py-2"
             >
               <Zap className="w-5 h-5 text-yellow-400" />
-              <span className="text-white font-black text-lg">{activePlayers.length}</span>
+              <span className="text-white font-black text-lg">{playersData.active.length}</span>
             </motion.div>
           </div>
 
@@ -714,7 +718,7 @@ export default function GamePage() {
           </motion.div>
         </div>
 
-        {/* Win Animation for current user - UPDATED with late joiner info */}
+        {/* Win Animation for current user */}
         <AnimatePresence>
           {showWinAnimation && (
             <motion.div
