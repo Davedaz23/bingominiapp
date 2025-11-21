@@ -1,7 +1,8 @@
+// app/game/[id]/page.tsx - Updated version
 'use client'
 
 import { useParams, useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { useTelegram } from '../../../hooks/useTelegram';
 import { BingoCard } from '../../../components/ui/BingoCard';
@@ -9,18 +10,19 @@ import { NumberGrid } from '../../../components/ui/NumberGrid';
 import { GameLobby } from '../../../components/ui/GameLobby';
 import { gameAPI } from '../../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Users, Volume2, Home, Crown, Sparkles, Zap, Gamepad2, ArrowLeft } from 'lucide-react';
+import { Trophy, Users, Volume2, Home, Crown, Sparkles, Zap, Gamepad2, ArrowLeft, Clock } from 'lucide-react';
 
 export default function GamePage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
   const { user, WebApp } = useTelegram();
-  const { game, bingoCard, gameState, markNumber, refreshGame } = useGame(id);
+  const { game, bingoCard, gameState, markNumber, refreshGame, isLoading } = useGame(id);
   const [showWinAnimation, setShowWinAnimation] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [winnerInfo, setWinnerInfo] = useState<any>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   useEffect(() => {
     const userId = localStorage.getItem('user_id');
@@ -29,19 +31,37 @@ export default function GamePage() {
     }
   }, []);
 
+  // Update timestamp when game state changes
+  useEffect(() => {
+    setLastUpdate(new Date());
+  }, [gameState.currentNumber, game?.numbersCalled]);
+
   // Check for winner when game finishes
   useEffect(() => {
     if (game?.status === 'FINISHED' && game.winner) {
-      setWinnerInfo({
-        winner: game.winner,
-        gameCode: game.code,
-        totalPlayers: game.currentPlayers,
-        numbersCalled: game.numbersCalled?.length || 0
-      });
-      setShowWinnerModal(true);
+      const fetchWinnerInfo = async () => {
+        try {
+          const response = await gameAPI.getWinnerInfo(game._id);
+          setWinnerInfo(response.data.winnerInfo);
+          setShowWinnerModal(true);
+        } catch (error) {
+          console.error('Error fetching winner info:', error);
+          // Fallback to basic winner info
+          setWinnerInfo({
+            winner: game.winner,
+            gameCode: game.code,
+            totalPlayers: game.currentPlayers,
+            numbersCalled: game.numbersCalled?.length || 0
+          });
+          setShowWinnerModal(true);
+        }
+      };
+      
+      fetchWinnerInfo();
     }
-  }, [game?.status, game?.winner, game?.code, game?.currentPlayers, game?.numbersCalled]);
+  }, [game?.status, game?.winner, game?._id, game?.code, game?.currentPlayers, game?.numbersCalled]);
 
+  // Show win animation when current user wins
   useEffect(() => {
     if (game?.status === 'FINISHED' && bingoCard?.isWinner) {
       setShowWinAnimation(true);
@@ -62,9 +82,13 @@ export default function GamePage() {
   const handleMarkNumber = async (number: number) => {
     if (!currentUserId) return;
     
-    const isWinner = await markNumber(number);
-    if (isWinner) {
-      setShowWinAnimation(true);
+    try {
+      const isWinner = await markNumber(number);
+      if (isWinner) {
+        setShowWinAnimation(true);
+      }
+    } catch (error) {
+      console.error('Error marking number:', error);
     }
   };
 
@@ -78,8 +102,26 @@ export default function GamePage() {
 
   const handlePlayAgain = () => {
     setShowWinAnimation(false);
+    setShowWinnerModal(false);
     router.push('/games');
   };
+
+  const handleManualRefresh = () => {
+    refreshGame();
+  };
+
+  // Calculate time since last number
+  const getTimeSinceLastNumber = useCallback(() => {
+    if (!gameState.lastCalledAt) return 'Waiting...';
+    
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - new Date(gameState.lastCalledAt).getTime()) / 1000);
+    
+    if (diffInSeconds < 5) return 'Just now';
+    if (diffInSeconds < 60) return `${diffInSeconds}s ago`;
+    
+    return `${Math.floor(diffInSeconds / 60)}m ago`;
+  }, [gameState.lastCalledAt]);
 
   // Winner Modal Component
   const WinnerModal = () => (
@@ -142,7 +184,7 @@ export default function GamePage() {
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
                   <h3 className="text-xl font-black text-white">
-                    {winnerInfo.winner.firstName || winnerInfo.winner.username}
+                    {winnerInfo.winner?.firstName || winnerInfo.winner?.username || 'Unknown Player'}
                   </h3>
                 </div>
                 <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
@@ -150,22 +192,22 @@ export default function GamePage() {
 
               <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
                 <div>
-                  <div className="font-bold">{winnerInfo.totalPlayers}</div>
+                  <div className="font-bold">{winnerInfo.totalPlayers || game?.currentPlayers}</div>
                   <div>Players</div>
                 </div>
                 <div>
-                  <div className="font-bold">{winnerInfo.numbersCalled}</div>
+                  <div className="font-bold">{winnerInfo.numbersCalled || game?.numbersCalled?.length || 0}</div>
                   <div>Numbers Called</div>
                 </div>
               </div>
               
               <motion.button
-                onClick={() => setShowWinnerModal(false)}
+                onClick={handlePlayAgain}
                 className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                Continue
+                Play Again
               </motion.button>
             </motion.div>
           </motion.div>
@@ -174,24 +216,7 @@ export default function GamePage() {
     </AnimatePresence>
   );
 
-  // FIXED: Use gameState.calledNumbers as the primary source for called numbers
-  const calledNumbers = gameState?.calledNumbers || game?.numbersCalled || [];
-  const calledNumbersCount = calledNumbers.length;
-
-  // Animation variants
-  const backgroundVariants = {
-    animate: (i: number) => ({
-      y: [0, -100, 0],
-      opacity: [0.3, 0.8, 0.3],
-      transition: {
-        duration: 4 + Math.random() * 3,
-        repeat: Infinity,
-        delay: Math.random() * 2,
-      }
-    })
-  };
-
-  if (!game) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
         <div className="text-center">
@@ -218,6 +243,22 @@ export default function GamePage() {
     );
   }
 
+  if (!game) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-white mb-4">Game Not Found</h1>
+          <button 
+            onClick={() => router.push('/games')}
+            className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold"
+          >
+            Back to Games
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (game.status === 'WAITING') {
     return (
       <GameLobby
@@ -227,6 +268,10 @@ export default function GamePage() {
       />
     );
   }
+
+  const calledNumbers = gameState.calledNumbers || game?.numbersCalled || [];
+  const calledNumbersCount = calledNumbers.length;
+  const currentNumber = gameState.currentNumber;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
@@ -243,9 +288,15 @@ export default function GamePage() {
               x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 100),
               y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 100),
             }}
-            variants={backgroundVariants}
-            animate="animate"
-            custom={i}
+            animate={{
+              y: [0, -100, 0],
+              opacity: [0.3, 0.8, 0.3],
+            }}
+            transition={{
+              duration: 4 + Math.random() * 3,
+              repeat: Infinity,
+              delay: Math.random() * 2,
+            }}
           />
         ))}
       </div>
@@ -268,13 +319,13 @@ export default function GamePage() {
           </motion.button>
 
           <motion.button
-            onClick={handleBackToGames}
+            onClick={handleManualRefresh}
             className="flex items-center gap-2 px-4 py-3 bg-white/20 backdrop-blur-lg text-white rounded-2xl border border-white/30 hover:bg-white/30 transition-all"
-            whileHover={{ scale: 1.05, x: 2 }}
+            whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
-            <Gamepad2 className="w-5 h-5" />
-            <span className="font-bold">Games</span>
+            <Clock className="w-5 h-5" />
+            <span className="font-bold">Refresh</span>
           </motion.button>
         </motion.div>
 
@@ -293,13 +344,22 @@ export default function GamePage() {
               >
                 Game {game.code}
               </motion.h1>
-              <div className="flex items-center gap-3 text-white/80">
+              <div className="flex items-center gap-3 text-white/80 text-sm">
                 <div className="flex items-center gap-1">
                   <Users className="w-4 h-4" />
                   <span>{game.currentPlayers} players</span>
                 </div>
                 <span>•</span>
                 <span>{calledNumbersCount} numbers called</span>
+                {currentNumber && (
+                  <>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {getTimeSinceLastNumber()}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             
@@ -320,7 +380,7 @@ export default function GamePage() {
                 ? 'bg-green-500/20 text-green-300 border border-green-500/30'
                 : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
             }`}>
-              {game.status}
+              {game.status === 'ACTIVE' ? 'LIVE' : game.status}
             </div>
             
             <motion.button
@@ -334,8 +394,9 @@ export default function GamePage() {
         </motion.div>
 
         {/* Current Number Display */}
-        {gameState.currentNumber && (
+        {currentNumber && (
           <motion.div
+            key={currentNumber} // This ensures re-animation when number changes
             className="bg-white/20 backdrop-blur-lg rounded-3xl p-8 text-center mb-6 border border-white/30 shadow-2xl"
             initial={{ scale: 0, rotate: -180 }}
             animate={{ scale: 1, rotate: 0 }}
@@ -348,15 +409,16 @@ export default function GamePage() {
               animate={{ scale: 1 }}
               transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
             >
-              {gameState.currentNumber}
+              {currentNumber}
             </motion.div>
             <motion.div
-              className="text-white/60 text-sm mt-3"
+              className="text-white/60 text-sm mt-3 flex items-center justify-center gap-2"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.4 }}
             >
-              Keep marking your numbers!
+              <Clock className="w-4 h-4" />
+              Last called {getTimeSinceLastNumber()}
             </motion.div>
           </motion.div>
         )}
@@ -372,7 +434,7 @@ export default function GamePage() {
               ⏳ Waiting for numbers to be called...
             </p>
             <p className="text-orange-400/80 text-sm mt-1">
-              Numbers are called automatically every 10 seconds
+              Numbers are called automatically every 8-12 seconds
             </p>
           </motion.div>
         )}
@@ -404,12 +466,12 @@ export default function GamePage() {
           >
             <NumberGrid
               calledNumbers={calledNumbers}
-              currentNumber={gameState.currentNumber}
+              currentNumber={currentNumber}
             />
           </motion.div>
         </div>
 
-        {/* Win Animation */}
+        {/* Win Animation for current user */}
         <AnimatePresence>
           {showWinAnimation && (
             <motion.div
@@ -478,7 +540,7 @@ export default function GamePage() {
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                     >
-                      Continue
+                      View Results
                     </motion.button>
                     <motion.button
                       onClick={handlePlayAgain}
@@ -524,15 +586,14 @@ export default function GamePage() {
           </div>
         </motion.div>
 
-        {/* Footer */}
+        {/* Auto-refresh indicator */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-          className="text-center mt-6 pb-8"
+          className="text-center mt-4"
         >
-          <p className="text-white/40 text-sm">
-            Good luck and have fun!
+          <p className="text-white/40 text-xs">
+            Auto-refreshing every {game.status === 'ACTIVE' ? '2' : '10'} seconds
           </p>
         </motion.div>
       </div>

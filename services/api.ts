@@ -1,4 +1,4 @@
-// services/api.ts
+// services/api.ts - UPDATED
 import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
@@ -9,6 +9,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: 10000, // 10 second timeout
 });
 
 // Add auth token to requests
@@ -22,17 +23,43 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for error handling
+// Enhanced response interceptor for better error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful API calls in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ API ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
+    }
+    return response;
+  },
   (error) => {
-    console.error('API Error:', error.response?.data || error.message);
+    console.error('❌ API Error:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
     
     // Handle specific error cases
     if (error.response?.status === 401) {
       // Clear invalid token
-      localStorage.removeItem('bingo_token');
-      localStorage.removeItem('user_id');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('bingo_token');
+        localStorage.removeItem('user_id');
+        // Optional: redirect to login
+        // window.location.href = '/';
+      }
+    }
+    
+    // Network errors
+    if (error.code === 'NETWORK_ERROR' || error.message === 'Network Error') {
+      console.warn('🌐 Network error - check connection');
+    }
+    
+    // Timeout errors
+    if (error.code === 'ECONNABORTED') {
+      console.warn('⏰ Request timeout');
     }
     
     return Promise.reject(error);
@@ -51,22 +78,20 @@ export const authAPI = {
 };
 
 export const gameAPI = {
-  // REMOVED: createGame endpoint since games are auto-created
-  
+  // Game management
   joinGame: (code: string, userId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${code}/join`, { userId }),
   
-  // UPDATED: No hostId required
   startGame: (gameId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${gameId}/start`),
   
-  // UPDATED: No callerId required
   callNumber: (gameId: string) =>
-    api.post<{ success: boolean; number: number; calledNumbers: number[] }>(`/games/${gameId}/call-number`),
+    api.post<{ success: boolean; number: number; calledNumbers: number[]; totalCalled: number }>(`/games/${gameId}/call-number`),
   
   markNumber: (gameId: string, userId: string, number: number) =>
-    api.post<{ success: boolean; bingoCard: BingoCard; isWinner: boolean }>(`/games/${gameId}/mark-number`, { userId, number }),
+    api.post<{ success: boolean; bingoCard: BingoCard; isWinner: boolean; isSpectator?: boolean }>(`/games/${gameId}/mark-number`, { userId, number }),
   
+  // Game queries
   getActiveGames: () =>
     api.get<{ success: boolean; games: Game[] }>('/games/active'),
   
@@ -82,38 +107,38 @@ export const gameAPI = {
   getUserBingoCard: (gameId: string, userId: string) =>
     api.get<{ success: boolean; bingoCard: BingoCard }>(`/games/${gameId}/card/${userId}`),
   
+  // Game actions
   leaveGame: (gameId: string, userId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${gameId}/leave`, { userId }),
   
-  // UPDATED: No hostId required
   endGame: (gameId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${gameId}/end`),
   
-  // NEW: Get winner information
+  checkForWin: (gameId: string, userId: string) =>
+    api.post<{ success: boolean; isWinner: boolean; bingoCard: BingoCard; winningPattern?: string }>(`/games/${gameId}/check-win`, { userId }),
+  
+  // Game info
   getWinnerInfo: (gameId: string) =>
     api.get<{ success: boolean; winnerInfo: WinnerInfo }>(`/games/${gameId}/winner`),
   
-  // NEW: Get game statistics
   getGameStats: (gameId: string) =>
     api.get<{ success: boolean; stats: GameStats }>(`/games/${gameId}/stats`),
   
-  // NEW: Check for win manually
-  checkForWin: (gameId: string, userId: string) =>
-    api.post<{ success: boolean; isWinner: boolean; bingoCard: BingoCard }>(`/games/${gameId}/check-win`, { userId }),
-  
-  // NEW: Get user's active games
+  // User games
   getUserActiveGames: (userId: string) =>
     api.get<{ success: boolean; games: Game[] }>(`/games/user/${userId}/active`),
   
-  // NEW: Get user's game history
   getUserGameHistory: (userId: string, limit?: number, page?: number) =>
     api.get<{ success: boolean; games: Game[]; pagination: any }>(`/games/user/${userId}/history`, {
       params: { limit, page }
     }),
   
-  // NEW: Get user's role in game
   getUserGameRole: (gameId: string, userId: string) =>
     api.get<{ success: boolean; role: any }>(`/games/user/${userId}/role/${gameId}`),
+  
+  // Health check
+  healthCheck: () =>
+    api.get<{ status: string; timestamp: string; database: string }>('/health'),
 };
 
 export default api;
