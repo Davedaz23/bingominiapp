@@ -131,7 +131,9 @@ export default function Home() {
       const response = await gameAPI.getActiveGames()
       const games = response.data.games || []
       // Since we have a single game system, take the first game
-      setMainGame(games[0] || null)
+      const game = games[0] || null
+      setMainGame(game)
+      console.log('Loaded main game:', game)
     } catch (error) {
       console.error('Failed to load main game:', error)
       setMainGame(null)
@@ -162,15 +164,32 @@ export default function Home() {
            game.isAutoCreated === true
   }
 
+  // SAFE: Check if user is in game with proper null checks
   const isUserInGame = (): boolean => {
-    if (!mainGame?.players || !userStats) return false
-    return mainGame.players.some(player => player.user._id === userStats._id)
+    if (!mainGame?.players || !userStats?._id) return false
+    return mainGame.players.some(player => {
+      // Safely check if player and player.user exist before accessing _id
+      return player?.user?._id === userStats._id
+    })
   }
 
+  // SAFE: Get user role with proper null checks
   const getUserRole = (): 'PLAYER' | 'SPECTATOR' | null => {
-    if (!mainGame?.players || !userStats) return null
-    const player = mainGame.players.find(p => p.user._id === userStats._id)
+    if (!mainGame?.players || !userStats?._id) return null
+    const player = mainGame.players.find(p => p?.user?._id === userStats._id)
     return player?.playerType || 'PLAYER'
+  }
+
+  // SAFE: Get current players count
+  const getCurrentPlayersCount = (): number => {
+    if (!mainGame?.players) return 0
+    // Filter out any invalid players and count only valid ones
+    return mainGame.players.filter(player => player?.user?._id).length
+  }
+
+  // SAFE: Get numbers called count
+  const getNumbersCalledCount = (): number => {
+    return mainGame?.numbersCalled?.length || 0
   }
 
   const displayUser = userStats || (user ? {
@@ -497,20 +516,20 @@ export default function Home() {
                   transition={{ duration: 1.5, repeat: Infinity }}
                   className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
                 >
-                  {mainGame.currentPlayers} playing
+                  {getCurrentPlayersCount()} playing
                 </motion.div>
               </>
             ) : (
               <>
                 <Play className="w-6 h-6" />
                 {autoStartCountdown ? `STARTING IN ${autoStartCountdown}s` : 'PLAY NOW'}
-                {mainGame.currentPlayers >= 2 && (
+                {getCurrentPlayersCount() >= 2 && (
                   <motion.div
                     animate={{ scale: [1, 1.2, 1] }}
                     transition={{ duration: 1.5, repeat: Infinity }}
                     className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
                   >
-                    {mainGame.currentPlayers} ready
+                    {getCurrentPlayersCount()} ready
                   </motion.div>
                 )}
               </>
@@ -528,13 +547,13 @@ export default function Home() {
             </motion.p>
           )}
 
-          {mainGame?.status === 'WAITING' && mainGame.currentPlayers < 2 && (
+          {mainGame?.status === 'WAITING' && getCurrentPlayersCount() < 2 && (
             <motion.p 
               className="text-center text-white/60 mt-3 text-sm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             >
-              Need {2 - mainGame.currentPlayers} more players to start
+              Need {2 - getCurrentPlayersCount()} more players to start
             </motion.p>
           )}
 
@@ -544,7 +563,7 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
             >
-              Game in progress - {mainGame.numbersCalled?.length || 0} numbers called
+              Game in progress - {getNumbersCalledCount()} numbers called
             </motion.p>
           )}
         </motion.div>
@@ -568,7 +587,7 @@ export default function Home() {
                 className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1"
               >
                 <Users className="w-4 h-4 text-white" />
-                <span className="text-white text-sm font-bold">{mainGame.currentPlayers}</span>
+                <span className="text-white text-sm font-bold">{getCurrentPlayersCount()}</span>
               </motion.div>
             )}
           </div>
@@ -619,14 +638,14 @@ export default function Home() {
                     <div className="flex items-center gap-4 text-sm">
                       <div className="flex items-center gap-1 text-white/70">
                         <Users className="w-4 h-4" />
-                        <span>{mainGame.currentPlayers} players</span>
+                        <span>{getCurrentPlayersCount()} players</span>
                       </div>
                       <span className="text-white/50">•</span>
                       <div className="flex items-center gap-1 text-white/70">
                         <Clock className="w-4 h-4" />
                         <span>
                           {mainGame.status === 'ACTIVE' 
-                            ? `${mainGame.numbersCalled?.length || 0} numbers called`
+                            ? `${getNumbersCalledCount()} numbers called`
                             : mainGame.status === 'FINISHED'
                             ? 'Game completed'
                             : 'Waiting for players'
@@ -643,8 +662,8 @@ export default function Home() {
                     <span className="text-white/70">Session Progress</span>
                     <span className="text-white font-bold">
                       {mainGame.status === 'ACTIVE' 
-                        ? `${mainGame.numbersCalled?.length || 0}/75 numbers`
-                        : `${Math.round((mainGame.currentPlayers / mainGame.maxPlayers) * 100)}%`
+                        ? `${getNumbersCalledCount()}/75 numbers`
+                        : `${Math.round((getCurrentPlayersCount() / mainGame.maxPlayers) * 100)}%`
                       }
                     </span>
                   </div>
@@ -658,8 +677,8 @@ export default function Home() {
                       initial={{ width: 0 }}
                       animate={{ 
                         width: mainGame.status === 'ACTIVE'
-                          ? `${((mainGame.numbersCalled?.length || 0) / 75) * 100}%`
-                          : `${(mainGame.currentPlayers / mainGame.maxPlayers) * 100}%`
+                          ? `${((getNumbersCalledCount()) / 75) * 100}%`
+                          : `${(getCurrentPlayersCount() / mainGame.maxPlayers) * 100}%`
                       }}
                       transition={{ duration: 1, delay: 0.5 }}
                     />
@@ -710,7 +729,7 @@ export default function Home() {
               </div>
               <div>
                 <div className="text-2xl font-black text-white">
-                  {mainGame?.currentPlayers || 0}
+                  {getCurrentPlayersCount()}
                 </div>
                 <div className="text-white/60 text-xs">Players Online</div>
               </div>
