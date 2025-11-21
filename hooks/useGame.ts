@@ -13,6 +13,7 @@ interface ApiError {
   message?: string;
 }
 
+// hooks/useGame.ts
 export const useGame = (gameId: string) => {
   const [game, setGame] = useState<Game | null>(null);
   const [bingoCard, setBingoCard] = useState<BingoCard | null>(null);
@@ -24,6 +25,18 @@ export const useGame = (gameId: string) => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [numberCallInterval, setNumberCallInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // Get current user ID
+  const getCurrentUserId = () => {
+    return localStorage.getItem('user_id');
+  };
+
+  // Check if current user is host
+  const isHost = useCallback(() => {
+    if (!game?.host || !getCurrentUserId()) return false;
+    return game.host._id === getCurrentUserId();
+  }, [game]);
 
   const fetchGame = useCallback(async () => {
     if (!gameId || gameId === 'active' || gameId === 'waiting') {
@@ -54,7 +67,7 @@ export const useGame = (gameId: string) => {
       }));
 
       // Fetch user's bingo card separately
-      const userId = localStorage.getItem('user_id');
+      const userId = getCurrentUserId();
       if (userId) {
         try {
           const cardResponse = await gameAPI.getUserBingoCard(gameId, userId);
@@ -75,15 +88,75 @@ export const useGame = (gameId: string) => {
     }
   }, [gameId]);
 
+  // NEW: Automatic number calling function
+  const startAutoNumberCalling = useCallback(async () => {
+    if (!game || !isHost() || game.status !== 'ACTIVE') {
+      return;
+    }
+
+    console.log('Starting automatic number calling for host');
+    
+    // Clear any existing interval
+    if (numberCallInterval) {
+      clearInterval(numberCallInterval);
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const userId = getCurrentUserId();
+        if (!userId) return;
+
+        console.log('Calling next number...');
+        await gameAPI.callNumber(gameId, userId);
+        
+        // Refresh game to get updated numbers
+        await fetchGame();
+      } catch (err) {
+        console.error('Error calling number:', err);
+        // If game is finished, stop calling numbers
+        if ((err as ApiError).response?.data?.error?.includes('finished') || 
+            (err as ApiError).response?.data?.error?.includes('not active')) {
+          clearInterval(interval);
+        }
+      }
+    }, 5000); // Call a number every 5 seconds
+
+    setNumberCallInterval(interval);
+  }, [game, gameId, isHost, fetchGame]);
+
+  // NEW: Stop number calling
+  const stopAutoNumberCalling = useCallback(() => {
+    if (numberCallInterval) {
+      clearInterval(numberCallInterval);
+      setNumberCallInterval(null);
+    }
+  }, [numberCallInterval]);
+
   useEffect(() => {
     if (gameId) {
       fetchGame();
       
       // Set up polling for real-time updates
-      const interval = setInterval(fetchGame, 5000); // Poll every 5 seconds
-      return () => clearInterval(interval);
+      const pollInterval = setInterval(fetchGame, 5000); // Poll every 5 seconds
+      return () => {
+        clearInterval(pollInterval);
+        stopAutoNumberCalling();
+      };
     }
-  }, [gameId, fetchGame]);
+  }, [gameId, fetchGame, stopAutoNumberCalling]);
+
+  // NEW: Start/stop auto number calling based on game status and host role
+  useEffect(() => {
+    if (game?.status === 'ACTIVE' && isHost()) {
+      startAutoNumberCalling();
+    } else {
+      stopAutoNumberCalling();
+    }
+
+    return () => {
+      stopAutoNumberCalling();
+    };
+  }, [game?.status, isHost, startAutoNumberCalling, stopAutoNumberCalling]);
 
   const markNumber = async (number: number): Promise<boolean> => {
     if (!bingoCard) {
@@ -92,7 +165,7 @@ export const useGame = (gameId: string) => {
     }
     
     try {
-      const userId = localStorage.getItem('user_id');
+      const userId = getCurrentUserId();
       if (!userId) {
         console.error('No user ID found');
         return false;
@@ -123,5 +196,6 @@ export const useGame = (gameId: string) => {
     error,
     markNumber,
     refreshGame: fetchGame,
+    isHost: isHost(),
   };
 };
