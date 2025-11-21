@@ -59,6 +59,8 @@ export default function Home() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [authAttempted, setAuthAttempted] = useState(false)
   const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null)
+  const [showWinnerModal, setShowWinnerModal] = useState(false)
+  const [winnerInfo, setWinnerInfo] = useState<any>(null)
 
   useEffect(() => {
     if (isReady && user && !authAttempted) {
@@ -78,7 +80,6 @@ export default function Home() {
         setAutoStartCountdown((prev) => {
           if (prev === 1) {
             clearInterval(interval)
-            // The game will auto-start on the server side
             loadMainGame() // Reload to get updated status
             return null
           }
@@ -91,6 +92,19 @@ export default function Home() {
       setAutoStartCountdown(null)
     }
   }, [mainGame?.status, mainGame?.currentPlayers, mainGame])
+
+  // Check for winner when game finishes
+  useEffect(() => {
+    if (mainGame?.status === 'FINISHED' && mainGame.winner) {
+      setWinnerInfo({
+        winner: mainGame.winner,
+        gameCode: mainGame.code,
+        totalPlayers: mainGame.currentPlayers,
+        numbersCalled: mainGame.numbersCalled?.length || 0
+      })
+      setShowWinnerModal(true)
+    }
+  }, [mainGame?.status, mainGame?.winner, mainGame?.code, mainGame?.currentPlayers, mainGame?.numbersCalled])
 
   const initializeUser = async () => {
     try {
@@ -130,10 +144,7 @@ export default function Home() {
     try {
       const response = await gameAPI.getActiveGames()
       const games = response.data.games || []
-      // Since we have a single game system, take the first game
-      const game = games[0] || null
-      setMainGame(game)
-      console.log('Loaded main game:', game)
+      setMainGame(games[0] || null)
     } catch (error) {
       console.error('Failed to load main game:', error)
       setMainGame(null)
@@ -153,44 +164,126 @@ export default function Home() {
       router.push(`/game/${mainGame._id}`)
     } catch (error) {
       console.error('Failed to join game:', error)
-      // Reload game data if join fails
       loadMainGame()
     }
   }
 
   const isSystemGame = (game: Game): boolean => {
-    return game.host?.username === 'system_bot' || 
-           game.host?.firstName === 'System' || 
-           game.isAutoCreated === true
+    return game.isAutoCreated === true
   }
 
-  // SAFE: Check if user is in game with proper null checks
   const isUserInGame = (): boolean => {
     if (!mainGame?.players || !userStats?._id) return false
-    return mainGame.players.some(player => {
-      // Safely check if player and player.user exist before accessing _id
-      return player?.user?._id === userStats._id
-    })
+    return mainGame.players.some(player => player?.user?._id === userStats._id)
   }
 
-  // SAFE: Get user role with proper null checks
   const getUserRole = (): 'PLAYER' | 'SPECTATOR' | null => {
     if (!mainGame?.players || !userStats?._id) return null
     const player = mainGame.players.find(p => p?.user?._id === userStats._id)
     return player?.playerType || 'PLAYER'
   }
 
-  // SAFE: Get current players count
   const getCurrentPlayersCount = (): number => {
     if (!mainGame?.players) return 0
-    // Filter out any invalid players and count only valid ones
     return mainGame.players.filter(player => player?.user?._id).length
   }
 
-  // SAFE: Get numbers called count
   const getNumbersCalledCount = (): number => {
     return mainGame?.numbersCalled?.length || 0
   }
+
+  // Winner Modal Component
+  const WinnerModal = () => (
+    <AnimatePresence>
+      {showWinnerModal && winnerInfo && (
+        <motion.div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-3xl p-8 mx-4 text-center shadow-2xl border-2 border-white/30 w-full max-w-sm"
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          >
+            {/* Confetti Effect */}
+            <div className="absolute inset-0 overflow-hidden rounded-3xl">
+              {[...Array(30)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="absolute text-2xl"
+                  initial={{
+                    x: Math.random() * 300 - 150,
+                    y: -50,
+                    rotate: 0,
+                    scale: 0,
+                  }}
+                  animate={{
+                    y: 400,
+                    rotate: 360,
+                    scale: [0, 1, 0],
+                  }}
+                  transition={{
+                    duration: 2 + Math.random() * 1,
+                    delay: Math.random() * 0.5,
+                  }}
+                  style={{
+                    left: `${Math.random() * 100}%`,
+                  }}
+                >
+                  🎉
+                </motion.div>
+              ))}
+            </div>
+
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.3, type: "spring" }}
+              className="relative z-10"
+            >
+              <Trophy className="w-16 h-16 text-white mx-auto mb-4 drop-shadow-2xl" />
+              <h2 className="text-3xl font-black text-white mb-4 drop-shadow-lg">
+                GAME OVER!
+              </h2>
+              
+              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30">
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
+                  <h3 className="text-xl font-black text-white">
+                    {winnerInfo.winner.firstName || winnerInfo.winner.username}
+                  </h3>
+                </div>
+                <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
+                <div>
+                  <div className="font-bold">{winnerInfo.totalPlayers}</div>
+                  <div>Players</div>
+                </div>
+                <div>
+                  <div className="font-bold">{winnerInfo.numbersCalled}</div>
+                  <div>Numbers Called</div>
+                </div>
+              </div>
+              
+              <motion.button
+                onClick={() => setShowWinnerModal(false)}
+                className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Continue
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
 
   const displayUser = userStats || (user ? {
     _id: 'pending',
@@ -233,6 +326,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 relative overflow-hidden">
+      {/* Winner Modal */}
+      <WinnerModal />
+
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         {[...Array(20)].map((_, i) => (

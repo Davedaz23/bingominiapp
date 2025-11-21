@@ -16,19 +16,31 @@ export default function GamePage() {
   const router = useRouter();
   const id = params.id as string;
   const { user, WebApp } = useTelegram();
-  const { game, bingoCard, gameState, markNumber, refreshGame, isHost } = useGame(id);
+  const { game, bingoCard, gameState, markNumber, refreshGame } = useGame(id);
   const [showWinAnimation, setShowWinAnimation] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [showWinnerModal, setShowWinnerModal] = useState(false);
+  const [winnerInfo, setWinnerInfo] = useState<any>(null);
 
   useEffect(() => {
-    // Get user ID from localStorage
     const userId = localStorage.getItem('user_id');
     if (userId) {
       setCurrentUserId(userId);
     }
   }, []);
 
-  
+  // Check for winner when game finishes
+  useEffect(() => {
+    if (game?.status === 'FINISHED' && game.winner) {
+      setWinnerInfo({
+        winner: game.winner,
+        gameCode: game.code,
+        totalPlayers: game.currentPlayers,
+        numbersCalled: game.numbersCalled?.length || 0
+      });
+      setShowWinnerModal(true);
+    }
+  }, [game?.status, game?.winner, game?.code, game?.currentPlayers, game?.numbersCalled]);
 
   useEffect(() => {
     if (game?.status === 'FINISHED' && bingoCard?.isWinner) {
@@ -37,10 +49,10 @@ export default function GamePage() {
   }, [game?.status, bingoCard?.isWinner]);
 
   const handleStartGame = async () => {
-    if (!game || !currentUserId) return;
+    if (!game) return;
     
     try {
-      await gameAPI.startGame(game._id, currentUserId);
+      await gameAPI.startGame(game._id);
       refreshGame();
     } catch (error) {
       console.error('Failed to start game:', error);
@@ -69,21 +81,98 @@ export default function GamePage() {
     router.push('/games');
   };
 
-  // ADD THIS: Manual number calling for testing
-  const handleManualCallNumber = async () => {
-    if (!game || !currentUserId) return;
-    
-    try {
-      console.log('🎯 Manually calling number...');
-      await gameAPI.callNumber(game._id, currentUserId);
-      // Wait a bit then refresh to see the new number
-      setTimeout(() => {
-        refreshGame();
-      }, 1000);
-    } catch (error) {
-      console.error('❌ Manual call failed:', error);
-    }
-  };
+  // Winner Modal Component
+  const WinnerModal = () => (
+    <AnimatePresence>
+      {showWinnerModal && winnerInfo && (
+        <motion.div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-3xl p-8 mx-4 text-center shadow-2xl border-2 border-white/30 w-full max-w-sm"
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          >
+            {/* Confetti Effect */}
+            <div className="absolute inset-0 overflow-hidden rounded-3xl">
+              {[...Array(30)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="absolute text-2xl"
+                  initial={{
+                    x: Math.random() * 300 - 150,
+                    y: -50,
+                    rotate: 0,
+                    scale: 0,
+                  }}
+                  animate={{
+                    y: 400,
+                    rotate: 360,
+                    scale: [0, 1, 0],
+                  }}
+                  transition={{
+                    duration: 2 + Math.random() * 1,
+                    delay: Math.random() * 0.5,
+                  }}
+                  style={{
+                    left: `${Math.random() * 100}%`,
+                  }}
+                >
+                  🎉
+                </motion.div>
+              ))}
+            </div>
+
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.3, type: "spring" }}
+              className="relative z-10"
+            >
+              <Trophy className="w-16 h-16 text-white mx-auto mb-4 drop-shadow-2xl" />
+              <h2 className="text-3xl font-black text-white mb-4 drop-shadow-lg">
+                GAME OVER!
+              </h2>
+              
+              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30">
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
+                  <h3 className="text-xl font-black text-white">
+                    {winnerInfo.winner.firstName || winnerInfo.winner.username}
+                  </h3>
+                </div>
+                <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
+                <div>
+                  <div className="font-bold">{winnerInfo.totalPlayers}</div>
+                  <div>Players</div>
+                </div>
+                <div>
+                  <div className="font-bold">{winnerInfo.numbersCalled}</div>
+                  <div>Numbers Called</div>
+                </div>
+              </div>
+              
+              <motion.button
+                onClick={() => setShowWinnerModal(false)}
+                className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Continue
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 
   // FIXED: Use gameState.calledNumbers as the primary source for called numbers
   const calledNumbers = gameState?.calledNumbers || game?.numbersCalled || [];
@@ -100,17 +189,6 @@ export default function GamePage() {
         delay: Math.random() * 2,
       }
     })
-  };
-
-  // Safe access to host properties
-  const getHostName = () => {
-    if (!game?.host) return 'Unknown Host';
-    return game.host.firstName || game.host.username || 'Unknown Host';
-  };
-
-  // Check if current user is host (using the hook's isHost)
-  const isUserHost = () => {
-    return isHost;
   };
 
   if (!game) {
@@ -152,6 +230,9 @@ export default function GamePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
+      {/* Winner Modal */}
+      <WinnerModal />
+
       {/* Animated Background */}
       <div className="absolute inset-0">
         {[...Array(10)].map((_, i) => (
@@ -197,42 +278,6 @@ export default function GamePage() {
           </motion.button>
         </motion.div>
 
-        {/* ADD THIS: Host Control Panel */}
-        {isUserHost() && game?.status === 'ACTIVE' && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
-          >
-            <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
-              <p className="text-yellow-300 text-sm mb-2 text-center font-bold">
-                🎯 Host Control Panel
-              </p>
-              <div className="flex gap-2">
-                <motion.button
-                  onClick={handleManualCallNumber}
-                  className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl font-bold text-sm shadow-lg"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  Call Number Now
-                </motion.button>
-                <motion.button
-                  onClick={refreshGame}
-                  className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-bold text-sm shadow-lg"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  Refresh Game
-                </motion.button>
-              </div>
-              <p className="text-yellow-400/80 text-xs text-center mt-2">
-                Auto-calling every 10 seconds
-              </p>
-            </div>
-          </motion.div>
-        )}
-
         {/* Game Header */}
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
@@ -254,17 +299,7 @@ export default function GamePage() {
                   <span>{game.currentPlayers} players</span>
                 </div>
                 <span>•</span>
-                {/* FIXED: Use calledNumbersCount instead of game.numbersCalled */}
                 <span>{calledNumbersCount} numbers called</span>
-                {isUserHost() && (
-                  <>
-                    <span>•</span>
-                    <div className="flex items-center gap-1">
-                      <Crown className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      <span className="text-yellow-300">Host</span>
-                    </div>
-                  </>
-                )}
               </div>
             </div>
             
@@ -326,7 +361,7 @@ export default function GamePage() {
           </motion.div>
         )}
 
-        {/* ADD THIS: No numbers called message */}
+        {/* No numbers called message */}
         {game.status === 'ACTIVE' && calledNumbersCount === 0 && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -336,11 +371,9 @@ export default function GamePage() {
             <p className="text-orange-300 font-bold">
               ⏳ Waiting for numbers to be called...
             </p>
-            {isUserHost() && (
-              <p className="text-orange-400/80 text-sm mt-1">
-                As host, numbers should be called automatically every 10 seconds
-              </p>
-            )}
+            <p className="text-orange-400/80 text-sm mt-1">
+              Numbers are called automatically every 10 seconds
+            </p>
           </motion.div>
         )}
 

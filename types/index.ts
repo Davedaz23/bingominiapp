@@ -26,26 +26,31 @@ export interface GamePlayer {
   user: GamePlayerUser;
   isReady: boolean;
   joinedAt: string;
-  playerType?: 'PLAYER' | 'SPECTATOR'; // ADD THIS
+  playerType?: 'PLAYER' | 'SPECTATOR';
 }
 
 export interface Game {
   _id: string;
   id: string;
   code: string;
-  hostId: string;
+  // REMOVED: hostId: string;
   status: 'WAITING' | 'ACTIVE' | 'FINISHED' | 'CANCELLED';
   maxPlayers: number;
   currentPlayers: number;
   numbersCalled: number[];
   winnerId?: string;
   isPrivate: boolean;
-  host: GamePlayerUser;
+  // REMOVED: host: GamePlayerUser;
   players: GamePlayer[];
   bingoCards?: BingoCard[];
   createdAt: string;
   updatedAt: string;
-  isAutoCreated?: boolean; // ADD THIS for system games
+  isAutoCreated?: boolean;
+  // ADDED: Game timing fields
+  startedAt?: string;
+  endedAt?: string;
+  // ADDED: Winner information
+  winner?: GamePlayerUser;
 }
 
 export interface BingoCard {
@@ -58,7 +63,7 @@ export interface BingoCard {
   isWinner: boolean;
   createdAt: string;
   user?: GamePlayerUser;
-  isSpectator?: boolean; // ADD THIS for spectator cards
+  isSpectator?: boolean;
 }
 
 export interface GameState {
@@ -72,4 +77,30 @@ export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+// ADDED: Winner information interface
+export interface WinnerInfo {
+  winner: GamePlayerUser;
+  gameCode: string;
+  totalPlayers: number;
+  numbersCalled: number;
+  endedAt?: string;
+}
+
+// ADDED: Game statistics interface
+export interface GameStats {
+  gameId: string;
+  totalPlayers: number;
+  totalNumbersCalled: number;
+  averageMarkedPerPlayer: number;
+  cardsWithBingo: number;
+  gameDuration: number;
+  numbersByLetter: {
+    B: number;
+    I: number;
+    N: number;
+    G: number;
+    O: number;
+  };
 }

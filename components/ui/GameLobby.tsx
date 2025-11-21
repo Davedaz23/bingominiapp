@@ -19,28 +19,24 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null);
-
-  // FIXED: Move isHost function declaration to the top
-  const isHost = (): boolean => {
-    if (!game?.host || !currentUserId) return false;
-    return game.host._id === currentUserId;
-  };
+  const [showWinnerModal, setShowWinnerModal] = useState(false);
+  const [winnerInfo, setWinnerInfo] = useState<any>(null);
 
   // Check if game is auto-created by system
   const isAutoCreatedGame = (): boolean => {
-    return game.host?.username === 'system_bot' || game.host?.firstName === 'System' || game.isAutoCreated === true;
+    return game.isAutoCreated === true;
   };
 
   // Check if user is already in the game
   const isUserInGame = (): boolean => {
     if (!game?.players || !currentUserId) return false;
-    return game.players.some(player => player.user._id === currentUserId);
+    return game.players.some(player => player?.user?._id === currentUserId);
   };
 
   // Get user's role in the game
   const getUserRole = (): 'PLAYER' | 'SPECTATOR' | null => {
     if (!game?.players || !currentUserId) return null;
-    const player = game.players.find(p => p.user._id === currentUserId);
+    const player = game.players.find(p => p?.user?._id === currentUserId);
     return player?.playerType || 'PLAYER';
   };
 
@@ -49,9 +45,22 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   const userRole = getUserRole();
   const userInGame = isUserInGame();
 
-  // Auto-start countdown effect
+  // Check for winner when game finishes
   useEffect(() => {
-    if (canStart && isHost() && game.status === 'WAITING') {
+    if (game.status === 'FINISHED' && game.winner) {
+      setWinnerInfo({
+        winner: game.winner,
+        gameCode: game.code,
+        totalPlayers: game.currentPlayers,
+        numbersCalled: game.numbersCalled?.length || 0
+      });
+      setShowWinnerModal(true);
+    }
+  }, [game.status, game.winner, game.code, game.currentPlayers, game.numbersCalled]);
+
+  // Auto-start countdown effect for system games
+  useEffect(() => {
+    if (canStart && isAutoCreatedGame() && game.status === 'WAITING') {
       setAutoStartCountdown(10); // 10 second countdown
       
       const interval = setInterval(() => {
@@ -69,7 +78,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     } else {
       setAutoStartCountdown(null);
     }
-  }, [canStart, game.status, onStartGame]);
+  }, [canStart, game.status, onStartGame, isAutoCreatedGame]);
 
   const copyGameCode = async (): Promise<void> => {
     await navigator.clipboard.writeText(game.code);
@@ -91,12 +100,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     } else {
       copyGameCode();
     }
-  };
-
-  // Safe access to host properties
-  const getHostName = (): string => {
-    if (!game?.host) return 'System Host';
-    return game.host.firstName || game.host.username || 'System Host';
   };
 
   // Fixed animation variants for background elements
@@ -121,13 +124,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     };
   };
 
-  // CORRECTED: Based on your types, player data is in player.user
+  // Get player display name
   const getPlayerDisplayName = (player: GamePlayer): string => {
     if (!player?.user) return 'Unknown Player';
     return player.user.firstName || player.user.username || 'Unknown Player';
   };
 
-  // CORRECTED: Get player initial from user object
+  // Get player initial from user object
   const getPlayerInitial = (player: GamePlayer): string => {
     if (!player?.user) return '?';
     
@@ -140,16 +143,10 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     return '?';
   };
 
-  // CORRECTED: Get player username from user object
+  // Get player username from user object
   const getPlayerUsername = (player: GamePlayer): string => {
     if (!player?.user) return 'user';
     return player.user.username || 'user';
-  };
-
-  // CORRECTED: Check if player is host by comparing user IDs
-  const isPlayerHost = (player: GamePlayer): boolean => {
-    if (!player?.user || !game?.host) return false;
-    return player.user._id === game.host._id;
   };
 
   // Get player type badge
@@ -159,12 +156,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   }
 
   const getPlayerTypeBadge = (player: GamePlayer): PlayerBadge => {
-    if (isPlayerHost(player)) {
-      return { 
-        label: 'HOST', 
-        color: 'bg-yellow-400/20 text-yellow-300 border-yellow-400/30' 
-      };
-    }
     if (player.playerType === 'SPECTATOR') {
       return { 
         label: 'SPECTATOR', 
@@ -186,8 +177,104 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     }
   };
 
+  // Winner Modal Component
+  const WinnerModal = () => (
+    <AnimatePresence>
+      {showWinnerModal && winnerInfo && (
+        <motion.div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-3xl p-8 mx-4 text-center shadow-2xl border-2 border-white/30 w-full max-w-sm"
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          >
+            {/* Confetti Effect */}
+            <div className="absolute inset-0 overflow-hidden rounded-3xl">
+              {[...Array(30)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="absolute text-2xl"
+                  initial={{
+                    x: Math.random() * 300 - 150,
+                    y: -50,
+                    rotate: 0,
+                    scale: 0,
+                  }}
+                  animate={{
+                    y: 400,
+                    rotate: 360,
+                    scale: [0, 1, 0],
+                  }}
+                  transition={{
+                    duration: 2 + Math.random() * 1,
+                    delay: Math.random() * 0.5,
+                  }}
+                  style={{
+                    left: `${Math.random() * 100}%`,
+                  }}
+                >
+                  🎉
+                </motion.div>
+              ))}
+            </div>
+
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.3, type: "spring" }}
+              className="relative z-10"
+            >
+              <Trophy className="w-16 h-16 text-white mx-auto mb-4 drop-shadow-2xl" />
+              <h2 className="text-3xl font-black text-white mb-4 drop-shadow-lg">
+                GAME OVER!
+              </h2>
+              
+              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30">
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
+                  <h3 className="text-xl font-black text-white">
+                    {winnerInfo.winner.firstName || winnerInfo.winner.username}
+                  </h3>
+                </div>
+                <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
+                <div>
+                  <div className="font-bold">{winnerInfo.totalPlayers}</div>
+                  <div>Players</div>
+                </div>
+                <div>
+                  <div className="font-bold">{winnerInfo.numbersCalled}</div>
+                  <div>Numbers Called</div>
+                </div>
+              </div>
+              
+              <motion.button
+                onClick={() => setShowWinnerModal(false)}
+                className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Continue
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 relative overflow-hidden">
+      {/* Winner Modal */}
+      <WinnerModal />
+
       {/* Animated Background */}
       <div className="absolute inset-0">
         {[...Array(15)].map((_, i) => (
@@ -281,10 +368,10 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 Game {game.code}
               </motion.h1>
               <div className="flex items-center gap-2 text-white/80">
-                <span>Hosted by {getHostName()}</span>
+                <span>System Managed Game</span>
                 {isAutoCreatedGame() && (
                   <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full font-bold border border-green-500/30">
-                    SYSTEM
+                    AUTO
                   </span>
                 )}
               </div>
@@ -371,11 +458,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 }`}>
                   {userRole === 'SPECTATOR' ? 'SPECTATOR' : 'PLAYER'}
                 </span>
-                {isHost() && (
-                  <span className="px-2 py-1 bg-yellow-400/20 text-yellow-300 text-xs rounded-full font-bold border border-yellow-400/30">
-                    HOST
-                  </span>
-                )}
               </div>
             </motion.div>
           )}
@@ -433,15 +515,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white font-black text-lg shadow-lg">
                         {getPlayerInitial(player)}
                       </div>
-                      {isPlayerHost(player) && (
-                        <motion.div
-                          animate={{ scale: [1, 1.2, 1] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                          className="absolute -top-1 -right-1"
-                        >
-                          <Crown className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                        </motion.div>
-                      )}
                     </motion.div>
                     
                     <div className="flex-1">
@@ -474,8 +547,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 
         {/* Action Buttons */}
         <AnimatePresence>
-          {/* Host Controls */}
-          {isHost() && game.status === 'WAITING' && (
+          {/* Auto-start info for system games */}
+          {isAutoCreatedGame() && game.status === 'WAITING' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -506,7 +579,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 {canStart ? (
                   <>
                     <Zap className="w-6 h-6 fill-white" />
-                    {autoStartCountdown ? `STARTING IN ${autoStartCountdown}s` : 'START GAME'}
+                    {autoStartCountdown ? `STARTING IN ${autoStartCountdown}s` : 'JOIN GAME'}
                     <Play className="w-6 h-6" />
                   </>
                 ) : (
@@ -529,7 +602,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               )}
 
               {/* Auto-start info */}
-              {canStart && isAutoCreatedGame() && (
+              {canStart && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -544,8 +617,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             </motion.div>
           )}
 
-          {/* Join/Spectate Button for Non-Hosts */}
-          {!isHost() && game.status !== 'FINISHED' && !userInGame && (
+          {/* Join/Spectate Button */}
+          {game.status !== 'FINISHED' && !userInGame && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

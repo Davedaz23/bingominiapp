@@ -336,7 +336,7 @@ export default function GamesPage() {
                               <span>{game.currentPlayers}/{game.maxPlayers}</span>
                             </div>
                             <span className={isGameFinished ? 'text-white/30' : 'text-white/50'}>•</span>
-                            <div className="flex items-center gap-2">
+                            {/* <div className="flex items-center gap-2">
                               <span className={`text-sm ${
                                 isGameFinished ? 'text-white/50' : 'text-white/70'
                               }`}>
@@ -345,7 +345,7 @@ export default function GamesPage() {
                               {game.host._id === currentUserId && (
                                 <Crown className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                               )}
-                            </div>
+                            </div> */}
                           </div>
 
                           {/* Game Status Message */}
