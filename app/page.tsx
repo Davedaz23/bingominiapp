@@ -14,7 +14,9 @@ import {
   Crown, 
   Sparkles,
   TrendingUp,
-  Gamepad2
+  Gamepad2,
+  Clock,
+  Eye
 } from 'lucide-react'
 
 // Animation variants
@@ -51,18 +53,44 @@ const confettiVariants = {
 export default function Home() {
   const { user, isReady, WebApp, initData } = useTelegram()
   const router = useRouter()
-  const [activeGames, setActiveGames] = useState<Game[]>([])
+  const [mainGame, setMainGame] = useState<Game | null>(null)
   const [userStats, setUserStats] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [showConfetti, setShowConfetti] = useState(false)
   const [authAttempted, setAuthAttempted] = useState(false)
+  const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null)
 
   useEffect(() => {
     if (isReady && user && !authAttempted) {
       initializeUser()
-      loadActiveGames()
+      loadMainGame()
     }
   }, [isReady, user, authAttempted])
+
+  // Auto-start countdown for system games
+  useEffect(() => {
+    if (mainGame?.status === 'WAITING' && 
+        mainGame.currentPlayers >= 2 && 
+        isSystemGame(mainGame)) {
+      setAutoStartCountdown(10)
+      
+      const interval = setInterval(() => {
+        setAutoStartCountdown((prev) => {
+          if (prev === 1) {
+            clearInterval(interval)
+            // The game will auto-start on the server side
+            loadMainGame() // Reload to get updated status
+            return null
+          }
+          return prev ? prev - 1 : null
+        })
+      }, 1000)
+
+      return () => clearInterval(interval)
+    } else {
+      setAutoStartCountdown(null)
+    }
+  }, [mainGame?.status, mainGame?.currentPlayers, mainGame])
 
   const initializeUser = async () => {
     try {
@@ -98,31 +126,51 @@ export default function Home() {
     }
   }
 
-  const loadActiveGames = async () => {
+  const loadMainGame = async () => {
     try {
       const response = await gameAPI.getActiveGames()
-      setActiveGames(response.data.games || [])
+      const games = response.data.games || []
+      // Since we have a single game system, take the first game
+      setMainGame(games[0] || null)
     } catch (error) {
-      console.error('Failed to load games:', error)
-      setActiveGames([])
+      console.error('Failed to load main game:', error)
+      setMainGame(null)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const joinFirstGame = async () => {
-    if (activeGames.length > 0) {
-      const firstGame = activeGames[0]
-      const userId = localStorage.getItem('user_id')
-      if (!userId) return
-      
-      try {
-        await gameAPI.joinGame(firstGame.code, userId)
-        router.push(`/game/${firstGame._id}`)
-      } catch (error) {
-        console.error('Failed to join game:', error)
-      }
+  const joinGame = async () => {
+    if (!mainGame) return
+    
+    const userId = localStorage.getItem('user_id')
+    if (!userId) return
+    
+    try {
+      await gameAPI.joinGame(mainGame.code, userId)
+      router.push(`/game/${mainGame._id}`)
+    } catch (error) {
+      console.error('Failed to join game:', error)
+      // Reload game data if join fails
+      loadMainGame()
     }
+  }
+
+  const isSystemGame = (game: Game): boolean => {
+    return game.host?.username === 'system_bot' || 
+           game.host?.firstName === 'System' || 
+           game.isAutoCreated === true
+  }
+
+  const isUserInGame = (): boolean => {
+    if (!mainGame?.players || !userStats) return false
+    return mainGame.players.some(player => player.user._id === userStats._id)
+  }
+
+  const getUserRole = (): 'PLAYER' | 'SPECTATOR' | null => {
+    if (!mainGame?.players || !userStats) return null
+    const player = mainGame.players.find(p => p.user._id === userStats._id)
+    return player?.playerType || 'PLAYER'
   }
 
   const displayUser = userStats || (user ? {
@@ -254,6 +302,46 @@ export default function Home() {
           <p className="text-white/80 text-lg font-medium">Always Ready • Always Fun</p>
         </motion.div>
 
+        {/* System Game Banner */}
+        {mainGame && isSystemGame(mainGame) && (
+          <motion.div
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="mb-4"
+          >
+            <div className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 border border-green-500/30 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Sparkles className="w-5 h-5 text-green-400" />
+                <span className="text-green-300 font-bold text-lg">Always Available Game</span>
+                <Sparkles className="w-5 h-5 text-green-400" />
+              </div>
+              <p className="text-green-400/80 text-sm">
+                This game is automatically managed by the system. Join anytime!
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Game Status Banner */}
+        {mainGame?.status === 'ACTIVE' && (
+          <motion.div
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="mb-4"
+          >
+            <div className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 border border-blue-500/30 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Eye className="w-5 h-5 text-blue-400" />
+                <span className="text-blue-300 font-bold text-lg">Game In Progress</span>
+                <Eye className="w-5 h-5 text-blue-400" />
+              </div>
+              <p className="text-blue-400/80 text-sm">
+                Jump in and play! You can join as a player or spectator.
+              </p>
+            </div>
+          </motion.div>
+        )}
+
         {/* User Stats Card */}
         {displayUser && (
           <motion.div
@@ -371,38 +459,65 @@ export default function Home() {
           className="mb-6"
         >
           <motion.button
-            onClick={joinFirstGame}
-            disabled={activeGames.length === 0}
+            onClick={joinGame}
+            disabled={!mainGame || mainGame.status === 'FINISHED'}
             className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${
-              activeGames.length > 0 
-                ? 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl' 
+              mainGame && mainGame.status !== 'FINISHED'
+                ? mainGame.status === 'ACTIVE'
+                  ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white hover:shadow-3xl'
+                  : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl'
                 : 'bg-white/20 text-white/60 cursor-not-allowed'
             }`}
-            whileHover={activeGames.length > 0 ? { 
+            whileHover={mainGame && mainGame.status !== 'FINISHED' ? { 
               scale: 1.02,
               y: -2
             } : {}}
-            whileTap={activeGames.length > 0 ? { scale: 0.98 } : {}}
+            whileTap={mainGame && mainGame.status !== 'FINISHED' ? { scale: 0.98 } : {}}
           >
-            {activeGames.length > 0 && (
+            {mainGame && mainGame.status !== 'FINISHED' && (
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
             )}
             
-            <Play className="w-6 h-6" />
-            {activeGames.length > 0 ? 'PLAY NOW' : 'LOADING GAME...'}
-            
-            {activeGames.length > 0 && (
-              <motion.div
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-                className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
-              >
-                {activeGames[0].currentPlayers} playing
-              </motion.div>
+            {!mainGame ? (
+              <>
+                <Clock className="w-6 h-6" />
+                LOADING GAME...
+              </>
+            ) : mainGame.status === 'FINISHED' ? (
+              <>
+                <Trophy className="w-6 h-6" />
+                GAME FINISHED
+              </>
+            ) : mainGame.status === 'ACTIVE' ? (
+              <>
+                <Eye className="w-6 h-6" />
+                {isUserInGame() ? 'REJOIN GAME' : 'JOIN GAME'}
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+                >
+                  {mainGame.currentPlayers} playing
+                </motion.div>
+              </>
+            ) : (
+              <>
+                <Play className="w-6 h-6" />
+                {autoStartCountdown ? `STARTING IN ${autoStartCountdown}s` : 'PLAY NOW'}
+                {mainGame.currentPlayers >= 2 && (
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+                  >
+                    {mainGame.currentPlayers} ready
+                  </motion.div>
+                )}
+              </>
             )}
           </motion.button>
           
-          {activeGames.length === 0 && (
+          {!mainGame && (
             <motion.p 
               className="text-center text-white/60 mt-3 text-sm"
               initial={{ opacity: 0 }}
@@ -412,9 +527,29 @@ export default function Home() {
               Preparing your game experience...
             </motion.p>
           )}
+
+          {mainGame?.status === 'WAITING' && mainGame.currentPlayers < 2 && (
+            <motion.p 
+              className="text-center text-white/60 mt-3 text-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              Need {2 - mainGame.currentPlayers} more players to start
+            </motion.p>
+          )}
+
+          {mainGame?.status === 'ACTIVE' && (
+            <motion.p 
+              className="text-center text-white/60 mt-3 text-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              Game in progress - {mainGame.numbersCalled?.length || 0} numbers called
+            </motion.p>
+          )}
         </motion.div>
 
-        {/* Active Games Section */}
+        {/* Current Game Section */}
         <motion.div
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -426,17 +561,19 @@ export default function Home() {
               <Gamepad2 className="w-6 h-6 text-white" />
               <h3 className="font-black text-xl text-white">Current Session</h3>
             </div>
-            <motion.div
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1"
-            >
-              <Users className="w-4 h-4 text-white" />
-              <span className="text-white text-sm font-bold">{activeGames.length}</span>
-            </motion.div>
+            {mainGame && (
+              <motion.div
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1"
+              >
+                <Users className="w-4 h-4 text-white" />
+                <span className="text-white text-sm font-bold">{mainGame.currentPlayers}</span>
+              </motion.div>
+            )}
           </div>
           
-          {activeGames.length === 0 ? (
+          {!mainGame ? (
             <motion.div 
               className="text-center py-8"
               initial={{ opacity: 0 }}
@@ -449,76 +586,114 @@ export default function Home() {
               <p className="text-white/60 text-sm">Ready in a moment...</p>
             </motion.div>
           ) : (
-            <div className="space-y-3">
-              {activeGames.map((game, index) => (
-                <motion.div
-                  key={game._id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="bg-white/10 hover:bg-white/20 rounded-2xl p-4 border border-white/10 hover:border-white/30 transition-all duration-300 cursor-pointer group backdrop-blur-sm"
-                  onClick={joinFirstGame}
-                  whileHover={{ scale: 1.02 }}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h4 className="font-black text-white group-hover:text-yellow-300 transition-colors">
-                          Game {game.code}
-                        </h4>
-                        <span className={`px-2 py-1 rounded-full text-xs font-black ${
-                          game.status === 'ACTIVE' 
-                            ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                            : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                        }`}>
-                          {game.status === 'ACTIVE' ? 'LIVE' : 'WAITING'}
+            <div className="space-y-4">
+              {/* Game Status Card */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="bg-white/10 hover:bg-white/20 rounded-2xl p-4 border border-white/10 hover:border-white/30 transition-all duration-300 backdrop-blur-sm"
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h4 className="font-black text-white">
+                        Game {mainGame.code}
+                      </h4>
+                      <span className={`px-2 py-1 rounded-full text-xs font-black ${
+                        mainGame.status === 'ACTIVE' 
+                          ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                          : mainGame.status === 'FINISHED'
+                          ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                          : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                      }`}>
+                        {mainGame.status === 'ACTIVE' ? 'LIVE' : 
+                         mainGame.status === 'FINISHED' ? 'FINISHED' : 'WAITING'}
+                      </span>
+                      {isSystemGame(mainGame) && (
+                        <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full font-bold border border-green-500/30">
+                          SYSTEM
                         </span>
-                      </div>
-                      
-                      <div className="flex items-center gap-4 text-sm">
-                        <div className="flex items-center gap-1 text-white/70">
-                          <Users className="w-4 h-4" />
-                          <span>{game.currentPlayers} players online</span>
-                        </div>
-                        <span className="text-white/50">•</span>
-                        <span className="text-white/70 text-sm">
-                          Click to join instantly
-                        </span>
-                      </div>
+                      )}
                     </div>
                     
-                    <motion.div 
-                      className="w-12 h-12 bg-gradient-to-br from-green-400 to-teal-400 rounded-2xl flex items-center justify-center text-white font-black text-sm shadow-lg"
-                      whileHover={{ rotate: 5, scale: 1.1 }}
-                    >
-                      <Play className="w-5 h-5" />
-                    </motion.div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <div className="flex items-center gap-1 text-white/70">
+                        <Users className="w-4 h-4" />
+                        <span>{mainGame.currentPlayers} players</span>
+                      </div>
+                      <span className="text-white/50">•</span>
+                      <div className="flex items-center gap-1 text-white/70">
+                        <Clock className="w-4 h-4" />
+                        <span>
+                          {mainGame.status === 'ACTIVE' 
+                            ? `${mainGame.numbersCalled?.length || 0} numbers called`
+                            : mainGame.status === 'FINISHED'
+                            ? 'Game completed'
+                            : 'Waiting for players'
+                          }
+                        </span>
+                      </div>
+                    </div>
                   </div>
+                </div>
 
-                  {/* Game Progress Bar */}
-                  <div className="mt-3">
-                    <div className="flex justify-between items-center text-xs mb-1">
-                      <span className="text-white/70">Session Progress</span>
-                      <span className="text-white font-bold">
-                        {Math.round((game.currentPlayers / game.maxPlayers) * 100)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-white/20 rounded-full h-1.5">
-                      <motion.div 
-                        className="bg-gradient-to-r from-green-400 to-cyan-400 h-1.5 rounded-full"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${(game.currentPlayers / game.maxPlayers) * 100}%` }}
-                        transition={{ duration: 1, delay: index * 0.1 + 0.5 }}
-                      />
-                    </div>
+                {/* Game Progress Bar */}
+                <div className="mt-3">
+                  <div className="flex justify-between items-center text-xs mb-1">
+                    <span className="text-white/70">Session Progress</span>
+                    <span className="text-white font-bold">
+                      {mainGame.status === 'ACTIVE' 
+                        ? `${mainGame.numbersCalled?.length || 0}/75 numbers`
+                        : `${Math.round((mainGame.currentPlayers / mainGame.maxPlayers) * 100)}%`
+                      }
+                    </span>
+                  </div>
+                  <div className="w-full bg-white/20 rounded-full h-1.5">
+                    <motion.div 
+                      className={`h-1.5 rounded-full ${
+                        mainGame.status === 'ACTIVE'
+                          ? 'bg-gradient-to-r from-blue-400 to-purple-400'
+                          : 'bg-gradient-to-r from-green-400 to-cyan-400'
+                      }`}
+                      initial={{ width: 0 }}
+                      animate={{ 
+                        width: mainGame.status === 'ACTIVE'
+                          ? `${((mainGame.numbersCalled?.length || 0) / 75) * 100}%`
+                          : `${(mainGame.currentPlayers / mainGame.maxPlayers) * 100}%`
+                      }}
+                      transition={{ duration: 1, delay: 0.5 }}
+                    />
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* User Status in Game */}
+              {isUserInGame() && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-3 bg-white/10 rounded-xl border border-white/20"
+                >
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-white/80">Your status:</span>
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                      getUserRole() === 'SPECTATOR' 
+                        ? 'bg-blue-400/20 text-blue-300 border border-blue-400/30'
+                        : 'bg-green-400/20 text-green-300 border border-green-400/30'
+                    }`}>
+                      {getUserRole() === 'SPECTATOR' ? 'SPECTATOR' : 'PLAYER'}
+                    </span>
+                    <span className="text-white/60 text-xs">
+                      • Click above to rejoin
+                    </span>
                   </div>
                 </motion.div>
-              ))}
+              )}
             </div>
           )}
         </motion.div>
 
-        {/* Stats Footer */}
+        {/* Quick Stats */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -528,22 +703,47 @@ export default function Home() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <div className="text-2xl font-black text-white">{activeGames.length}</div>
-                <div className="text-white/60 text-xs">Active Sessions</div>
+                <div className="text-2xl font-black text-white">
+                  {mainGame ? 1 : 0}
+                </div>
+                <div className="text-white/60 text-xs">Active Session</div>
               </div>
               <div>
                 <div className="text-2xl font-black text-white">
-                  {activeGames.reduce((sum, game) => sum + game.currentPlayers, 0)}
+                  {mainGame?.currentPlayers || 0}
                 </div>
                 <div className="text-white/60 text-xs">Players Online</div>
               </div>
               <div>
                 <div className="text-2xl font-black text-white">
-                  {activeGames.filter(g => g.status === 'ACTIVE').length}
+                  {mainGame?.status === 'ACTIVE' ? 1 : 0}
                 </div>
-                <div className="text-white/60 text-xs">Live Games</div>
+                <div className="text-white/60 text-xs">Live Game</div>
               </div>
             </div>
+          </div>
+        </motion.div>
+
+        {/* Quick Tips */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1 }}
+          className="text-center mt-6"
+        >
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+            <h5 className="text-white font-bold mb-2">🎮 Quick Tips</h5>
+            <div className="grid grid-cols-2 gap-2 text-xs text-white/60">
+              <div>• Always one game available</div>
+              <div>• Need 2+ players to start</div>
+              <div>• Mark numbers on your card</div>
+              <div>• First to complete a line wins!</div>
+            </div>
+            {mainGame?.status === 'ACTIVE' && (
+              <div className="mt-2 text-blue-300 text-xs">
+                • Join anytime - spectators welcome!
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -551,7 +751,7 @@ export default function Home() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
+          transition={{ delay: 1.2 }}
           className="text-center mt-8 pb-8"
         >
           <p className="text-white/40 text-sm">
