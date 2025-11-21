@@ -17,6 +17,10 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
 
+  // FIXED: Use actual players array length instead of currentPlayers
+  const currentPlayersCount = game.players?.length || 0;
+  const canStart = currentPlayersCount >= 2;
+
   const copyGameCode = async () => {
     await navigator.clipboard.writeText(game.code);
     setCopied(true);
@@ -28,7 +32,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
       try {
         await navigator.share({
           title: 'Join my Bingo Game!',
-          text: `Join my Bingo game with code: ${game.code}`,
+          text: `Join my Bingo game with code: ${game.code}. ${currentPlayersCount} players waiting!`,
           url: window.location.href,
         });
       } catch (error) {
@@ -50,8 +54,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     if (!game?.host || !currentUserId) return false;
     return game.host._id === currentUserId;
   };
-
-  const canStart = game.currentPlayers >= 2;
 
   // Fixed animation variants for background elements
   const getBackgroundAnimation = (index: number) => {
@@ -186,7 +188,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-white" />
               <span className="text-white font-bold">
-                {game.currentPlayers}/{game.maxPlayers}
+                {/* FIXED: Use actual players count */}
+                {currentPlayersCount}/{game.maxPlayers}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -212,7 +215,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-xl text-white">
-              Players ({game.currentPlayers})
+              {/* FIXED: Use actual players count */}
+              Players ({currentPlayersCount})
             </h3>
             <motion.div
               animate={{ scale: [1, 1.1, 1] }}
@@ -220,7 +224,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1"
             >
               <Users className="w-4 h-4 text-white" />
-              <span className="text-white font-bold text-sm">{game.currentPlayers}</span>
+              {/* FIXED: Use actual players count */}
+              <span className="text-white font-bold text-sm">{currentPlayersCount}</span>
             </motion.div>
           </div>
           
@@ -318,7 +323,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 ) : (
                   <>
                     <Users className="w-6 h-6" />
-                    NEED {2 - game.currentPlayers} MORE PLAYERS
+                    {/* FIXED: Use actual players count */}
+                    NEED {2 - currentPlayersCount} MORE PLAYERS
                   </>
                 )}
               </motion.button>
@@ -356,6 +362,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               </h4>
               <p className="text-white/70">
                 {getHostName()} will start the game when there are at least 2 players...
+                {/* FIXED: Show current count */}
+                <br />(Currently {currentPlayersCount} player{currentPlayersCount !== 1 ? 's' : ''})
               </p>
             </div>
           </motion.div>
