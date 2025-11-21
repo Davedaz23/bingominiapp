@@ -51,7 +51,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     return game.host._id === currentUserId;
   };
 
-  // FIX: Use currentPlayers instead of players.length
   const canStart = game.currentPlayers >= 2;
 
   // Fixed animation variants for background elements
@@ -76,17 +75,32 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     };
   };
 
-  // Safe player access
+  // CORRECTED: Based on your types, player data is in player.user
   const getPlayerDisplayName = (player: GamePlayer) => {
     if (!player?.user) return 'Unknown Player';
     return player.user.firstName || player.user.username || 'Unknown Player';
   };
 
+  // CORRECTED: Get player initial from user object
   const getPlayerInitial = (player: GamePlayer) => {
     if (!player?.user) return '?';
-    return (player.user.firstName?.[0] || player.user.username?.[0] || '?').toUpperCase();
+    
+    const firstName = player.user.firstName;
+    const username = player.user.username;
+    
+    if (firstName) return firstName[0].toUpperCase();
+    if (username) return username[0].toUpperCase();
+    
+    return '?';
   };
 
+  // CORRECTED: Get player username from user object
+  const getPlayerUsername = (player: GamePlayer) => {
+    if (!player?.user) return 'user';
+    return player.user.username || 'user';
+  };
+
+  // CORRECTED: Check if player is host by comparing user IDs
   const isPlayerHost = (player: GamePlayer) => {
     if (!player?.user || !game?.host) return false;
     return player.user._id === game.host._id;
@@ -198,7 +212,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-xl text-white">
-              Players ({game.currentPlayers}) {/* FIX: Use currentPlayers */}
+              Players ({game.currentPlayers})
             </h3>
             <motion.div
               animate={{ scale: [1, 1.1, 1] }}
@@ -206,7 +220,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1"
             >
               <Users className="w-4 h-4 text-white" />
-              <span className="text-white font-bold text-sm">{game.currentPlayers}</span> {/* FIX: Use currentPlayers */}
+              <span className="text-white font-bold text-sm">{game.currentPlayers}</span>
             </motion.div>
           </div>
           
@@ -249,7 +263,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                     )}
                   </div>
                   <p className="text-white/60 text-sm">
-                    @{player.user?.username || 'user'}
+                    @{getPlayerUsername(player)}
                   </p>
                 </div>
                 
@@ -304,7 +318,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 ) : (
                   <>
                     <Users className="w-6 h-6" />
-                    NEED {2 - game.currentPlayers} MORE PLAYERS {/* FIX: Use currentPlayers */}
+                    NEED {2 - game.currentPlayers} MORE PLAYERS
                   </>
                 )}
               </motion.button>
