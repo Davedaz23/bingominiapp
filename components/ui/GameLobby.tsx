@@ -1,6 +1,6 @@
 // components/GameLobby.tsx
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Clock, Play, Copy, Share2, Crown, Zap, Sparkles, Gamepad2 } from 'lucide-react';
+import { Users, Clock, Play, Copy, Share2, Crown, Zap, Sparkles, Gamepad2, Eye, Trophy } from 'lucide-react';
 import { Game, GamePlayer } from '../../types';
 import { useState, useEffect } from 'react';
 
@@ -8,31 +8,48 @@ interface GameLobbyProps {
   game: Game;
   currentUserId: string;
   onStartGame: () => void;
+  onJoinAsSpectator?: () => void;
 }
 
 export const GameLobby: React.FC<GameLobbyProps> = ({
   game,
   currentUserId,
   onStartGame,
+  onJoinAsSpectator,
 }) => {
   const [copied, setCopied] = useState(false);
   const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null);
 
   // FIXED: Move isHost function declaration to the top
-  const isHost = () => {
+  const isHost = (): boolean => {
     if (!game?.host || !currentUserId) return false;
     return game.host._id === currentUserId;
   };
 
   // Check if game is auto-created by system
-  const isAutoCreatedGame = () => {
-    return game.host?.username === 'system_bot' || game.host?.firstName === 'System';
+  const isAutoCreatedGame = (): boolean => {
+    return game.host?.username === 'system_bot' || game.host?.firstName === 'System' || game.isAutoCreated === true;
+  };
+
+  // Check if user is already in the game
+  const isUserInGame = (): boolean => {
+    if (!game?.players || !currentUserId) return false;
+    return game.players.some(player => player.user._id === currentUserId);
+  };
+
+  // Get user's role in the game
+  const getUserRole = (): 'PLAYER' | 'SPECTATOR' | null => {
+    if (!game?.players || !currentUserId) return null;
+    const player = game.players.find(p => p.user._id === currentUserId);
+    return player?.playerType || 'PLAYER';
   };
 
   const currentPlayersCount = game.players?.length || 0;
   const canStart = currentPlayersCount >= 2;
+  const userRole = getUserRole();
+  const userInGame = isUserInGame();
 
-  // Auto-start countdown effect - FIXED: Now isHost is declared before use
+  // Auto-start countdown effect
   useEffect(() => {
     if (canStart && isHost() && game.status === 'WAITING') {
       setAutoStartCountdown(10); // 10 second countdown
@@ -52,15 +69,15 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     } else {
       setAutoStartCountdown(null);
     }
-  }, [canStart, game.status, onStartGame]); // REMOVED: isHost() from dependencies
+  }, [canStart, game.status, onStartGame]);
 
-  const copyGameCode = async () => {
+  const copyGameCode = async (): Promise<void> => {
     await navigator.clipboard.writeText(game.code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const shareGame = async () => {
+  const shareGame = async (): Promise<void> => {
     if (navigator.share) {
       try {
         await navigator.share({
@@ -77,7 +94,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   };
 
   // Safe access to host properties
-  const getHostName = () => {
+  const getHostName = (): string => {
     if (!game?.host) return 'System Host';
     return game.host.firstName || game.host.username || 'System Host';
   };
@@ -105,13 +122,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   };
 
   // CORRECTED: Based on your types, player data is in player.user
-  const getPlayerDisplayName = (player: GamePlayer) => {
+  const getPlayerDisplayName = (player: GamePlayer): string => {
     if (!player?.user) return 'Unknown Player';
     return player.user.firstName || player.user.username || 'Unknown Player';
   };
 
   // CORRECTED: Get player initial from user object
-  const getPlayerInitial = (player: GamePlayer) => {
+  const getPlayerInitial = (player: GamePlayer): string => {
     if (!player?.user) return '?';
     
     const firstName = player.user.firstName;
@@ -124,15 +141,49 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   };
 
   // CORRECTED: Get player username from user object
-  const getPlayerUsername = (player: GamePlayer) => {
+  const getPlayerUsername = (player: GamePlayer): string => {
     if (!player?.user) return 'user';
     return player.user.username || 'user';
   };
 
   // CORRECTED: Check if player is host by comparing user IDs
-  const isPlayerHost = (player: GamePlayer) => {
+  const isPlayerHost = (player: GamePlayer): boolean => {
     if (!player?.user || !game?.host) return false;
     return player.user._id === game.host._id;
+  };
+
+  // Get player type badge
+  interface PlayerBadge {
+    label: string;
+    color: string;
+  }
+
+  const getPlayerTypeBadge = (player: GamePlayer): PlayerBadge => {
+    if (isPlayerHost(player)) {
+      return { 
+        label: 'HOST', 
+        color: 'bg-yellow-400/20 text-yellow-300 border-yellow-400/30' 
+      };
+    }
+    if (player.playerType === 'SPECTATOR') {
+      return { 
+        label: 'SPECTATOR', 
+        color: 'bg-blue-400/20 text-blue-300 border-blue-400/30' 
+      };
+    }
+    return { 
+      label: 'PLAYER', 
+      color: 'bg-green-400/20 text-green-300 border-green-400/30' 
+    };
+  };
+
+  // Handle join based on game status
+  const handleJoinGame = (): void => {
+    if (game.status === 'ACTIVE' && onJoinAsSpectator) {
+      onJoinAsSpectator();
+    } else {
+      onStartGame();
+    }
   };
 
   return (
@@ -170,6 +221,45 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               </div>
               <p className="text-green-400/80 text-sm">
                 This game is automatically managed by the system. Join anytime!
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Game Status Banner */}
+        {game.status === 'ACTIVE' && (
+          <motion.div
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="mb-4"
+          >
+            <div className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 border border-blue-500/30 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Eye className="w-5 h-5 text-blue-400" />
+                <span className="text-blue-300 font-bold text-lg">Game In Progress</span>
+                <Eye className="w-5 h-5 text-blue-400" />
+              </div>
+              <p className="text-blue-400/80 text-sm">
+                This game has already started. You can join as a spectator!
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+        {game.status === 'FINISHED' && (
+          <motion.div
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="mb-4"
+          >
+            <div className="bg-red-500/20 backdrop-blur-lg rounded-2xl p-4 border border-red-500/30 text-center">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <Trophy className="w-5 h-5 text-red-400" />
+                <span className="text-red-300 font-bold text-lg">Game Finished</span>
+                <Trophy className="w-5 h-5 text-red-400" />
+              </div>
+              <p className="text-red-400/80 text-sm">
+                This game has ended. A new game will start soon!
               </p>
             </div>
           </motion.div>
@@ -246,7 +336,14 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-white" />
               <span className="text-white font-bold">
-                {autoStartCountdown ? `Starting in ${autoStartCountdown}s` : 'Waiting...'}
+                {game.status === 'ACTIVE' 
+                  ? 'Game In Progress' 
+                  : game.status === 'FINISHED'
+                  ? 'Game Finished'
+                  : autoStartCountdown 
+                    ? `Starting in ${autoStartCountdown}s` 
+                    : 'Waiting...'
+                }
               </span>
             </div>
             <motion.button
@@ -257,6 +354,31 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               <Share2 className="w-4 h-4 text-white" />
             </motion.button>
           </div>
+
+          {/* User Status */}
+          {userInGame && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-4 p-3 bg-white/10 rounded-xl border border-white/20"
+            >
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-white/80">Your role:</span>
+                <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                  userRole === 'SPECTATOR' 
+                    ? 'bg-blue-400/20 text-blue-300 border border-blue-400/30'
+                    : 'bg-green-400/20 text-green-300 border border-green-400/30'
+                }`}>
+                  {userRole === 'SPECTATOR' ? 'SPECTATOR' : 'PLAYER'}
+                </span>
+                {isHost() && (
+                  <span className="px-2 py-1 bg-yellow-400/20 text-yellow-300 text-xs rounded-full font-bold border border-yellow-400/30">
+                    HOST
+                  </span>
+                )}
+              </div>
+            </motion.div>
+          )}
         </motion.div>
 
         {/* Players List */}
@@ -268,7 +390,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-xl text-white">
-              Players ({currentPlayersCount})
+              Participants ({currentPlayersCount})
             </h3>
             <motion.div
               animate={{ scale: [1, 1.1, 1] }}
@@ -294,64 +416,66 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             </motion.div>
           ) : (
             <div className="space-y-3 max-h-80 overflow-y-auto">
-              {game.players?.map((player: GamePlayer, index: number) => (
-                <motion.div
-                  key={player._id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="flex items-center gap-4 p-3 rounded-2xl bg-white/10 hover:bg-white/20 transition-all group"
-                >
+              {game.players?.map((player: GamePlayer, index: number) => {
+                const badge = getPlayerTypeBadge(player);
+                return (
                   <motion.div
-                    whileHover={{ scale: 1.1, rotate: 5 }}
-                    className="relative"
+                    key={player._id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="flex items-center gap-4 p-3 rounded-2xl bg-white/10 hover:bg-white/20 transition-all group"
                   >
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white font-black text-lg shadow-lg">
-                      {getPlayerInitial(player)}
+                    <motion.div
+                      whileHover={{ scale: 1.1, rotate: 5 }}
+                      className="relative"
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white font-black text-lg shadow-lg">
+                        {getPlayerInitial(player)}
+                      </div>
+                      {isPlayerHost(player) && (
+                        <motion.div
+                          animate={{ scale: [1, 1.2, 1] }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                          className="absolute -top-1 -right-1"
+                        >
+                          <Crown className="w-5 h-5 fill-yellow-400 text-yellow-400" />
+                        </motion.div>
+                      )}
+                    </motion.div>
+                    
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-black text-white text-lg">
+                          {getPlayerDisplayName(player)}
+                        </span>
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${badge.color}`}>
+                          {badge.label}
+                        </span>
+                      </div>
+                      <p className="text-white/60 text-sm">
+                        @{getPlayerUsername(player)}
+                      </p>
                     </div>
-                    {isPlayerHost(player) && (
+                    
+                    {player.isReady && player.playerType !== 'SPECTATOR' && (
                       <motion.div
-                        animate={{ scale: [1, 1.2, 1] }}
-                        transition={{ duration: 2, repeat: Infinity }}
-                        className="absolute -top-1 -right-1"
-                      >
-                        <Crown className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-                      </motion.div>
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="w-3 h-3 bg-green-400 rounded-full"
+                      />
                     )}
                   </motion.div>
-                  
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-white text-lg">
-                        {getPlayerDisplayName(player)}
-                      </span>
-                      {isPlayerHost(player) && (
-                        <span className="px-2 py-1 bg-yellow-400/20 text-yellow-300 text-xs rounded-full font-bold border border-yellow-400/30">
-                          HOST
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-white/60 text-sm">
-                      @{getPlayerUsername(player)}
-                    </p>
-                  </div>
-                  
-                  {player.isReady && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="w-3 h-3 bg-green-400 rounded-full"
-                    />
-                  )}
-                </motion.div>
-              ))}
+                );
+              })}
             </div>
           )}
         </motion.div>
 
-        {/* Start Game Button */}
+        {/* Action Buttons */}
         <AnimatePresence>
-          {isHost() && (
+          {/* Host Controls */}
+          {isHost() && game.status === 'WAITING' && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -419,47 +543,112 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               )}
             </motion.div>
           )}
-        </AnimatePresence>
 
-        {/* Waiting for Host Message */}
-        {!isHost() && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="text-center"
-          >
-            <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-6 border border-white/30">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                className="w-12 h-12 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"
-              />
-              <h4 className="font-black text-white text-lg mb-2">
-                {isAutoCreatedGame() ? 'Game Starting Soon' : 'Waiting for Host'}
-              </h4>
-              <p className="text-white/70">
-                {isAutoCreatedGame() 
-                  ? `The game will start automatically when there are at least 2 players...`
-                  : `${getHostName()} will start the game when there are at least 2 players...`
-                }
-                <br />(Currently {currentPlayersCount} player{currentPlayersCount !== 1 ? 's' : ''})
-              </p>
-              
-              {isAutoCreatedGame() && currentPlayersCount >= 2 && (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="mt-4 p-3 bg-green-500/20 rounded-xl border border-green-500/30"
+          {/* Join/Spectate Button for Non-Hosts */}
+          {!isHost() && game.status !== 'FINISHED' && !userInGame && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              <motion.button
+                onClick={handleJoinGame}
+                className={`
+                  w-full py-5 rounded-3xl font-black text-xl shadow-2xl 
+                  flex items-center justify-center gap-3 relative overflow-hidden
+                  ${game.status === 'ACTIVE'
+                    ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white hover:shadow-3xl'
+                    : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl'
+                  }
+                `}
+                whileHover={{ scale: 1.02, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                
+                {game.status === 'ACTIVE' ? (
+                  <>
+                    <Eye className="w-6 h-6" />
+                    JOIN AS SPECTATOR
+                    <Play className="w-6 h-6" />
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-6 h-6" />
+                    JOIN GAME
+                    <Play className="w-6 h-6" />
+                  </>
+                )}
+              </motion.button>
+
+              {game.status === 'ACTIVE' && (
+                <motion.p 
+                  className="text-center text-white/60 mt-3 text-sm"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.6 }}
                 >
-                  <p className="text-green-300 text-sm font-bold">
-                    ✅ Ready to start! Waiting for auto-start...
-                  </p>
-                </motion.div>
+                  Watch the game in progress and practice marking numbers!
+                </motion.p>
               )}
-            </div>
-          </motion.div>
-        )}
+            </motion.div>
+          )}
+
+          {/* User Already in Game Message */}
+          {userInGame && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              className="text-center"
+            >
+              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-6 border border-white/30">
+                <motion.div
+                  animate={{ scale: [1, 1.1, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4"
+                >
+                  <Users className="w-6 h-6 text-green-400" />
+                </motion.div>
+                <h4 className="font-black text-white text-lg mb-2">
+                  You're in this game!
+                </h4>
+                <p className="text-white/70">
+                  {userRole === 'SPECTATOR' 
+                    ? 'You are watching this game as a spectator.'
+                    : 'You are playing in this game.'
+                  }
+                  <br />Waiting for the game to continue...
+                </p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Game Finished Message */}
+          {game.status === 'FINISHED' && !userInGame && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              className="text-center"
+            >
+              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-6 border border-white/30">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  className="w-12 h-12 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"
+                />
+                <h4 className="font-black text-white text-lg mb-2">
+                  Game Finished
+                </h4>
+                <p className="text-white/70">
+                  This game has ended. A new game will start automatically soon!
+                  <br />Check back in a moment to join the next game.
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Quick Tips */}
         <motion.div
@@ -476,6 +665,11 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
               <div>• Mark numbers on your card</div>
               <div>• First to complete a line wins!</div>
             </div>
+            {game.status === 'ACTIVE' && (
+              <div className="mt-2 text-blue-300 text-xs">
+                • Spectators can practice but can't win
+              </div>
+            )}
           </div>
         </motion.div>
       </motion.div>

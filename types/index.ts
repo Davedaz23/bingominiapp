@@ -26,6 +26,7 @@ export interface GamePlayer {
   user: GamePlayerUser;
   isReady: boolean;
   joinedAt: string;
+  playerType?: 'PLAYER' | 'SPECTATOR'; // ADD THIS
 }
 
 export interface Game {
@@ -44,6 +45,7 @@ export interface Game {
   bingoCards?: BingoCard[];
   createdAt: string;
   updatedAt: string;
+  isAutoCreated?: boolean; // ADD THIS for system games
 }
 
 export interface BingoCard {
@@ -56,6 +58,7 @@ export interface BingoCard {
   isWinner: boolean;
   createdAt: string;
   user?: GamePlayerUser;
+  isSpectator?: boolean; // ADD THIS for spectator cards
 }
 
 export interface GameState {
