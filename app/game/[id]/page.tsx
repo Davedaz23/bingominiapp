@@ -16,7 +16,7 @@ export default function GamePage() {
   const router = useRouter();
   const id = params.id as string;
   const { user, WebApp } = useTelegram();
-  const { game, bingoCard, gameState, markNumber, refreshGame } = useGame(id);
+  const { game, bingoCard, gameState, markNumber, refreshGame, isHost } = useGame(id);
   const [showWinAnimation, setShowWinAnimation] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
 
@@ -27,6 +27,19 @@ export default function GamePage() {
       setCurrentUserId(userId);
     }
   }, []);
+
+  // ADD THIS: Debug logging to see what's happening
+  useEffect(() => {
+    console.log('🎮 Game State Debug:', {
+      gameStatus: game?.status,
+      numbersCalled: game?.numbersCalled,
+      gameStateCalledNumbers: gameState?.calledNumbers,
+      currentNumber: gameState?.currentNumber,
+      isHost: isHost,
+      gameId: game?._id,
+      calledNumbersCount: calledNumbersCount
+    });
+  }, [game, gameState, isHost]);
 
   useEffect(() => {
     if (game?.status === 'FINISHED' && bingoCard?.isWinner) {
@@ -67,6 +80,22 @@ export default function GamePage() {
     router.push('/games');
   };
 
+  // ADD THIS: Manual number calling for testing
+  const handleManualCallNumber = async () => {
+    if (!game || !currentUserId) return;
+    
+    try {
+      console.log('🎯 Manually calling number...');
+      await gameAPI.callNumber(game._id, currentUserId);
+      // Wait a bit then refresh to see the new number
+      setTimeout(() => {
+        refreshGame();
+      }, 1000);
+    } catch (error) {
+      console.error('❌ Manual call failed:', error);
+    }
+  };
+
   // FIXED: Use gameState.calledNumbers as the primary source for called numbers
   const calledNumbers = gameState?.calledNumbers || game?.numbersCalled || [];
   const calledNumbersCount = calledNumbers.length;
@@ -90,10 +119,9 @@ export default function GamePage() {
     return game.host.firstName || game.host.username || 'Unknown Host';
   };
 
-  // Check if current user is host
+  // Check if current user is host (using the hook's isHost)
   const isUserHost = () => {
-    if (!game?.host || !currentUserId) return false;
-    return game.host._id === currentUserId;
+    return isHost;
   };
 
   if (!game) {
@@ -179,6 +207,42 @@ export default function GamePage() {
             <span className="font-bold">Games</span>
           </motion.button>
         </motion.div>
+
+        {/* ADD THIS: Host Control Panel */}
+        {isUserHost() && game?.status === 'ACTIVE' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
+              <p className="text-yellow-300 text-sm mb-2 text-center font-bold">
+                🎯 Host Control Panel
+              </p>
+              <div className="flex gap-2">
+                <motion.button
+                  onClick={handleManualCallNumber}
+                  className="flex-1 px-4 py-3 bg-green-500 text-white rounded-xl font-bold text-sm shadow-lg"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Call Number Now
+                </motion.button>
+                <motion.button
+                  onClick={refreshGame}
+                  className="flex-1 px-4 py-3 bg-blue-500 text-white rounded-xl font-bold text-sm shadow-lg"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Refresh Game
+                </motion.button>
+              </div>
+              <p className="text-yellow-400/80 text-xs text-center mt-2">
+                Auto-calling every 10 seconds
+              </p>
+            </div>
+          </motion.div>
+        )}
 
         {/* Game Header */}
         <motion.div
@@ -273,6 +337,24 @@ export default function GamePage() {
           </motion.div>
         )}
 
+        {/* ADD THIS: No numbers called message */}
+        {game.status === 'ACTIVE' && calledNumbersCount === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-orange-500/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-orange-500/30 text-center"
+          >
+            <p className="text-orange-300 font-bold">
+              ⏳ Waiting for numbers to be called...
+            </p>
+            {isUserHost() && (
+              <p className="text-orange-400/80 text-sm mt-1">
+                As host, numbers should be called automatically every 10 seconds
+              </p>
+            )}
+          </motion.div>
+        )}
+
         {/* Main Game Content */}
         <div className="space-y-6">
           {/* Bingo Card */}
@@ -284,7 +366,7 @@ export default function GamePage() {
             >
               <BingoCard
                 card={bingoCard}
-                calledNumbers={calledNumbers} // FIXED: Use the unified calledNumbers
+                calledNumbers={calledNumbers}
                 onMarkNumber={handleMarkNumber}
                 isInteractive={game.status === 'ACTIVE'}
                 isWinner={bingoCard.isWinner}
@@ -299,7 +381,7 @@ export default function GamePage() {
             transition={{ delay: 0.4 }}
           >
             <NumberGrid
-              calledNumbers={calledNumbers} // FIXED: Use the unified calledNumbers
+              calledNumbers={calledNumbers}
               currentNumber={gameState.currentNumber}
             />
           </motion.div>
@@ -401,7 +483,6 @@ export default function GamePage() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                {/* FIXED: Use calledNumbersCount */}
                 <div className="text-xl font-black text-white">{calledNumbersCount}</div>
                 <div className="text-white/60 text-xs">Numbers Called</div>
               </div>

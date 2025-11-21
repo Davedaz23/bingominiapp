@@ -1,9 +1,8 @@
 // hooks/useGame.ts
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Game, BingoCard, GameState } from '../types';
-import { gameAPI } from '../services/api'; // Use your correct API path
+import { gameAPI } from '../services/api';
 
-// Define error response type
 interface ApiError {
   response?: {
     data?: {
@@ -13,7 +12,6 @@ interface ApiError {
   message?: string;
 }
 
-// hooks/useGame.ts
 export const useGame = (gameId: string) => {
   const [game, setGame] = useState<Game | null>(null);
   const [bingoCard, setBingoCard] = useState<BingoCard | null>(null);
@@ -25,7 +23,16 @@ export const useGame = (gameId: string) => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [numberCallInterval, setNumberCallInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // Use refs to avoid stale closures in intervals
+  const gameRef = useRef<Game | null>(null);
+  const isHostRef = useRef<boolean>(false);
+  const numberCallIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Update refs when state changes
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
 
   // Get current user ID
   const getCurrentUserId = () => {
@@ -37,6 +44,11 @@ export const useGame = (gameId: string) => {
     if (!game?.host || !getCurrentUserId()) return false;
     return game.host._id === getCurrentUserId();
   }, [game]);
+
+  // Update host ref
+  useEffect(() => {
+    isHostRef.current = isHost();
+  }, [isHost]);
 
   const fetchGame = useCallback(async () => {
     if (!gameId || gameId === 'active' || gameId === 'waiting') {
@@ -52,13 +64,12 @@ export const useGame = (gameId: string) => {
       
       console.log('Fetching game with ID:', gameId);
       
-      // Fetch game data
       const gameResponse = await gameAPI.getGame(gameId);
       const gameData = gameResponse.data.game;
       
       setGame(gameData);
       
-      // Update game state
+      // Update game state with the latest numbers
       setGameState(prev => ({
         ...prev,
         currentNumber: gameData.numbersCalled?.[gameData.numbersCalled.length - 1],
@@ -66,7 +77,7 @@ export const useGame = (gameId: string) => {
         isPlaying: gameData.status === 'ACTIVE',
       }));
 
-      // Fetch user's bingo card separately
+      // Fetch user's bingo card
       const userId = getCurrentUserId();
       if (userId) {
         try {
@@ -76,32 +87,35 @@ export const useGame = (gameId: string) => {
           }
         } catch (cardError) {
           console.log('No bingo card found for user yet');
-          // This is normal if user hasn't joined the game
         }
       }
     } catch (err) {
       console.error('Error fetching game:', err);
       const apiError = err as ApiError;
-      setError(apiError.response?.data?.error || apiError.message || 'Failed to load game');
+      // Don't set error for network issues during polling
+      if (!apiError.message?.includes('Network Error')) {
+        setError(apiError.response?.data?.error || apiError.message || 'Failed to load game');
+      }
     } finally {
       setIsLoading(false);
     }
   }, [gameId]);
 
-  // NEW: Automatic number calling function
+  // NEW: Improved automatic number calling
   const startAutoNumberCalling = useCallback(async () => {
-    if (!game || !isHost() || game.status !== 'ACTIVE') {
+    const currentGame = gameRef.current;
+    if (!currentGame || !isHostRef.current || currentGame.status !== 'ACTIVE') {
       return;
     }
 
     console.log('Starting automatic number calling for host');
     
     // Clear any existing interval
-    if (numberCallInterval) {
-      clearInterval(numberCallInterval);
+    if (numberCallIntervalRef.current) {
+      clearInterval(numberCallIntervalRef.current);
     }
 
-    const interval = setInterval(async () => {
+    const callNumber = async () => {
       try {
         const userId = getCurrentUserId();
         if (!userId) return;
@@ -109,47 +123,68 @@ export const useGame = (gameId: string) => {
         console.log('Calling next number...');
         await gameAPI.callNumber(gameId, userId);
         
-        // Refresh game to get updated numbers
-        await fetchGame();
+        // Wait a bit then refresh to see the new number
+        setTimeout(() => {
+          fetchGame();
+        }, 1000);
+        
       } catch (err) {
         console.error('Error calling number:', err);
-        // If game is finished, stop calling numbers
-        if ((err as ApiError).response?.data?.error?.includes('finished') || 
-            (err as ApiError).response?.data?.error?.includes('not active')) {
-          clearInterval(interval);
+        const apiError = err as ApiError;
+        
+        // Stop calling numbers if game is finished or not active
+        if (apiError.response?.data?.error?.includes('finished') || 
+            apiError.response?.data?.error?.includes('not active')) {
+          if (numberCallIntervalRef.current) {
+            clearInterval(numberCallIntervalRef.current);
+            numberCallIntervalRef.current = null;
+          }
         }
       }
-    }, 5000); // Call a number every 5 seconds
+    };
 
-    setNumberCallInterval(interval);
-  }, [game, gameId, isHost, fetchGame]);
+    // Call first number immediately, then set interval
+    callNumber();
+    numberCallIntervalRef.current = setInterval(callNumber, 10000); // Call every 10 seconds
 
-  // NEW: Stop number calling
+  }, [gameId, fetchGame]);
+
+  // Stop number calling
   const stopAutoNumberCalling = useCallback(() => {
-    if (numberCallInterval) {
-      clearInterval(numberCallInterval);
-      setNumberCallInterval(null);
+    if (numberCallIntervalRef.current) {
+      clearInterval(numberCallIntervalRef.current);
+      numberCallIntervalRef.current = null;
     }
-  }, [numberCallInterval]);
+  }, []);
 
+  // Main effect for game polling
   useEffect(() => {
-    if (gameId) {
-      fetchGame();
+    if (!gameId) return;
+
+    let pollInterval: NodeJS.Timeout;
+    
+    const initializeGame = async () => {
+      await fetchGame();
       
-      // Set up polling for real-time updates
-      const pollInterval = setInterval(fetchGame, 5000); // Poll every 5 seconds
-      return () => {
-        clearInterval(pollInterval);
-        stopAutoNumberCalling();
-      };
-    }
+      // Start polling
+      pollInterval = setInterval(fetchGame, 8000); // Poll every 8 seconds
+    };
+
+    initializeGame();
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+      stopAutoNumberCalling();
+    };
   }, [gameId, fetchGame, stopAutoNumberCalling]);
 
-  // NEW: Start/stop auto number calling based on game status and host role
+  // Effect for auto number calling
   useEffect(() => {
     if (game?.status === 'ACTIVE' && isHost()) {
+      console.log('Game is ACTIVE and user is host, starting number calling');
       startAutoNumberCalling();
     } else {
+      console.log('Stopping number calling - game status:', game?.status, 'isHost:', isHost());
       stopAutoNumberCalling();
     }
 
@@ -175,9 +210,8 @@ export const useGame = (gameId: string) => {
       setBingoCard(response.data.bingoCard);
       
       if (response.data.isWinner) {
-        // Refresh game to update status
         await fetchGame();
-        return true; // Indicates win
+        return true;
       }
       
       return false;
