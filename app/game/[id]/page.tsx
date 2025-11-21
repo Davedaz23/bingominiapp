@@ -1,4 +1,4 @@
-// app/game/[id]/page.tsx - UPDATED to show all players
+// app/game/[id]/page.tsx - UPDATED for late joiners
 'use client'
 
 import { useParams, useRouter } from 'next/navigation';
@@ -10,7 +10,7 @@ import { NumberGrid } from '../../../components/ui/NumberGrid';
 import { GameLobby } from '../../../components/ui/GameLobby';
 import { gameAPI } from '../../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Users, Volume2, Home, Crown, Sparkles, Zap, Gamepad2, ArrowLeft, Clock, User, Eye } from 'lucide-react';
+import { Trophy, Users, Volume2, Home, Crown, Sparkles, Zap, Gamepad2, ArrowLeft, Clock, User, Eye, Clock3, AlertCircle } from 'lucide-react';
 
 export default function GamePage() {
   const params = useParams();
@@ -31,6 +31,10 @@ export default function GamePage() {
       setCurrentUserId(userId);
     }
   }, []);
+
+  // Check if current user is a late joiner
+  const isLateJoiner = bingoCard?.isLateJoiner || false;
+  const numbersCalledAtJoin = bingoCard?.numbersCalledAtJoin || [];
 
   // Update timestamp when game state changes
   useEffect(() => {
@@ -148,7 +152,13 @@ export default function GamePage() {
     return player.userId === currentUserId || player.user?._id === currentUserId;
   };
 
-  // Players Panel Component
+  // Get player's bingo card to check if they're late joiners
+  const getPlayerLateJoinerStatus = (player: any) => {
+    // This would need to be fetched from the backend or stored in player data
+    return player.isLateJoiner || false;
+  };
+
+  // Players Panel Component - UPDATED with late joiner info
   const PlayersPanel = () => (
     <AnimatePresence>
       {showPlayersPanel && game?.players && (
@@ -177,74 +187,98 @@ export default function GamePage() {
             </div>
             
             <div className="space-y-3 max-h-64 overflow-y-auto">
-              {game.players.map((player, index) => (
-                <motion.div
-                  key={player._id || index}
-                  className={`flex items-center justify-between p-3 rounded-2xl border ${
-                    isCurrentUser(player) 
-                      ? 'bg-blue-500/20 border-blue-500/30' 
-                      : 'bg-white/10 border-white/20'
-                  }`}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      isCurrentUser(player) ? 'bg-blue-500' : 'bg-white/20'
-                    }`}>
-                      <User className="w-4 h-4 text-white" />
-                    </div>
-                    <div>
-                      <div className="text-white font-medium">
-                        {getPlayerDisplayName(player)}
-                        {isCurrentUser(player) && (
-                          <span className="ml-2 text-blue-300 text-sm">(You)</span>
-                        )}
+              {game.players.map((player, index) => {
+                const isLateJoiner = getPlayerLateJoinerStatus(player);
+                return (
+                  <motion.div
+                    key={player._id || index}
+                    className={`flex items-center justify-between p-3 rounded-2xl border ${
+                      isCurrentUser(player) 
+                        ? 'bg-blue-500/20 border-blue-500/30' 
+                        : 'bg-white/10 border-white/20'
+                    }`}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        isCurrentUser(player) ? 'bg-blue-500' : 'bg-white/20'
+                      }`}>
+                        <User className="w-4 h-4 text-white" />
                       </div>
-                      <div className="text-white/60 text-xs flex items-center gap-1">
-                        {player.playerType === 'SPECTATOR' ? (
-                          <>
-                            <Eye className="w-3 h-3" />
-                            Spectator
-                          </>
-                        ) : (
-                          <>
-                            <User className="w-3 h-3" />
-                            Player
-                            {/* {player.isLateJoiner && (
-                              <span className="text-yellow-400"> • Late</span>
-                            )} */}
-                          </>
-                        )}
+                      <div>
+                        <div className="text-white font-medium flex items-center gap-2">
+                          {getPlayerDisplayName(player)}
+                          {isCurrentUser(player) && (
+                            <span className="text-blue-300 text-sm">(You)</span>
+                          )}
+                        </div>
+                        <div className="text-white/60 text-xs flex items-center gap-1">
+                          {player.playerType === 'SPECTATOR' ? (
+                            <>
+                              <Eye className="w-3 h-3" />
+                              Spectator
+                            </>
+                          ) : (
+                            <>
+                              <User className="w-3 h-3" />
+                              Player
+                              {isLateJoiner && (
+                                <span className="text-yellow-400 flex items-center gap-1">
+                                  <Clock3 className="w-3 h-3" />
+                                  Late Joiner
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  {player.playerType === 'PLAYER' && (
-                    <div className="text-right">
-                      <div className="text-white text-sm">
-                        {bingoCard?.markedPositions?.length || 0}/25
+                    
+                    {player.playerType === 'PLAYER' && (
+                      <div className="text-right">
+                        <div className="text-white text-sm">
+                          {bingoCard?.markedPositions?.length || 0}/25
+                        </div>
+                        <div className="text-white/60 text-xs">marked</div>
                       </div>
-                      <div className="text-white/60 text-xs">marked</div>
-                    </div>
-                  )}
-                </motion.div>
-              ))}
+                    )}
+                  </motion.div>
+                );
+              })}
             </div>
             
             {/* Game info footer */}
             <div className="mt-4 pt-4 border-t border-white/20">
               <div className="grid grid-cols-2 gap-4 text-center text-white/80 text-sm">
                 <div>
-                  <div className="font-bold text-white">{game.players.filter(p => p.playerType === 'PLAYER').length}</div>
+                  <div className="font-bold text-white">
+                    {game.players.filter(p => p.playerType === 'PLAYER').length}
+                  </div>
                   <div>Players</div>
                 </div>
                 <div>
-                  <div className="font-bold text-white">{game.players.filter(p => p.playerType === 'SPECTATOR').length}</div>
+                  <div className="font-bold text-white">
+                    {game.players.filter(p => p.playerType === 'SPECTATOR').length}
+                  </div>
                   <div>Spectators</div>
                 </div>
               </div>
+              
+              {/* Late joiner info */}
+              {isLateJoiner && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-3 p-2 bg-yellow-500/20 rounded-xl border border-yellow-500/30"
+                >
+                  <div className="flex items-center gap-2 text-yellow-300 text-xs">
+                    <AlertCircle className="w-3 h-3" />
+                    <span>Late joiners get credit for all called numbers!</span>
+                  </div>
+                </motion.div>
+              )}
             </div>
           </motion.div>
         </motion.div>
@@ -252,7 +286,7 @@ export default function GamePage() {
     </AnimatePresence>
   );
 
-  // Winner Modal Component
+  // Winner Modal Component - UPDATED with late joiner info
   const WinnerModal = () => (
     <AnimatePresence>
       {showWinnerModal && winnerInfo && (
@@ -317,6 +351,21 @@ export default function GamePage() {
                   </h3>
                 </div>
                 <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
+                
+                {/* Show if winner was a late joiner */}
+                {bingoCard?.isLateJoiner && winnerInfo.winner?._id === currentUserId && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.5 }}
+                    className="mt-2 p-2 bg-yellow-500/30 rounded-lg border border-yellow-500/50"
+                  >
+                    <p className="text-yellow-200 text-sm font-bold flex items-center justify-center gap-2">
+                      <Clock3 className="w-4 h-4" />
+                      Late Joiner Victory! 🎯
+                    </p>
+                  </motion.div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
@@ -344,6 +393,32 @@ export default function GamePage() {
       )}
     </AnimatePresence>
   );
+
+  // Late Joiner Info Banner
+  const LateJoinerInfo = () => {
+    if (!isLateJoiner || game?.status !== 'ACTIVE') return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-4"
+      >
+        <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
+          <div className="flex items-center gap-3">
+            <Clock3 className="w-6 h-6 text-yellow-400" />
+            <div>
+              <h4 className="text-yellow-300 font-bold text-lg">Late Joiner</h4>
+              <p className="text-yellow-400/80 text-sm">
+                You joined when {numbersCalledAtJoin.length} numbers were already called.
+                All numbers count towards your bingo! 🎯
+              </p>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -412,6 +487,9 @@ export default function GamePage() {
       {/* Winner Modal */}
       <WinnerModal />
 
+      {/* Late Joiner Info Banner */}
+      <LateJoinerInfo />
+
       {/* Animated Background */}
       <div className="absolute inset-0">
         {[...Array(10)].map((_, i) => (
@@ -475,7 +553,7 @@ export default function GamePage() {
           </div>
         </motion.div>
 
-        {/* Game Header */}
+        {/* Game Header - UPDATED with late joiner indicator */}
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -503,6 +581,15 @@ export default function GamePage() {
                 </div>
                 <span>•</span>
                 <span>{calledNumbersCount} numbers called</span>
+                {isLateJoiner && (
+                  <>
+                    <span>•</span>
+                    <span className="text-yellow-400 flex items-center gap-1">
+                      <Clock3 className="w-3 h-3" />
+                      Late Joiner
+                    </span>
+                  </>
+                )}
                 {currentNumber && (
                   <>
                     <span>•</span>
@@ -606,6 +693,8 @@ export default function GamePage() {
                 onMarkNumber={handleMarkNumber}
                 isInteractive={game.status === 'ACTIVE'}
                 isWinner={bingoCard.isWinner}
+                isLateJoiner={isLateJoiner}
+                numbersCalledAtJoin={numbersCalledAtJoin}
               />
             </motion.div>
           )}
@@ -619,11 +708,13 @@ export default function GamePage() {
             <NumberGrid
               calledNumbers={calledNumbers}
               currentNumber={currentNumber}
+              isLateJoiner={isLateJoiner}
+              numbersCalledAtJoin={numbersCalledAtJoin}
             />
           </motion.div>
         </div>
 
-        {/* Win Animation for current user */}
+        {/* Win Animation for current user - UPDATED with late joiner info */}
         <AnimatePresence>
           {showWinAnimation && (
             <motion.div
@@ -678,6 +769,25 @@ export default function GamePage() {
                   <h2 className="text-4xl font-black text-white mb-4 drop-shadow-lg">
                     BINGO!
                   </h2>
+                  
+                  {/* Late joiner victory message */}
+                  {isLateJoiner && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.4 }}
+                      className="mb-4 p-3 bg-yellow-500/30 rounded-xl border border-yellow-500/50"
+                    >
+                      <p className="text-yellow-200 font-bold text-lg flex items-center justify-center gap-2">
+                        <Clock3 className="w-5 h-5" />
+                        Late Joiner Victory! 🎯
+                      </p>
+                      <p className="text-yellow-300 text-sm mt-1">
+                        You won with numbers called before you joined!
+                      </p>
+                    </motion.div>
+                  )}
+                  
                   <p className="text-white/90 text-lg mb-2 font-bold">
                     Congratulations!
                   </p>
@@ -735,6 +845,20 @@ export default function GamePage() {
                 <div className="text-white/60 text-xs">Progress</div>
               </div>
             </div>
+            
+            {/* Late joiner stats */}
+            {isLateJoiner && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mt-3 pt-3 border-t border-white/20"
+              >
+                <div className="text-yellow-400 text-sm font-bold flex items-center justify-center gap-2">
+                  <Clock3 className="w-4 h-4" />
+                  Late Joiner: {numbersCalledAtJoin.length} pre-called numbers counted
+                </div>
+              </motion.div>
+            )}
           </div>
         </motion.div>
 

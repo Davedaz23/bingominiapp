@@ -1,7 +1,7 @@
 // components/BingoCard.tsx
 import { motion, AnimatePresence } from 'framer-motion';
 import { BingoCard as BingoCardType } from '../../types';
-import { Sparkles, Check } from 'lucide-react';
+import { Sparkles, Check, Clock, AlertCircle } from 'lucide-react';
 
 interface BingoCardProps {
   card: BingoCardType;
@@ -9,6 +9,8 @@ interface BingoCardProps {
   onMarkNumber: (number: number) => void;
   isInteractive?: boolean;
   isWinner?: boolean;
+  isLateJoiner?: boolean;
+  numbersCalledAtJoin?: number[];
 }
 
 export const BingoCard: React.FC<BingoCardProps> = ({
@@ -17,22 +19,57 @@ export const BingoCard: React.FC<BingoCardProps> = ({
   onMarkNumber,
   isInteractive = true,
   isWinner = false,
+  isLateJoiner = false,
+  numbersCalledAtJoin = []
 }) => {
+  // For late joiners, combine all numbers called in the game
+  const effectiveCalledNumbers = isLateJoiner 
+    ? [...new Set([...calledNumbers, ...numbersCalledAtJoin])]
+    : calledNumbers;
+
+  // Check if a number was called before the player joined
+  const wasCalledBeforeJoin = (number: number) => {
+    return isLateJoiner && numbersCalledAtJoin.includes(number);
+  };
+
   const isMarked = (row: number, col: number) => {
     const position = row * 5 + col;
     return card.markedPositions.includes(position);
   };
 
-  const isCalled = (number: number) => calledNumbers.includes(number);
+  const isCalled = (number: number) => effectiveCalledNumbers.includes(number);
 
   const handleCellClick = (number: number, row: number, col: number) => {
     if (!isInteractive || isMarked(row, col) || !isCalled(number)) return;
+    
+    // For late joiners, allow marking any called number (not restricted to post-join numbers)
     onMarkNumber(number);
   };
 
   const getColumnLetter = (col: number) => {
     const letters = ['B', 'I', 'N', 'G', 'O'];
     return letters[col];
+  };
+
+  // Calculate progress including pre-called numbers for late joiners
+  const getEffectiveMarkedCount = () => {
+    if (!isLateJoiner) return card.markedPositions.length;
+    
+    // For late joiners, count all numbers in their card that were called in the game
+    const allNumbers = card.numbers.flat();
+    let effectiveMarked = 0;
+    
+    for (let i = 0; i < allNumbers.length; i++) {
+      const number = allNumbers[i];
+      const isMarkedPosition = card.markedPositions.includes(i);
+      const isCalledInGame = effectiveCalledNumbers.includes(number);
+      
+      if (isMarkedPosition || (isCalledInGame && wasCalledBeforeJoin(number))) {
+        effectiveMarked++;
+      }
+    }
+    
+    return effectiveMarked;
   };
 
   return (
@@ -42,6 +79,24 @@ export const BingoCard: React.FC<BingoCardProps> = ({
       animate={{ scale: 1, opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
+      {/* Late Joiner Banner */}
+      <AnimatePresence>
+        {isLateJoiner && (
+          <motion.div
+            initial={{ scale: 0, y: -20 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0, y: -20 }}
+            className="absolute -top-8 left-1/2 transform -translate-x-1/2 z-20"
+          >
+            <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-4 py-2 rounded-full font-bold text-xs shadow-lg flex items-center gap-2">
+              <Clock className="w-3 h-3" />
+              Late Joiner
+              <AlertCircle className="w-3 h-3" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Winner Crown */}
       <AnimatePresence>
         {isWinner && (
@@ -49,11 +104,11 @@ export const BingoCard: React.FC<BingoCardProps> = ({
             initial={{ scale: 0, rotate: -180 }}
             animate={{ scale: 1, rotate: 0 }}
             exit={{ scale: 0, rotate: 180 }}
-            className="absolute -top-6 left-1/2 transform -translate-x-1/2 z-20"
+            className={`absolute -top-6 left-1/2 transform -translate-x-1/2 z-20 ${isLateJoiner ? 'mt-6' : ''}`}
           >
             <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-6 py-2 rounded-full font-black text-sm shadow-2xl flex items-center gap-2">
               <Sparkles className="w-4 h-4 fill-white" />
-              BINGO!
+              {isLateJoiner ? 'LATE BINGO! 🎯' : 'BINGO!'}
             </div>
           </motion.div>
         )}
@@ -64,6 +119,21 @@ export const BingoCard: React.FC<BingoCardProps> = ({
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0 bg-gradient-to-br from-purple-400 via-pink-400 to-red-400" />
         </div>
+
+        {/* Late Joiner Info */}
+        {isLateJoiner && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="mb-3 p-2 bg-yellow-50 rounded-xl border border-yellow-200"
+          >
+            <div className="flex items-center gap-2 text-yellow-800 text-xs">
+              <Clock className="w-3 h-3" />
+              <span className="font-bold">All {effectiveCalledNumbers.length} called numbers count! 🎯</span>
+            </div>
+          </motion.div>
+        )}
 
         {/* Column Headers */}
         <div className="grid grid-cols-5 gap-3 mb-3">
@@ -87,6 +157,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
               const marked = isMarked(rowIndex, colIndex);
               const called = isCalled(number);
               const isFreeSpace = rowIndex === 2 && colIndex === 2;
+              const preCalled = wasCalledBeforeJoin(number);
 
               return (
                 <motion.div
@@ -97,7 +168,9 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                     ${marked 
                       ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-lg scale-105' 
                       : called && isInteractive
-                      ? 'bg-gradient-to-br from-orange-100 to-amber-100 border-orange-300 text-orange-800 shadow-md hover:shadow-lg'
+                      ? preCalled
+                        ? 'bg-gradient-to-br from-purple-100 to-indigo-100 border-purple-300 text-purple-800 shadow-md hover:shadow-lg'
+                        : 'bg-gradient-to-br from-orange-100 to-amber-100 border-orange-300 text-orange-800 shadow-md hover:shadow-lg'
                       : 'bg-white/80 border-gray-200 text-gray-600 hover:bg-gray-50'
                     }
                     ${isInteractive && called && !marked ? 'cursor-pointer hover:scale-110' : 'cursor-default'}
@@ -124,7 +197,17 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                       <Sparkles className="w-4 h-4 mx-auto text-yellow-500" />
                     </div>
                   ) : (
-                    number
+                    <div className="text-center">
+                      {number}
+                      {/* Pre-called indicator for late joiners */}
+                      {isLateJoiner && preCalled && !marked && (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="absolute -top-1 -right-1 w-3 h-3 bg-purple-500 rounded-full border-2 border-white"
+                        />
+                      )}
+                    </div>
                   )}
                   
                   {/* Mark Indicator */}
@@ -142,7 +225,9 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                   {/* Pulse animation for called numbers */}
                   {called && !marked && isInteractive && (
                     <motion.div
-                      className="absolute inset-0 rounded-2xl border-2 border-orange-400"
+                      className={`absolute inset-0 rounded-2xl border-2 ${
+                        preCalled ? 'border-purple-400' : 'border-orange-400'
+                      }`}
                       animate={{ 
                         scale: [1, 1.1, 1],
                         opacity: [0.5, 0.8, 0.5]
@@ -173,6 +258,18 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                       }}
                     />
                   )}
+
+                  {/* Pre-called tooltip for late joiners */}
+                  {isLateJoiner && preCalled && !marked && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      whileHover={{ opacity: 1, scale: 1 }}
+                      className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-xs px-2 py-1 rounded-lg pointer-events-none z-20"
+                    >
+                      Called before you joined
+                      <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 w-2 h-2 bg-purple-600 rotate-45" />
+                    </motion.div>
+                  )}
                 </motion.div>
               );
             })
@@ -187,24 +284,68 @@ export const BingoCard: React.FC<BingoCardProps> = ({
           transition={{ delay: 1 }}
         >
           <div className="text-sm text-gray-500 font-medium">
-            Marked: {card.markedPositions.length}/25
+            {isLateJoiner ? (
+              <div className="flex flex-col">
+                <span>Effective: {getEffectiveMarkedCount()}/25</span>
+                <span className="text-xs text-gray-400">
+                  (Marked: {card.markedPositions.length})
+                </span>
+              </div>
+            ) : (
+              <span>Marked: {card.markedPositions.length}/25</span>
+            )}
           </div>
+          
           <div className="flex items-center gap-1">
-            {[...Array(5)].map((_, i) => (
-              <motion.div
-                key={i}
-                className={`w-2 h-2 rounded-full ${
-                  i < Math.min(5, Math.floor(card.markedPositions.length / 5))
-                    ? 'bg-green-400'
-                    : 'bg-gray-300'
-                }`}
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 1.2 + i * 0.1 }}
-              />
-            ))}
+            {[...Array(5)].map((_, i) => {
+              const effectiveMarked = getEffectiveMarkedCount();
+              const progressLevel = Math.min(5, Math.floor(effectiveMarked / 5));
+              
+              return (
+                <motion.div
+                  key={i}
+                  className={`w-2 h-2 rounded-full ${
+                    i < progressLevel
+                      ? isLateJoiner && i < Math.min(5, Math.floor(card.markedPositions.length / 5))
+                        ? 'bg-green-400'
+                        : isLateJoiner
+                        ? 'bg-purple-400'
+                        : 'bg-green-400'
+                      : 'bg-gray-300'
+                  }`}
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 1.2 + i * 0.1 }}
+                />
+              );
+            })}
           </div>
         </motion.div>
+
+        {/* Late Joiner Legend */}
+        {isLateJoiner && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            transition={{ delay: 1.5 }}
+            className="mt-3 pt-3 border-t border-gray-200"
+          >
+            <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-purple-100 border-2 border-purple-300 rounded"></div>
+                <span>Pre-called</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-orange-100 border-2 border-orange-300 rounded"></div>
+                <span>Called after join</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-green-400 rounded"></div>
+                <span>Marked</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
     </motion.div>
   );
