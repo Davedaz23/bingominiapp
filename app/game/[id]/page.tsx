@@ -1,8 +1,8 @@
-// app/game/[id]/page.tsx - COMPLETE FIXED VERSION
+// app/game/[id]/page.tsx - DEBUGGED VERSION
 'use client'
 
 import { useParams, useRouter } from 'next/navigation';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { useTelegram } from '../../../hooks/useTelegram';
 import { BingoCard } from '../../../components/ui/BingoCard';
@@ -12,15 +12,42 @@ import { gameAPI } from '../../../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Users, Volume2, Home, Crown, Sparkles, Zap, Gamepad2, ArrowLeft, Clock, User, Eye, Clock3, AlertCircle } from 'lucide-react';
 
+// Add debugging
+const DEBUG = true;
+const log = (...args: any[]) => {
+  if (DEBUG) {
+    console.log('[GamePage]', ...args);
+  }
+};
+
 export default function GamePage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
   const { user, WebApp } = useTelegram();
   
-  // Use useGame hook with stable references
+  // Add refs to track renders
+  const renderCount = useRef(0);
+  const lastGameState = useRef<any>(null);
+  
+  renderCount.current++;
+  log(`Render count: ${renderCount.current}`);
+
+  // Use useGame hook
   const { game, bingoCard, gameState, markNumber, refreshGame, isLoading, getWinnerInfo } = useGame(id);
   
+  // Debug game state changes
+  useEffect(() => {
+    if (gameState !== lastGameState.current) {
+      log('GameState changed:', {
+        currentNumber: gameState.currentNumber,
+        calledNumbers: gameState.calledNumbers?.length,
+        lastCalledAt: gameState.lastCalledAt
+      });
+      lastGameState.current = gameState;
+    }
+  }, [gameState]);
+
   const [showWinAnimation, setShowWinAnimation] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [showWinnerModal, setShowWinnerModal] = useState(false);
@@ -36,27 +63,31 @@ export default function GamePage() {
     }
   }, [currentUserId]);
 
-  // Memoize late joiner status to prevent unnecessary re-renders
-  const isLateJoiner = useMemo(() => 
-    bingoCard?.isLateJoiner || false, 
-    [bingoCard?.isLateJoiner]
-  );
+  // Memoize late joiner status
+  const isLateJoiner = useMemo(() => {
+    const result = bingoCard?.isLateJoiner || false;
+    log('isLateJoiner memoized:', result);
+    return result;
+  }, [bingoCard?.isLateJoiner]);
   
-  const numbersCalledAtJoin = useMemo(() => 
-    bingoCard?.numbersCalledAtJoin || [], 
-    [bingoCard?.numbersCalledAtJoin]
-  );
+  const numbersCalledAtJoin = useMemo(() => {
+    const result = bingoCard?.numbersCalledAtJoin || [];
+    log('numbersCalledAtJoin memoized:', result.length);
+    return result;
+  }, [bingoCard?.numbersCalledAtJoin]);
 
-  // Optimized timestamp updates - only update when meaningful changes occur
+  // Optimized timestamp updates
   useEffect(() => {
-    if (gameState.currentNumber || game?.numbersCalled?.length) {
+    if (gameState.currentNumber) {
+      log('New number detected, updating timestamp');
       setLastUpdate(new Date());
     }
-  }, [gameState.currentNumber, game?.numbersCalled?.length]);
+  }, [gameState.currentNumber]);
 
   // Optimized winner check
   useEffect(() => {
     if (game?.status === 'FINISHED' && game.winner && !showWinnerModal) {
+      log('Game finished, showing winner modal');
       const fetchWinnerInfo = async () => {
         try {
           const winnerData = await getWinnerInfo();
@@ -86,6 +117,7 @@ export default function GamePage() {
   // Optimized win animation check
   useEffect(() => {
     if (game?.status === 'FINISHED' && bingoCard?.isWinner && !showWinAnimation) {
+      log('Current user won, showing win animation');
       setShowWinAnimation(true);
     }
   }, [game?.status, bingoCard?.isWinner, showWinAnimation]);
@@ -106,6 +138,7 @@ export default function GamePage() {
     if (!currentUserId) return;
     
     try {
+      log('Marking number:', number);
       const isWinner = await markNumber(number);
       if (isWinner && !showWinAnimation) {
         setShowWinAnimation(true);
@@ -126,6 +159,7 @@ export default function GamePage() {
   }, [router]);
 
   const handleManualRefresh = useCallback(() => {
+    log('Manual refresh triggered');
     refreshGame();
   }, [refreshGame]);
 
@@ -156,26 +190,32 @@ export default function GamePage() {
     return player.userId === currentUserId || player.user?._id === currentUserId;
   }, [currentUserId]);
 
-  const getPlayerLateJoinerStatus = useCallback((player: any) => {
-    return player.isLateJoiner || false;
-  }, []);
-
   // Memoize derived game data
-  const calledNumbers = useMemo(() => 
-    gameState.calledNumbers || game?.numbersCalled || [], 
-    [gameState.calledNumbers, game?.numbersCalled]
-  );
+  const calledNumbers = useMemo(() => {
+    const result = gameState.calledNumbers || game?.numbersCalled || [];
+    log('calledNumbers memoized:', result.length);
+    return result;
+  }, [gameState.calledNumbers, game?.numbersCalled]);
   
-  const calledNumbersCount = useMemo(() => calledNumbers.length, [calledNumbers]);
+  const calledNumbersCount = useMemo(() => {
+    const result = calledNumbers.length;
+    log('calledNumbersCount memoized:', result);
+    return result;
+  }, [calledNumbers]);
+  
   const currentNumber = gameState.currentNumber;
   
-  const playersData = useMemo(() => ({
-    active: game?.players?.filter(p => p.playerType === 'PLAYER') || [],
-    spectators: game?.players?.filter(p => p.playerType === 'SPECTATOR') || [],
-    total: game?.players?.length || 0
-  }), [game?.players]);
+  const playersData = useMemo(() => {
+    const result = {
+      active: game?.players?.filter(p => p.playerType === 'PLAYER') || [],
+      spectators: game?.players?.filter(p => p.playerType === 'SPECTATOR') || [],
+      total: game?.players?.length || 0
+    };
+    log('playersData memoized:', result);
+    return result;
+  }, [game?.players]);
 
-  // Players Panel Component - Memoized
+  // Players Panel Component
   const PlayersPanel = useMemo(() => {
     if (!showPlayersPanel || !game?.players) return null;
 
@@ -206,66 +246,63 @@ export default function GamePage() {
             </div>
             
             <div className="space-y-3 max-h-64 overflow-y-auto">
-              {game.players.map((player, index) => {
-                const isLate = getPlayerLateJoinerStatus(player);
-                return (
-                  <motion.div
-                    key={player._id || index}
-                    className={`flex items-center justify-between p-3 rounded-2xl border ${
-                      isCurrentUser(player) 
-                        ? 'bg-blue-500/20 border-blue-500/30' 
-                        : 'bg-white/10 border-white/20'
-                    }`}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        isCurrentUser(player) ? 'bg-blue-500' : 'bg-white/20'
-                      }`}>
-                        <User className="w-4 h-4 text-white" />
+              {game.players.map((player, index) => (
+                <motion.div
+                  key={player._id || index}
+                  className={`flex items-center justify-between p-3 rounded-2xl border ${
+                    isCurrentUser(player) 
+                      ? 'bg-blue-500/20 border-blue-500/30' 
+                      : 'bg-white/10 border-white/20'
+                  }`}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      isCurrentUser(player) ? 'bg-blue-500' : 'bg-white/20'
+                    }`}>
+                      <User className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <div className="text-white font-medium flex items-center gap-2">
+                        {getPlayerDisplayName(player)}
+                        {isCurrentUser(player) && (
+                          <span className="text-blue-300 text-sm">(You)</span>
+                        )}
                       </div>
-                      <div>
-                        <div className="text-white font-medium flex items-center gap-2">
-                          {getPlayerDisplayName(player)}
-                          {isCurrentUser(player) && (
-                            <span className="text-blue-300 text-sm">(You)</span>
-                          )}
-                        </div>
-                        <div className="text-white/60 text-xs flex items-center gap-1">
-                          {player.playerType === 'SPECTATOR' ? (
-                            <>
-                              <Eye className="w-3 h-3" />
-                              Spectator
-                            </>
-                          ) : (
-                            <>
-                              <User className="w-3 h-3" />
-                              Player
-                              {isLate && (
-                                <span className="text-yellow-400 flex items-center gap-1">
-                                  <Clock3 className="w-3 h-3" />
-                                  Late Joiner
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </div>
+                      <div className="text-white/60 text-xs flex items-center gap-1">
+                        {player.playerType === 'SPECTATOR' ? (
+                          <>
+                            <Eye className="w-3 h-3" />
+                            Spectator
+                          </>
+                        ) : (
+                          <>
+                            <User className="w-3 h-3" />
+                            Player
+                            {player.isLateJoiner && (
+                              <span className="text-yellow-400 flex items-center gap-1">
+                                <Clock3 className="w-3 h-3" />
+                                Late Joiner
+                              </span>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
-                    
-                    {player.playerType === 'PLAYER' && (
-                      <div className="text-right">
-                        <div className="text-white text-sm">
-                          {bingoCard?.markedPositions?.length || 0}/25
-                        </div>
-                        <div className="text-white/60 text-xs">marked</div>
+                  </div>
+                  
+                  {player.playerType === 'PLAYER' && (
+                    <div className="text-right">
+                      <div className="text-white text-sm">
+                        {bingoCard?.markedPositions?.length || 0}/25
                       </div>
-                    )}
-                  </motion.div>
-                );
-              })}
+                      <div className="text-white/60 text-xs">marked</div>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
             </div>
             
             <div className="mt-4 pt-4 border-t border-white/20">
@@ -297,144 +334,11 @@ export default function GamePage() {
         </motion.div>
       </AnimatePresence>
     );
-  }, [showPlayersPanel, game?.players, playersData, isLateJoiner, togglePlayersPanel, getPlayerLateJoinerStatus, isCurrentUser, getPlayerDisplayName, bingoCard?.markedPositions?.length]);
-
-  // Winner Modal Component - Memoized
-  const WinnerModal = useMemo(() => {
-    if (!showWinnerModal || !winnerInfo) return null;
-
-    return (
-      <AnimatePresence>
-        <motion.div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            className="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-3xl p-8 mx-4 text-center shadow-2xl border-2 border-white/30 w-full max-w-sm"
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 200, damping: 15 }}
-          >
-            <div className="absolute inset-0 overflow-hidden rounded-3xl">
-              {[...Array(30)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="absolute text-2xl"
-                  initial={{
-                    x: Math.random() * 300 - 150,
-                    y: -50,
-                    rotate: 0,
-                    scale: 0,
-                  }}
-                  animate={{
-                    y: 400,
-                    rotate: 360,
-                    scale: [0, 1, 0],
-                  }}
-                  transition={{
-                    duration: 2 + Math.random() * 1,
-                    delay: Math.random() * 0.5,
-                  }}
-                  style={{
-                    left: `${Math.random() * 100}%`,
-                  }}
-                >
-                  🎉
-                </motion.div>
-              ))}
-            </div>
-
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.3, type: "spring" }}
-              className="relative z-10"
-            >
-              <Trophy className="w-16 h-16 text-white mx-auto mb-4 drop-shadow-2xl" />
-              <h2 className="text-3xl font-black text-white mb-4 drop-shadow-lg">
-                GAME OVER!
-              </h2>
-              
-              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30">
-                <div className="flex items-center justify-center gap-3 mb-3">
-                  <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
-                  <h3 className="text-xl font-black text-white">
-                    {winnerInfo.winner?.firstName || winnerInfo.winner?.username || 'Unknown Player'}
-                  </h3>
-                </div>
-                <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
-                
-                {bingoCard?.isLateJoiner && winnerInfo.winner?._id === currentUserId && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.5 }}
-                    className="mt-2 p-2 bg-yellow-500/30 rounded-lg border border-yellow-500/50"
-                  >
-                    <p className="text-yellow-200 text-sm font-bold flex items-center justify-center gap-2">
-                      <Clock3 className="w-4 h-4" />
-                      Late Joiner Victory! 🎯
-                    </p>
-                  </motion.div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
-                <div>
-                  <div className="font-bold">{winnerInfo.totalPlayers || game?.currentPlayers}</div>
-                  <div>Players</div>
-                </div>
-                <div>
-                  <div className="font-bold">{winnerInfo.numbersCalled || game?.numbersCalled?.length || 0}</div>
-                  <div>Numbers Called</div>
-                </div>
-              </div>
-              
-              <motion.button
-                onClick={handlePlayAgain}
-                className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Play Again
-              </motion.button>
-            </motion.div>
-          </motion.div>
-        </motion.div>
-      </AnimatePresence>
-    );
-  }, [showWinnerModal, winnerInfo, game?.currentPlayers, game?.numbersCalled?.length, bingoCard?.isLateJoiner, currentUserId, handlePlayAgain]);
-
-  // Late Joiner Info Banner - Memoized
-  const LateJoinerInfo = useMemo(() => {
-    if (!isLateJoiner || game?.status !== 'ACTIVE') return null;
-
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-4"
-      >
-        <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
-          <div className="flex items-center gap-3">
-            <Clock3 className="w-6 h-6 text-yellow-400" />
-            <div>
-              <h4 className="text-yellow-300 font-bold text-lg">Late Joiner</h4>
-              <p className="text-yellow-400/80 text-sm">
-                You joined when {numbersCalledAtJoin.length} numbers were already called.
-                All numbers count towards your bingo! 🎯
-              </p>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-    );
-  }, [isLateJoiner, game?.status, numbersCalledAtJoin.length]);
+  }, [showPlayersPanel, game?.players, playersData, isLateJoiner, togglePlayersPanel, isCurrentUser, getPlayerDisplayName, bingoCard?.markedPositions?.length]);
 
   // Loading state
   if (isLoading) {
+    log('Loading state');
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
         <div className="text-center">
@@ -462,6 +366,7 @@ export default function GamePage() {
   }
 
   if (!game) {
+    log('Game not found');
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
         <div className="text-center">
@@ -478,6 +383,7 @@ export default function GamePage() {
   }
 
   if (game.status === 'WAITING') {
+    log('Game in waiting state, showing lobby');
     return (
       <GameLobby
         game={game}
@@ -487,12 +393,145 @@ export default function GamePage() {
     );
   }
 
+  log('Rendering main game UI', {
+    currentNumber,
+    calledNumbersCount,
+    gameStatus: game.status
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
-      {/* Memoized Components */}
+      {/* Players Panel */}
       {PlayersPanel}
-      {WinnerModal}
-      {LateJoinerInfo}
+
+      {/* Winner Modal */}
+      <AnimatePresence>
+        {showWinnerModal && winnerInfo && (
+          <motion.div
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-3xl p-8 mx-4 text-center shadow-2xl border-2 border-white/30 w-full max-w-sm"
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 200, damping: 15 }}
+            >
+              <div className="absolute inset-0 overflow-hidden rounded-3xl">
+                {[...Array(30)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="absolute text-2xl"
+                    initial={{
+                      x: Math.random() * 300 - 150,
+                      y: -50,
+                      rotate: 0,
+                      scale: 0,
+                    }}
+                    animate={{
+                      y: 400,
+                      rotate: 360,
+                      scale: [0, 1, 0],
+                    }}
+                    transition={{
+                      duration: 2 + Math.random() * 1,
+                      delay: Math.random() * 0.5,
+                    }}
+                    style={{
+                      left: `${Math.random() * 100}%`,
+                    }}
+                  >
+                    🎉
+                  </motion.div>
+                ))}
+              </div>
+
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.3, type: "spring" }}
+                className="relative z-10"
+              >
+                <Trophy className="w-16 h-16 text-white mx-auto mb-4 drop-shadow-2xl" />
+                <h2 className="text-3xl font-black text-white mb-4 drop-shadow-lg">
+                  GAME OVER!
+                </h2>
+                
+                <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30">
+                  <div className="flex items-center justify-center gap-3 mb-3">
+                    <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
+                    <h3 className="text-xl font-black text-white">
+                      {winnerInfo.winner?.firstName || winnerInfo.winner?.username || 'Unknown Player'}
+                    </h3>
+                  </div>
+                  <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
+                  
+                  {bingoCard?.isLateJoiner && winnerInfo.winner?._id === currentUserId && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.5 }}
+                      className="mt-2 p-2 bg-yellow-500/30 rounded-lg border border-yellow-500/50"
+                    >
+                      <p className="text-yellow-200 text-sm font-bold flex items-center justify-center gap-2">
+                        <Clock3 className="w-4 h-4" />
+                        Late Joiner Victory! 🎯
+                      </p>
+                    </motion.div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
+                  <div>
+                    <div className="font-bold">{winnerInfo.totalPlayers || game?.currentPlayers}</div>
+                    <div>Players</div>
+                  </div>
+                  <div>
+                    <div className="font-bold">{winnerInfo.numbersCalled || game?.numbersCalled?.length || 0}</div>
+                    <div>Numbers Called</div>
+                  </div>
+                </div>
+                
+                <motion.button
+                  onClick={handlePlayAgain}
+                  className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Play Again
+                </motion.button>
+              </motion.div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Late Joiner Info Banner */}
+      <AnimatePresence>
+        {isLateJoiner && game?.status === 'ACTIVE' && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-4 mx-4"
+          >
+            <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
+              <div className="flex items-center gap-3">
+                <Clock3 className="w-6 h-6 text-yellow-400" />
+                <div>
+                  <h4 className="text-yellow-300 font-bold text-lg">Late Joiner</h4>
+                  <p className="text-yellow-400/80 text-sm">
+                    You joined when {numbersCalledAtJoin.length} numbers were already called.
+                    All numbers count towards your bingo! 🎯
+                  </p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Animated Background */}
       <div className="absolute inset-0">
@@ -639,7 +678,7 @@ export default function GamePage() {
         {/* Current Number Display */}
         {currentNumber && (
           <motion.div
-            key={currentNumber}
+            key={`current-number-${currentNumber}`}
             className="bg-white/20 backdrop-blur-lg rounded-3xl p-8 text-center mb-6 border border-white/30 shadow-2xl"
             initial={{ scale: 0, rotate: -180 }}
             animate={{ scale: 1, rotate: 0 }}
