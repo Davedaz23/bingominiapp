@@ -67,6 +67,10 @@ export default function GamePage() {
     router.push('/games');
   };
 
+  // FIXED: Use gameState.calledNumbers as the primary source for called numbers
+  const calledNumbers = gameState?.calledNumbers || game?.numbersCalled || [];
+  const calledNumbersCount = calledNumbers.length;
+
   // Animation variants
   const backgroundVariants = {
     animate: (i: number) => ({
@@ -197,7 +201,8 @@ export default function GamePage() {
                   <span>{game.currentPlayers} players</span>
                 </div>
                 <span>•</span>
-                <span>{game.numbersCalled?.length || 0} numbers called</span>
+                {/* FIXED: Use calledNumbersCount instead of game.numbersCalled */}
+                <span>{calledNumbersCount} numbers called</span>
                 {isUserHost() && (
                   <>
                     <span>•</span>
@@ -279,7 +284,7 @@ export default function GamePage() {
             >
               <BingoCard
                 card={bingoCard}
-                calledNumbers={gameState.calledNumbers}
+                calledNumbers={calledNumbers} // FIXED: Use the unified calledNumbers
                 onMarkNumber={handleMarkNumber}
                 isInteractive={game.status === 'ACTIVE'}
                 isWinner={bingoCard.isWinner}
@@ -294,7 +299,7 @@ export default function GamePage() {
             transition={{ delay: 0.4 }}
           >
             <NumberGrid
-              calledNumbers={gameState.calledNumbers}
+              calledNumbers={calledNumbers} // FIXED: Use the unified calledNumbers
               currentNumber={gameState.currentNumber}
             />
           </motion.div>
@@ -396,7 +401,8 @@ export default function GamePage() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <div className="text-xl font-black text-white">{game.numbersCalled?.length || 0}</div>
+                {/* FIXED: Use calledNumbersCount */}
+                <div className="text-xl font-black text-white">{calledNumbersCount}</div>
                 <div className="text-white/60 text-xs">Numbers Called</div>
               </div>
               <div>
