@@ -1,4 +1,4 @@
-// app/game/[id]/page.tsx - Updated version
+// app/game/[id]/page.tsx - CORRECTED VERSION
 'use client'
 
 import { useParams, useRouter } from 'next/navigation';
@@ -17,7 +17,7 @@ export default function GamePage() {
   const router = useRouter();
   const id = params.id as string;
   const { user, WebApp } = useTelegram();
-  const { game, bingoCard, gameState, markNumber, refreshGame, isLoading } = useGame(id);
+  const { game, bingoCard, gameState, markNumber, refreshGame, isLoading, getWinnerInfo } = useGame(id);
   const [showWinAnimation, setShowWinAnimation] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [showWinnerModal, setShowWinnerModal] = useState(false);
@@ -41,9 +41,21 @@ export default function GamePage() {
     if (game?.status === 'FINISHED' && game.winner) {
       const fetchWinnerInfo = async () => {
         try {
-          const response = await gameAPI.getWinnerInfo(game._id);
-          setWinnerInfo(response.data.winnerInfo);
-          setShowWinnerModal(true);
+          // OPTION 1: Use the hook's getWinnerInfo function
+          const winnerData = await getWinnerInfo();
+          if (winnerData) {
+            setWinnerInfo(winnerData);
+            setShowWinnerModal(true);
+          } else {
+            // Fallback to basic winner info
+            setWinnerInfo({
+              winner: game.winner,
+              gameCode: game.code,
+              totalPlayers: game.currentPlayers,
+              numbersCalled: game.numbersCalled?.length || 0
+            });
+            setShowWinnerModal(true);
+          }
         } catch (error) {
           console.error('Error fetching winner info:', error);
           // Fallback to basic winner info
@@ -59,7 +71,7 @@ export default function GamePage() {
       
       fetchWinnerInfo();
     }
-  }, [game?.status, game?.winner, game?._id, game?.code, game?.currentPlayers, game?.numbersCalled]);
+  }, [game?.status, game?.winner, game?._id, game?.code, game?.currentPlayers, game?.numbersCalled, getWinnerInfo]);
 
   // Show win animation when current user wins
   useEffect(() => {
@@ -112,10 +124,10 @@ export default function GamePage() {
 
   // Calculate time since last number
   const getTimeSinceLastNumber = useCallback(() => {
-    if (!gameState.lastCalledAt) return 'Waiting...';
+    if (!gameState.lastCalledAt) return 'Waiting for first number...';
     
     const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - new Date(gameState.lastCalledAt).getTime()) / 1000);
+    const diffInSeconds = Math.floor((now.getTime() - gameState.lastCalledAt.getTime()) / 1000);
     
     if (diffInSeconds < 5) return 'Just now';
     if (diffInSeconds < 60) return `${diffInSeconds}s ago`;
@@ -593,7 +605,7 @@ export default function GamePage() {
           className="text-center mt-4"
         >
           <p className="text-white/40 text-xs">
-            Auto-refreshing every {game.status === 'ACTIVE' ? '2' : '10'} seconds
+            Auto-refreshing every {game.status === 'ACTIVE' ? '3' : '8'} seconds
           </p>
         </motion.div>
       </div>
