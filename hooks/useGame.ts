@@ -86,6 +86,8 @@ export const useGame = (gameId: string): UseGameReturn => {
       stopPolling();
     };
   }, []);
+  // Effect to automatically check for wins when called numbers change
+
 
   // Get current user ID
   const getCurrentUserId = (): string | null => {
@@ -144,7 +146,7 @@ export const useGame = (gameId: string): UseGameReturn => {
   }, []);
 
   // Enhanced game fetching with optimized updates
-  const fetchGame = useCallback(async (silent: boolean = false) => {
+const fetchGame = useCallback(async (silent: boolean = false) => {
     if (!gameId || !isMountedRef.current) return;
 
     try {
@@ -168,9 +170,18 @@ export const useGame = (gameId: string): UseGameReturn => {
 
       // Fetch user's bingo card with enhanced error handling
       const userId = getCurrentUserId();
+        if (userId && gameData.status === 'ACTIVE') {
+    const cardData = await fetchBingoCard(gameId, userId);
+    
+    // Check for automatic wins for late joiners
+    if (cardData?.isLateJoiner && !cardData.isWinner) {
+      await checkAutomaticWin();
+    }
+  }
       if (userId && gameData.status !== 'FINISHED') {
         await fetchBingoCard(gameId, userId);
       }
+      
 
     } catch (err) {
       if (!isMountedRef.current) return;
@@ -237,52 +248,52 @@ export const useGame = (gameId: string): UseGameReturn => {
   }, []);
 
   // Enhanced mark number function with optimistic updates
-  const markNumber = useCallback(async (number: number): Promise<boolean> => {
-    try {
-      const userId = getCurrentUserId();
-      if (!userId) {
-        throw new Error('No user ID found');
-      }
 
-      console.log(`🎯 Marking number: ${number}`);
-      const response = await gameAPI.markNumber(gameId, userId, number);
-      
-      // Update bingo card immediately with optimistic update
-      const updatedCard = response.data.bingoCard;
-      
-      // Only update if card changed
-      if (JSON.stringify(bingoCardRef.current) !== JSON.stringify(updatedCard)) {
-        setBingoCard(updatedCard);
-      }
-      
-      if (response.data.isWinner) {
-        console.log('🎉 BINGO! User won!');
-        
-        // Special logging for late joiners
-        if (updatedCard.isLateJoiner) {
-          console.log('🏆 LATE JOINER VICTORY! User won with pre-called numbers!');
-        }
-        
-        // Refresh game to get final state
-        await fetchGame(true);
-        return true;
-      }
-      
-      return false;
-    } catch (err) {
-      console.error('Error marking number:', err);
-      const apiError = err as ApiError;
-      
-      // Enhanced error messages for late joiners
-      const errorMessage = apiError.response?.data?.error || apiError.message || 'Failed to mark number';
-      
-      if (errorMessage.includes('called before you joined')) {
-        throw new Error('This number was called before you joined. All numbers count towards your bingo automatically!');
-      }
-      
-      throw new Error(errorMessage);
+
+const markNumber = useCallback(async (number: number): Promise<boolean> => {
+  try {
+    const userId = getCurrentUserId();
+    if (!userId) {
+      throw new Error('No user ID found');
     }
-  }, [gameId, fetchGame]);
+
+    console.log(`🎯 Marking number: ${number}`);
+    const response = await gameAPI.markNumber(gameId, userId, number);
+    
+    // Update bingo card immediately with optimistic update
+    const updatedCard = response.data.bingoCard;
+    
+    // FIX: Always update the card to get the latest winner status
+    setBingoCard(updatedCard);
+    
+    if (response.data.isWinner) {
+      console.log('🎉 BINGO! User won!');
+      
+      // Special logging for late joiners
+      if (updatedCard.isLateJoiner) {
+        console.log('🏆 LATE JOINER VICTORY! User won with pre-called numbers!');
+      }
+      
+      // Refresh game to get final state
+      await fetchGame(true);
+      return true;
+    }
+    
+    return false;
+  } catch (err) {
+    console.error('Error marking number:', err);
+    const apiError = err as ApiError;
+    
+    // Enhanced error messages for late joiners
+    const errorMessage = apiError.response?.data?.error || apiError.message || 'Failed to mark number';
+    
+    if (errorMessage.includes('called before you joined')) {
+      throw new Error('This number was called before you joined. All numbers count towards your bingo automatically!');
+    }
+    
+    throw new Error(errorMessage);
+  }
+}, [gameId, fetchGame]);
 
   // Manual number calling for debugging
   const manualCallNumber = useCallback(async (): Promise<number> => {
@@ -358,6 +369,32 @@ export const useGame = (gameId: string): UseGameReturn => {
     numbersCalledAtJoin,
   };
 
+  //check automatic win
+  
+const checkAutomaticWin = useCallback(async (): Promise<boolean> => {
+  try {
+    const userId = getCurrentUserId();
+    if (!userId || !bingoCardRef.current?.isLateJoiner) return false;
+
+    // Only check for automatic wins for late joiners
+    const response = await gameAPI.checkForWin(gameId, userId);
+    
+    if (response.data.isWinner && !bingoCardRef.current?.isWinner) {
+      console.log('🎉 AUTOMATIC BINGO DETECTED for late joiner!');
+      
+      // Update bingo card with winner status
+      setBingoCard(prev => prev ? { ...prev, isWinner: true } : null);
+      
+      // Show win animation
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error checking automatic win:', error);
+    return false;
+  }
+}, [gameId]);
   // Main effect - initialize game and polling
   useEffect(() => {
     if (!gameId) return;
@@ -391,6 +428,17 @@ export const useGame = (gameId: string): UseGameReturn => {
     }
   }, [gameState.currentNumber, gameState.calledNumbers.length, gameState.lastCalledAt]);
 
+
+  useEffect(() => {
+  if (bingoCard?.isLateJoiner && !bingoCard.isWinner && gameState.calledNumbers.length > 0) {
+    // Debounced automatic win check for late joiners
+    const timeoutId = setTimeout(() => {
+      checkAutomaticWin();
+    }, 1000);
+    
+    return () => clearTimeout(timeoutId);
+  }
+}, [gameState.calledNumbers, bingoCard?.isLateJoiner, bingoCard?.isWinner, checkAutomaticWin]);
   return {
     // State
     game,

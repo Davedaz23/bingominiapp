@@ -33,26 +33,35 @@ export const BingoCard: React.FC<BingoCardProps> = ({
   };
 
   // FIXED: Enhanced isMarked function that includes pre-called numbers for late joiners
-  const isMarked = (row: number, col: number) => {
-    const position = row * 5 + col;
+const isMarked = (row: number, col: number): boolean => {
+  const position = row * 5 + col;
+  
+  // If it's already manually marked, return true
+  if (card.markedPositions.includes(position)) {
+    return true;
+  }
+  
+  // FIX: For late joiners, if the number was called before they joined AND is currently called, consider it marked
+  if (isLateJoiner) {
+    const number = card.numbers[row][col];
+    const isFreeSpace = row === 2 && col === 2;
     
-    // If it's already manually marked, return true
-    if (card.markedPositions.includes(position)) {
+    // FIX: Only auto-mark if the number is in the effective called numbers
+    if (!isFreeSpace && wasCalledBeforeJoin(number) && isCalled(number)) {
       return true;
     }
-    
-    // For late joiners, if the number was called before they joined, consider it marked
-    if (isLateJoiner) {
-      const number = card.numbers[row][col];
-      const isFreeSpace = row === 2 && col === 2;
-      
-      if (!isFreeSpace && wasCalledBeforeJoin(number)) {
-        return true;
-      }
-    }
-    
-    return false;
-  };
+  }
+  
+  return false;
+};
+const shouldAutoMark = (row: number, col: number): boolean => {
+  if (!isLateJoiner) return false;
+  
+  const number = card.numbers[row][col];
+  const isFreeSpace = row === 2 && col === 2;
+  
+  return !isFreeSpace && wasCalledBeforeJoin(number) && isCalled(number);
+};
 
   const isCalled = (number: number) => effectiveCalledNumbers.includes(number);
 
@@ -85,6 +94,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
     
     return effectiveMarked;
   };
+  
 
   // FIXED: Get visual status for each cell
   const getCellStatus = (row: number, col: number, number: number) => {
@@ -99,13 +109,14 @@ export const BingoCard: React.FC<BingoCardProps> = ({
       isFreeSpace,
       preCalled,
       // FIXED: Determine if cell should be visually marked (green)
-      shouldShowMarked: marked,
-      // FIXED: Determine if cell should show as called (yellow/orange)
-      shouldShowCalled: called && !marked,
+        shouldShowMarked: marked || shouldAutoMark,
+    // FIXED: Determine if cell should show as called (yellow/orange)
+    shouldShowCalled: called && !marked && !shouldAutoMark, 
       // FIXED: Special case for pre-called numbers that are effectively marked
       isEffectivelyMarked: isLateJoiner && preCalled && !card.markedPositions.includes(row * 5 + col)
     };
   };
+  
 
   return (
     <motion.div 
