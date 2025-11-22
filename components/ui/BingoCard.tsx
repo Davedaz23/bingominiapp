@@ -1,4 +1,4 @@
-// components/BingoCard.tsx - FIXED VERSION
+// components/BingoCard.tsx - FIXED VERSION with Automatic Marking
 import { motion, AnimatePresence } from 'framer-motion';
 import { BingoCard as BingoCardType } from '../../types';
 import { Sparkles, Check, Clock, AlertCircle } from 'lucide-react';
@@ -22,7 +22,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
   isLateJoiner = false,
   numbersCalledAtJoin = []
 }) => {
-  // For late joiners, combine all numbers called in the game for win detection
+  // For late joiners, combine all numbers called in the game
   const effectiveCalledNumbers = isLateJoiner 
     ? [...new Set([...calledNumbers, ...numbersCalledAtJoin])]
     : calledNumbers;
@@ -32,23 +32,46 @@ export const BingoCard: React.FC<BingoCardProps> = ({
     return isLateJoiner && numbersCalledAtJoin.includes(number);
   };
 
-  // FIXED: Only show as marked if user manually marked it
-  const isVisuallyMarked = (row: number, col: number): boolean => {
+  // FIXED: Check if number should be automatically marked (called and in card)
+  const shouldBeAutomaticallyMarked = (row: number, col: number, number: number): boolean => {
+    const position = row * 5 + col;
+    const isFreeSpace = row === 2 && col === 2;
+    
+    if (isFreeSpace) return true; // FREE space is always marked
+    
+    // For late joiners: automatically mark ALL called numbers (both pre-join and post-join)
+    // For regular players: automatically mark ALL called numbers
+    return effectiveCalledNumbers.includes(number);
+  };
+
+  // FIXED: Check if user manually marked this position
+  const isManuallyMarked = (row: number, col: number): boolean => {
     const position = row * 5 + col;
     return card.markedPositions.includes(position);
   };
 
-  // FIXED: Check if number is called (for visual styling)
-  const isCalled = (number: number) => effectiveCalledNumbers.includes(number);
+  // FIXED: A number is visually marked if it's either automatically marked OR manually marked
+  const isVisuallyMarked = (row: number, col: number, number: number): boolean => {
+    return shouldBeAutomaticallyMarked(row, col, number) || isManuallyMarked(row, col);
+  };
 
-  // FIXED: Check if number was called after user joined (for interactive marking)
-  const isCalledAfterJoin = (number: number) => {
+  // FIXED: Check if number can be manually marked (called after join for late joiners)
+  const canBeManuallyMarked = (number: number) => {
     if (!isLateJoiner) return calledNumbers.includes(number);
     return calledNumbers.includes(number) && !wasCalledBeforeJoin(number);
   };
 
   const handleCellClick = (number: number, row: number, col: number) => {
-    if (!isInteractive || isVisuallyMarked(row, col) || !isCalledAfterJoin(number)) return;
+    const position = row * 5 + col;
+    const isFreeSpace = row === 2 && col === 2;
+    
+    // Don't allow clicking if:
+    // - Not interactive
+    // - Already manually marked
+    // - FREE space
+    // - Number can't be manually marked (for late joiners: pre-called numbers)
+    if (!isInteractive || isManuallyMarked(row, col) || isFreeSpace || !canBeManuallyMarked(number)) return;
+    
     onMarkNumber(number);
   };
 
@@ -59,22 +82,26 @@ export const BingoCard: React.FC<BingoCardProps> = ({
 
   // FIXED: Get visual status for each cell
   const getCellStatus = (row: number, col: number, number: number) => {
-    const visuallyMarked = isVisuallyMarked(row, col);
-    const preCalled = isLateJoiner && wasCalledBeforeJoin(number) && !visuallyMarked;
-    const calledAfterJoin = isCalledAfterJoin(number) && !visuallyMarked;
+    const automaticallyMarked = shouldBeAutomaticallyMarked(row, col, number);
+    const manuallyMarked = isManuallyMarked(row, col);
+    const visuallyMarked = automaticallyMarked || manuallyMarked;
+    const preCalled = isLateJoiner && wasCalledBeforeJoin(number);
+    const canMark = canBeManuallyMarked(number) && !manuallyMarked;
     const isFreeSpace = row === 2 && col === 2;
 
     return {
+      automaticallyMarked,
+      manuallyMarked,
       visuallyMarked,
       preCalled,
-      calledAfterJoin,
+      canMark,
       isFreeSpace,
-      // Only show green checkmark if manually marked by user
+      // Show green checkmark if automatically OR manually marked
       shouldShowMarked: visuallyMarked,
-      // Show as pre-called (purple) for numbers called before join
-      shouldShowPreCalled: preCalled,
-      // Show as called (orange) for numbers called after join that can be marked
-      shouldShowCalled: calledAfterJoin,
+      // Show as pre-called background for late joiners (subtle indication)
+      shouldShowPreCalled: isLateJoiner && preCalled && !manuallyMarked,
+      // Show as interactive (orange pulse) if can be manually marked
+      shouldShowInteractive: canMark && isInteractive,
     };
   };
 
@@ -137,8 +164,8 @@ export const BingoCard: React.FC<BingoCardProps> = ({
             <div className="flex items-center gap-2 text-yellow-800 text-xs">
               <Clock className="w-3 h-3" />
               <span className="font-bold">
-                All {effectiveCalledNumbers.length} called numbers count towards winning! 
-                Mark {calledNumbers.length - numbersCalledAtJoin.length} numbers called after you joined.
+                All {effectiveCalledNumbers.length} called numbers are automatically marked! 
+                {numbersCalledAtJoin.length} were called before you joined.
               </span>
             </div>
           </motion.div>
@@ -164,13 +191,15 @@ export const BingoCard: React.FC<BingoCardProps> = ({
           {card.numbers.map((row, rowIndex) =>
             row.map((number, colIndex) => {
               const {
+                automaticallyMarked,
+                manuallyMarked,
                 visuallyMarked,
                 preCalled,
-                calledAfterJoin,
+                canMark,
                 isFreeSpace,
                 shouldShowMarked,
                 shouldShowPreCalled,
-                shouldShowCalled,
+                shouldShowInteractive,
               } = getCellStatus(rowIndex, colIndex, number);
 
               return (
@@ -178,23 +207,23 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                   key={`${rowIndex}-${colIndex}`}
                   className={`
                     aspect-square rounded-2xl flex items-center justify-center text-lg font-bold relative
-                    border-3 transition-all duration-300 cursor-pointer
+                    border-3 transition-all duration-300
                     ${shouldShowMarked 
                       ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-lg scale-105' 
                       : shouldShowPreCalled
-                      ? 'bg-gradient-to-br from-purple-100 to-indigo-100 border-purple-300 text-purple-800 shadow-md'
-                      : shouldShowCalled && isInteractive
-                      ? 'bg-gradient-to-br from-orange-100 to-amber-100 border-orange-300 text-orange-800 shadow-md hover:shadow-lg'
-                      : 'bg-white/80 border-gray-200 text-gray-600 hover:bg-gray-50'
+                      ? 'bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200 text-purple-700'
+                      : shouldShowInteractive
+                      ? 'bg-gradient-to-br from-orange-50 to-amber-50 border-orange-300 text-orange-800 shadow-md hover:shadow-lg cursor-pointer'
+                      : 'bg-white/80 border-gray-200 text-gray-600'
                     }
-                    ${isInteractive && calledAfterJoin ? 'cursor-pointer hover:scale-110' : 'cursor-default'}
+                    ${shouldShowInteractive ? 'cursor-pointer hover:scale-110' : 'cursor-default'}
                     ${isWinner && visuallyMarked ? 'ring-4 ring-yellow-400 ring-opacity-50' : ''}
                   `}
-                  whileHover={isInteractive && calledAfterJoin ? { 
+                  whileHover={shouldShowInteractive ? { 
                     scale: 1.1,
                     rotate: [0, -2, 2, 0]
                   } : {}}
-                  whileTap={{ scale: isInteractive && calledAfterJoin ? 0.95 : 1 }}
+                  whileTap={{ scale: shouldShowInteractive ? 0.95 : 1 }}
                   onClick={() => handleCellClick(number, rowIndex, colIndex)}
                   initial={{ scale: 0, rotate: 180 }}
                   animate={{ scale: 1, rotate: 0 }}
@@ -216,7 +245,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                     </div>
                   )}
                   
-                  {/* Mark Indicator - Only show for manually marked cells */}
+                  {/* Mark Indicator - Show for ALL marked cells (automatic + manual) */}
                   {shouldShowMarked && (
                     <motion.div
                       className="absolute inset-0 flex items-center justify-center"
@@ -228,13 +257,13 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                     </motion.div>
                   )}
 
-                  {/* Pulse animation for called numbers that aren't marked yet */}
-                  {shouldShowCalled && isInteractive && (
+                  {/* Pulse animation for numbers that can be manually marked */}
+                  {shouldShowInteractive && (
                     <motion.div
                       className="absolute inset-0 rounded-2xl border-2 border-orange-400"
                       animate={{ 
                         scale: [1, 1.1, 1],
-                        opacity: [0.5, 0.8, 0.5]
+                        opacity: [0.3, 0.6, 0.3]
                       }}
                       transition={{ 
                         duration: 2, 
@@ -263,14 +292,14 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                     />
                   )}
 
-                  {/* Pre-called tooltip for late joiners */}
+                  {/* Pre-called indicator for late joiners */}
                   {shouldShowPreCalled && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
                       whileHover={{ opacity: 1, scale: 1 }}
                       className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-xs px-2 py-1 rounded-lg pointer-events-none z-20"
                     >
-                      Called before you joined
+                      Automatically marked (called before you joined)
                       <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 w-2 h-2 bg-purple-600 rotate-45" />
                     </motion.div>
                   )}
@@ -288,19 +317,26 @@ export const BingoCard: React.FC<BingoCardProps> = ({
           transition={{ delay: 1 }}
         >
           <div className="text-sm text-gray-500 font-medium">
-            <span>Manually Marked: {card.markedPositions.length}/25</span>
+            <span>Marked: {card.numbers.flat().filter((num, index) => {
+              const row = Math.floor(index / 5);
+              const col = index % 5;
+              return isVisuallyMarked(row, col, num);
+            }).length}/25</span>
             {isLateJoiner && (
               <div className="text-xs text-gray-400">
-                Effective for winning: {effectiveCalledNumbers.filter(num => 
-                  card.numbers.flat().includes(num)
-                ).length}/25
+                {numbersCalledAtJoin.length} pre-called + {calledNumbers.length - numbersCalledAtJoin.length} post-called
               </div>
             )}
           </div>
           
           <div className="flex items-center gap-1">
             {[...Array(5)].map((_, i) => {
-              const progressLevel = Math.min(5, Math.floor(card.markedPositions.length / 5));
+              const totalMarked = card.numbers.flat().filter((num, index) => {
+                const row = Math.floor(index / 5);
+                const col = index % 5;
+                return isVisuallyMarked(row, col, num);
+              }).length;
+              const progressLevel = Math.min(5, Math.floor(totalMarked / 5));
               
               return (
                 <motion.div
@@ -327,16 +363,16 @@ export const BingoCard: React.FC<BingoCardProps> = ({
           >
             <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
               <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-green-400 rounded"></div>
+                <span>Automatically Marked</span>
+              </div>
+              <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-purple-100 border-2 border-purple-300 rounded"></div>
                 <span>Pre-called</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-orange-100 border-2 border-orange-300 rounded"></div>
-                <span>Markable</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-green-400 rounded"></div>
-                <span>Marked</span>
+                <span>Can Mark</span>
               </div>
             </div>
           </motion.div>
