@@ -1,4 +1,4 @@
-// components/BingoCard.tsx
+// components/BingoCard.tsx - FIXED VERSION
 import { motion, AnimatePresence } from 'framer-motion';
 import { BingoCard as BingoCardType } from '../../types';
 import { Sparkles, Check, Clock, AlertCircle } from 'lucide-react';
@@ -32,9 +32,26 @@ export const BingoCard: React.FC<BingoCardProps> = ({
     return isLateJoiner && numbersCalledAtJoin.includes(number);
   };
 
+  // FIXED: Enhanced isMarked function that includes pre-called numbers for late joiners
   const isMarked = (row: number, col: number) => {
     const position = row * 5 + col;
-    return card.markedPositions.includes(position);
+    
+    // If it's already manually marked, return true
+    if (card.markedPositions.includes(position)) {
+      return true;
+    }
+    
+    // For late joiners, if the number was called before they joined, consider it marked
+    if (isLateJoiner) {
+      const number = card.numbers[row][col];
+      const isFreeSpace = row === 2 && col === 2;
+      
+      if (!isFreeSpace && wasCalledBeforeJoin(number)) {
+        return true;
+      }
+    }
+    
+    return false;
   };
 
   const isCalled = (number: number) => effectiveCalledNumbers.includes(number);
@@ -51,25 +68,43 @@ export const BingoCard: React.FC<BingoCardProps> = ({
     return letters[col];
   };
 
-  // Calculate progress including pre-called numbers for late joiners
+  // FIXED: Calculate progress including pre-called numbers for late joiners
   const getEffectiveMarkedCount = () => {
     if (!isLateJoiner) return card.markedPositions.length;
     
     // For late joiners, count all numbers in their card that were called in the game
-    const allNumbers = card.numbers.flat();
     let effectiveMarked = 0;
     
-    for (let i = 0; i < allNumbers.length; i++) {
-      const number = allNumbers[i];
-      const isMarkedPosition = card.markedPositions.includes(i);
-      const isCalledInGame = effectiveCalledNumbers.includes(number);
-      
-      if (isMarkedPosition || (isCalledInGame && wasCalledBeforeJoin(number))) {
-        effectiveMarked++;
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col < 5; col++) {
+        if (isMarked(row, col)) {
+          effectiveMarked++;
+        }
       }
     }
     
     return effectiveMarked;
+  };
+
+  // FIXED: Get visual status for each cell
+  const getCellStatus = (row: number, col: number, number: number) => {
+    const marked = isMarked(row, col);
+    const called = isCalled(number);
+    const isFreeSpace = row === 2 && col === 2;
+    const preCalled = wasCalledBeforeJoin(number);
+
+    return {
+      marked,
+      called,
+      isFreeSpace,
+      preCalled,
+      // FIXED: Determine if cell should be visually marked (green)
+      shouldShowMarked: marked,
+      // FIXED: Determine if cell should show as called (yellow/orange)
+      shouldShowCalled: called && !marked,
+      // FIXED: Special case for pre-called numbers that are effectively marked
+      isEffectivelyMarked: isLateJoiner && preCalled && !card.markedPositions.includes(row * 5 + col)
+    };
   };
 
   return (
@@ -154,10 +189,15 @@ export const BingoCard: React.FC<BingoCardProps> = ({
         <div className="grid grid-cols-5 gap-2 relative z-10">
           {card.numbers.map((row, rowIndex) =>
             row.map((number, colIndex) => {
-              const marked = isMarked(rowIndex, colIndex);
-              const called = isCalled(number);
-              const isFreeSpace = rowIndex === 2 && colIndex === 2;
-              const preCalled = wasCalledBeforeJoin(number);
+              const {
+                marked,
+                called,
+                isFreeSpace,
+                preCalled,
+                shouldShowMarked,
+                shouldShowCalled,
+                isEffectivelyMarked
+              } = getCellStatus(rowIndex, colIndex, number);
 
               return (
                 <motion.div
@@ -165,9 +205,9 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                   className={`
                     aspect-square rounded-2xl flex items-center justify-center text-lg font-bold relative
                     border-3 transition-all duration-300 cursor-pointer
-                    ${marked 
+                    ${shouldShowMarked 
                       ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-lg scale-105' 
-                      : called && isInteractive
+                      : shouldShowCalled && isInteractive
                       ? preCalled
                         ? 'bg-gradient-to-br from-purple-100 to-indigo-100 border-purple-300 text-purple-800 shadow-md hover:shadow-lg'
                         : 'bg-gradient-to-br from-orange-100 to-amber-100 border-orange-300 text-orange-800 shadow-md hover:shadow-lg'
@@ -200,7 +240,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                     <div className="text-center">
                       {number}
                       {/* Pre-called indicator for late joiners */}
-                      {isLateJoiner && preCalled && !marked && (
+                      {isLateJoiner && preCalled && !shouldShowMarked && (
                         <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
@@ -210,8 +250,8 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                     </div>
                   )}
                   
-                  {/* Mark Indicator */}
-                  {marked && (
+                  {/* Mark Indicator - Show for both manually marked and effectively marked cells */}
+                  {shouldShowMarked && (
                     <motion.div
                       className="absolute inset-0 flex items-center justify-center"
                       initial={{ scale: 0 }}
@@ -222,8 +262,8 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                     </motion.div>
                   )}
 
-                  {/* Pulse animation for called numbers */}
-                  {called && !marked && isInteractive && (
+                  {/* Pulse animation for called numbers that aren't marked yet */}
+                  {shouldShowCalled && isInteractive && (
                     <motion.div
                       className={`absolute inset-0 rounded-2xl border-2 ${
                         preCalled ? 'border-purple-400' : 'border-orange-400'
@@ -241,7 +281,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                   )}
 
                   {/* Winner celebration */}
-                  {isWinner && marked && (
+                  {isWinner && shouldShowMarked && (
                     <motion.div
                       className="absolute inset-0 rounded-2xl"
                       animate={{ 
@@ -260,7 +300,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                   )}
 
                   {/* Pre-called tooltip for late joiners */}
-                  {isLateJoiner && preCalled && !marked && (
+                  {isLateJoiner && preCalled && !shouldShowMarked && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
                       whileHover={{ opacity: 1, scale: 1 }}
@@ -269,6 +309,15 @@ export const BingoCard: React.FC<BingoCardProps> = ({
                       Called before you joined
                       <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 w-2 h-2 bg-purple-600 rotate-45" />
                     </motion.div>
+                  )}
+
+                  {/* Effectively marked indicator (for debugging) */}
+                  {isEffectivelyMarked && (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className="absolute -bottom-1 -left-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"
+                    />
                   )}
                 </motion.div>
               );
@@ -288,7 +337,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
               <div className="flex flex-col">
                 <span>Effective: {getEffectiveMarkedCount()}/25</span>
                 <span className="text-xs text-gray-400">
-                  (Marked: {card.markedPositions.length})
+                  (Manually marked: {card.markedPositions.length})
                 </span>
               </div>
             ) : (
