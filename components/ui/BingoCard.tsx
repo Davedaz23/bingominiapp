@@ -41,18 +41,36 @@ const isMarked = (row: number, col: number): boolean => {
     return true;
   }
   
-  // FIX: For late joiners, if the number was called before they joined AND is currently called, consider it marked
+  // FIX: For late joiners, ONLY mark if the number was called before they joined
+  // BUT don't automatically mark it as "green" - just count it for win detection
   if (isLateJoiner) {
     const number = card.numbers[row][col];
     const isFreeSpace = row === 2 && col === 2;
     
-    // FIX: Only auto-mark if the number is in the effective called numbers
-    if (!isFreeSpace && wasCalledBeforeJoin(number) && isCalled(number)) {
-      return true;
+    // Only consider pre-called numbers for win detection, not visual marking
+    if (!isFreeSpace && wasCalledBeforeJoin(number)) {
+      // This number counts for win detection but should NOT show as visually marked
+      return false; // Don't show as green marked
     }
   }
   
   return false;
+};
+const shouldShowAsMarked = (row: number, col: number): boolean => {
+  const position = row * 5 + col;
+  
+  // Only show as marked if it's manually marked by the user
+  return card.markedPositions.includes(position);
+};
+
+// FIXED: Add this function to determine if a cell should show as pre-called
+const shouldShowAsPreCalled = (row: number, col: number): boolean => {
+  if (!isLateJoiner) return false;
+  
+  const number = card.numbers[row][col];
+  const isFreeSpace = row === 2 && col === 2;
+  
+  return !isFreeSpace && wasCalledBeforeJoin(number) && !shouldShowAsMarked(row, col);
 };
 const shouldAutoMark = (row: number, col: number): boolean => {
   if (!isLateJoiner) return false;
@@ -97,25 +115,25 @@ const shouldAutoMark = (row: number, col: number): boolean => {
   
 
   // FIXED: Get visual status for each cell
-  const getCellStatus = (row: number, col: number, number: number) => {
-    const marked = isMarked(row, col);
-    const called = isCalled(number);
-    const isFreeSpace = row === 2 && col === 2;
-    const preCalled = wasCalledBeforeJoin(number);
+const getCellStatus = (row: number, col: number, number: number) => {
+  const manuallyMarked = shouldShowAsMarked(row, col);
+  const preCalled = shouldShowAsPreCalled(row, col);
+  const called = isCalled(number);
+  const isFreeSpace = row === 2 && col === 2;
 
-    return {
-      marked,
-      called,
-      isFreeSpace,
-      preCalled,
-      // FIXED: Determine if cell should be visually marked (green)
-        shouldShowMarked: marked || shouldAutoMark,
-    // FIXED: Determine if cell should show as called (yellow/orange)
-    shouldShowCalled: called && !marked && !shouldAutoMark, 
-      // FIXED: Special case for pre-called numbers that are effectively marked
-      isEffectivelyMarked: isLateJoiner && preCalled && !card.markedPositions.includes(row * 5 + col)
-    };
+  return {
+    manuallyMarked,
+    preCalled,
+    called,
+    isFreeSpace,
+    // FIXED: Only show as marked if manually marked by user
+    shouldShowMarked: manuallyMarked,
+    // FIXED: Show as pre-called (purple) for numbers called before join
+    shouldShowPreCalled: preCalled,
+    // FIXED: Show as called (orange) for numbers called after join
+    shouldShowCalled: called && !manuallyMarked && !preCalled,
   };
+};
   
 
   return (
@@ -197,41 +215,41 @@ const shouldAutoMark = (row: number, col: number): boolean => {
         </div>
 
         {/* Bingo Grid */}
-        <div className="grid grid-cols-5 gap-2 relative z-10">
-          {card.numbers.map((row, rowIndex) =>
-            row.map((number, colIndex) => {
-              const {
-                marked,
-                called,
-                isFreeSpace,
-                preCalled,
-                shouldShowMarked,
-                shouldShowCalled,
-                isEffectivelyMarked
-              } = getCellStatus(rowIndex, colIndex, number);
+      <div className="grid grid-cols-5 gap-2 relative z-10">
+  {card.numbers.map((row, rowIndex) =>
+    row.map((number, colIndex) => {
+      const {
+        manuallyMarked,
+        preCalled,
+        called,
+        isFreeSpace,
+        shouldShowMarked,
+        shouldShowPreCalled,
+        shouldShowCalled,
+      } = getCellStatus(rowIndex, colIndex, number);
 
-              return (
-                <motion.div
-                  key={`${rowIndex}-${colIndex}`}
-                  className={`
-                    aspect-square rounded-2xl flex items-center justify-center text-lg font-bold relative
-                    border-3 transition-all duration-300 cursor-pointer
-                    ${shouldShowMarked 
-                      ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-lg scale-105' 
-                      : shouldShowCalled && isInteractive
-                      ? preCalled
-                        ? 'bg-gradient-to-br from-purple-100 to-indigo-100 border-purple-300 text-purple-800 shadow-md hover:shadow-lg'
-                        : 'bg-gradient-to-br from-orange-100 to-amber-100 border-orange-300 text-orange-800 shadow-md hover:shadow-lg'
-                      : 'bg-white/80 border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }
-                    ${isInteractive && called && !marked ? 'cursor-pointer hover:scale-110' : 'cursor-default'}
-                    ${isWinner && marked ? 'ring-4 ring-yellow-400 ring-opacity-50' : ''}
-                  `}
-                  whileHover={isInteractive && called && !marked ? { 
+      return (
+        <motion.div
+          key={`${rowIndex}-${colIndex}`}
+          className={`
+            aspect-square rounded-2xl flex items-center justify-center text-lg font-bold relative
+            border-3 transition-all duration-300 cursor-pointer
+            ${shouldShowMarked 
+              ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-lg scale-105' 
+              : shouldShowPreCalled
+              ? 'bg-gradient-to-br from-purple-100 to-indigo-100 border-purple-300 text-purple-800 shadow-md'
+              : shouldShowCalled && isInteractive
+              ? 'bg-gradient-to-br from-orange-100 to-amber-100 border-orange-300 text-orange-800 shadow-md hover:shadow-lg'
+              : 'bg-white/80 border-gray-200 text-gray-600 hover:bg-gray-50'
+            }
+            ${isInteractive && called && !manuallyMarked ? 'cursor-pointer hover:scale-110' : 'cursor-default'}
+            ${isWinner && manuallyMarked ? 'ring-4 ring-yellow-400 ring-opacity-50' : ''}
+          `}
+                  whileHover={isInteractive && called ? { 
                     scale: 1.1,
                     rotate: [0, -2, 2, 0]
                   } : {}}
-                  whileTap={{ scale: isInteractive && called && !marked ? 0.95 : 1 }}
+                  whileTap={{ scale: isInteractive && called  ? 0.95 : 1 }}
                   onClick={() => handleCellClick(number, rowIndex, colIndex)}
                   initial={{ scale: 0, rotate: 180 }}
                   animate={{ scale: 1, rotate: 0 }}
@@ -242,36 +260,39 @@ const shouldAutoMark = (row: number, col: number): boolean => {
                     stiffness: 200
                   }}
                 >
-                  {isFreeSpace ? (
-                    <div className="text-center">
-                      <div className="text-xs font-black text-telegram-button mb-1">FREE</div>
-                      <Sparkles className="w-4 h-4 mx-auto text-yellow-500" />
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      {number}
-                      {/* Pre-called indicator for late joiners */}
-                      {isLateJoiner && preCalled && !shouldShowMarked && (
-                        <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          className="absolute -top-1 -right-1 w-3 h-3 bg-purple-500 rounded-full border-2 border-white"
-                        />
-                      )}
-                    </div>
-                  )}
+               {isFreeSpace ? (
+            <div className="text-center">
+              <div className="text-xs font-black text-telegram-button mb-1">FREE</div>
+              <Sparkles className="w-4 h-4 mx-auto text-yellow-500" />
+            </div>
+          ) : (
+            <div className="text-center">
+              {number}
+              {/* Pre-called indicator for late joiners */}
+         {shouldShowPreCalled && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              whileHover={{ opacity: 1, scale: 1 }}
+              className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-xs px-2 py-1 rounded-lg pointer-events-none z-20"
+            >
+              Called before you joined
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 w-2 h-2 bg-purple-600 rotate-45" />
+            </motion.div>
+              )}
+            </div>
+          )}
                   
                   {/* Mark Indicator - Show for both manually marked and effectively marked cells */}
                   {shouldShowMarked && (
-                    <motion.div
-                      className="absolute inset-0 flex items-center justify-center"
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ duration: 0.3, type: "spring" }}
-                    >
-                      <Check className="w-6 h-6 text-white drop-shadow-md" />
-                    </motion.div>
-                  )}
+            <motion.div
+              className="absolute inset-0 flex items-center justify-center"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ duration: 0.3, type: "spring" }}
+            >
+              <Check className="w-6 h-6 text-white drop-shadow-md" />
+            </motion.div>
+          )}
 
                   {/* Pulse animation for called numbers that aren't marked yet */}
                   {shouldShowCalled && isInteractive && (
@@ -290,6 +311,7 @@ const shouldAutoMark = (row: number, col: number): boolean => {
                       }}
                     />
                   )}
+                  
 
                   {/* Winner celebration */}
                   {isWinner && shouldShowMarked && (
@@ -323,13 +345,13 @@ const shouldAutoMark = (row: number, col: number): boolean => {
                   )}
 
                   {/* Effectively marked indicator (for debugging) */}
-                  {isEffectivelyMarked && (
+                  {/* {isEffectivelyMarked && (
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       className="absolute -bottom-1 -left-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"
                     />
-                  )}
+                  )} */}
                 </motion.div>
               );
             })
