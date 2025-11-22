@@ -22,7 +22,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
   isLateJoiner = false,
   numbersCalledAtJoin = []
 }) => {
-  // For late joiners, combine all numbers called in the game
+  // For late joiners, combine all numbers called in the game for win detection
   const effectiveCalledNumbers = isLateJoiner 
     ? [...new Set([...calledNumbers, ...numbersCalledAtJoin])]
     : calledNumbers;
@@ -32,61 +32,23 @@ export const BingoCard: React.FC<BingoCardProps> = ({
     return isLateJoiner && numbersCalledAtJoin.includes(number);
   };
 
-  // FIXED: Enhanced isMarked function that includes pre-called numbers for late joiners
-const isMarked = (row: number, col: number): boolean => {
-  const position = row * 5 + col;
-  
-  // If it's already manually marked, return true
-  if (card.markedPositions.includes(position)) {
-    return true;
-  }
-  
-  // FIX: For late joiners, ONLY mark if the number was called before they joined
-  // BUT don't automatically mark it as "green" - just count it for win detection
-  if (isLateJoiner) {
-    const number = card.numbers[row][col];
-    const isFreeSpace = row === 2 && col === 2;
-    
-    // Only consider pre-called numbers for win detection, not visual marking
-    if (!isFreeSpace && wasCalledBeforeJoin(number)) {
-      // This number counts for win detection but should NOT show as visually marked
-      return false; // Don't show as green marked
-    }
-  }
-  
-  return false;
-};
-const shouldShowAsMarked = (row: number, col: number): boolean => {
-  const position = row * 5 + col;
-  
-  // Only show as marked if it's manually marked by the user
-  return card.markedPositions.includes(position);
-};
+  // FIXED: Only show as marked if user manually marked it
+  const isVisuallyMarked = (row: number, col: number): boolean => {
+    const position = row * 5 + col;
+    return card.markedPositions.includes(position);
+  };
 
-// FIXED: Add this function to determine if a cell should show as pre-called
-const shouldShowAsPreCalled = (row: number, col: number): boolean => {
-  if (!isLateJoiner) return false;
-  
-  const number = card.numbers[row][col];
-  const isFreeSpace = row === 2 && col === 2;
-  
-  return !isFreeSpace && wasCalledBeforeJoin(number) && !shouldShowAsMarked(row, col);
-};
-const shouldAutoMark = (row: number, col: number): boolean => {
-  if (!isLateJoiner) return false;
-  
-  const number = card.numbers[row][col];
-  const isFreeSpace = row === 2 && col === 2;
-  
-  return !isFreeSpace && wasCalledBeforeJoin(number) && isCalled(number);
-};
-
+  // FIXED: Check if number is called (for visual styling)
   const isCalled = (number: number) => effectiveCalledNumbers.includes(number);
 
+  // FIXED: Check if number was called after user joined (for interactive marking)
+  const isCalledAfterJoin = (number: number) => {
+    if (!isLateJoiner) return calledNumbers.includes(number);
+    return calledNumbers.includes(number) && !wasCalledBeforeJoin(number);
+  };
+
   const handleCellClick = (number: number, row: number, col: number) => {
-    if (!isInteractive || isMarked(row, col) || !isCalled(number)) return;
-    
-    // For late joiners, allow marking any called number (not restricted to post-join numbers)
+    if (!isInteractive || isVisuallyMarked(row, col) || !isCalledAfterJoin(number)) return;
     onMarkNumber(number);
   };
 
@@ -95,46 +57,26 @@ const shouldAutoMark = (row: number, col: number): boolean => {
     return letters[col];
   };
 
-  // FIXED: Calculate progress including pre-called numbers for late joiners
-  const getEffectiveMarkedCount = () => {
-    if (!isLateJoiner) return card.markedPositions.length;
-    
-    // For late joiners, count all numbers in their card that were called in the game
-    let effectiveMarked = 0;
-    
-    for (let row = 0; row < 5; row++) {
-      for (let col = 0; col < 5; col++) {
-        if (isMarked(row, col)) {
-          effectiveMarked++;
-        }
-      }
-    }
-    
-    return effectiveMarked;
-  };
-  
-
   // FIXED: Get visual status for each cell
-const getCellStatus = (row: number, col: number, number: number) => {
-  const manuallyMarked = shouldShowAsMarked(row, col);
-  const preCalled = shouldShowAsPreCalled(row, col);
-  const called = isCalled(number);
-  const isFreeSpace = row === 2 && col === 2;
+  const getCellStatus = (row: number, col: number, number: number) => {
+    const visuallyMarked = isVisuallyMarked(row, col);
+    const preCalled = isLateJoiner && wasCalledBeforeJoin(number) && !visuallyMarked;
+    const calledAfterJoin = isCalledAfterJoin(number) && !visuallyMarked;
+    const isFreeSpace = row === 2 && col === 2;
 
-  return {
-    manuallyMarked,
-    preCalled,
-    called,
-    isFreeSpace,
-    // FIXED: Only show as marked if manually marked by user
-    shouldShowMarked: manuallyMarked,
-    // FIXED: Show as pre-called (purple) for numbers called before join
-    shouldShowPreCalled: preCalled,
-    // FIXED: Show as called (orange) for numbers called after join
-    shouldShowCalled: called && !manuallyMarked && !preCalled,
+    return {
+      visuallyMarked,
+      preCalled,
+      calledAfterJoin,
+      isFreeSpace,
+      // Only show green checkmark if manually marked by user
+      shouldShowMarked: visuallyMarked,
+      // Show as pre-called (purple) for numbers called before join
+      shouldShowPreCalled: preCalled,
+      // Show as called (orange) for numbers called after join that can be marked
+      shouldShowCalled: calledAfterJoin,
+    };
   };
-};
-  
 
   return (
     <motion.div 
@@ -194,7 +136,10 @@ const getCellStatus = (row: number, col: number, number: number) => {
           >
             <div className="flex items-center gap-2 text-yellow-800 text-xs">
               <Clock className="w-3 h-3" />
-              <span className="font-bold">All {effectiveCalledNumbers.length} called numbers count! 🎯</span>
+              <span className="font-bold">
+                All {effectiveCalledNumbers.length} called numbers count towards winning! 
+                Mark {calledNumbers.length - numbersCalledAtJoin.length} numbers called after you joined.
+              </span>
             </div>
           </motion.div>
         )}
@@ -215,41 +160,41 @@ const getCellStatus = (row: number, col: number, number: number) => {
         </div>
 
         {/* Bingo Grid */}
-      <div className="grid grid-cols-5 gap-2 relative z-10">
-  {card.numbers.map((row, rowIndex) =>
-    row.map((number, colIndex) => {
-      const {
-        manuallyMarked,
-        preCalled,
-        called,
-        isFreeSpace,
-        shouldShowMarked,
-        shouldShowPreCalled,
-        shouldShowCalled,
-      } = getCellStatus(rowIndex, colIndex, number);
+        <div className="grid grid-cols-5 gap-2 relative z-10">
+          {card.numbers.map((row, rowIndex) =>
+            row.map((number, colIndex) => {
+              const {
+                visuallyMarked,
+                preCalled,
+                calledAfterJoin,
+                isFreeSpace,
+                shouldShowMarked,
+                shouldShowPreCalled,
+                shouldShowCalled,
+              } = getCellStatus(rowIndex, colIndex, number);
 
-      return (
-        <motion.div
-          key={`${rowIndex}-${colIndex}`}
-          className={`
-            aspect-square rounded-2xl flex items-center justify-center text-lg font-bold relative
-            border-3 transition-all duration-300 cursor-pointer
-            ${shouldShowMarked 
-              ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-lg scale-105' 
-              : shouldShowPreCalled
-              ? 'bg-gradient-to-br from-purple-100 to-indigo-100 border-purple-300 text-purple-800 shadow-md'
-              : shouldShowCalled && isInteractive
-              ? 'bg-gradient-to-br from-orange-100 to-amber-100 border-orange-300 text-orange-800 shadow-md hover:shadow-lg'
-              : 'bg-white/80 border-gray-200 text-gray-600 hover:bg-gray-50'
-            }
-            ${isInteractive && called && !manuallyMarked ? 'cursor-pointer hover:scale-110' : 'cursor-default'}
-            ${isWinner && manuallyMarked ? 'ring-4 ring-yellow-400 ring-opacity-50' : ''}
-          `}
-                  whileHover={isInteractive && called ? { 
+              return (
+                <motion.div
+                  key={`${rowIndex}-${colIndex}`}
+                  className={`
+                    aspect-square rounded-2xl flex items-center justify-center text-lg font-bold relative
+                    border-3 transition-all duration-300 cursor-pointer
+                    ${shouldShowMarked 
+                      ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-lg scale-105' 
+                      : shouldShowPreCalled
+                      ? 'bg-gradient-to-br from-purple-100 to-indigo-100 border-purple-300 text-purple-800 shadow-md'
+                      : shouldShowCalled && isInteractive
+                      ? 'bg-gradient-to-br from-orange-100 to-amber-100 border-orange-300 text-orange-800 shadow-md hover:shadow-lg'
+                      : 'bg-white/80 border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }
+                    ${isInteractive && calledAfterJoin ? 'cursor-pointer hover:scale-110' : 'cursor-default'}
+                    ${isWinner && visuallyMarked ? 'ring-4 ring-yellow-400 ring-opacity-50' : ''}
+                  `}
+                  whileHover={isInteractive && calledAfterJoin ? { 
                     scale: 1.1,
                     rotate: [0, -2, 2, 0]
                   } : {}}
-                  whileTap={{ scale: isInteractive && called  ? 0.95 : 1 }}
+                  whileTap={{ scale: isInteractive && calledAfterJoin ? 0.95 : 1 }}
                   onClick={() => handleCellClick(number, rowIndex, colIndex)}
                   initial={{ scale: 0, rotate: 180 }}
                   animate={{ scale: 1, rotate: 0 }}
@@ -260,46 +205,33 @@ const getCellStatus = (row: number, col: number, number: number) => {
                     stiffness: 200
                   }}
                 >
-               {isFreeSpace ? (
-            <div className="text-center">
-              <div className="text-xs font-black text-telegram-button mb-1">FREE</div>
-              <Sparkles className="w-4 h-4 mx-auto text-yellow-500" />
-            </div>
-          ) : (
-            <div className="text-center">
-              {number}
-              {/* Pre-called indicator for late joiners */}
-         {shouldShowPreCalled && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              whileHover={{ opacity: 1, scale: 1 }}
-              className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-purple-600 text-white text-xs px-2 py-1 rounded-lg pointer-events-none z-20"
-            >
-              Called before you joined
-              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 w-2 h-2 bg-purple-600 rotate-45" />
-            </motion.div>
-              )}
-            </div>
-          )}
+                  {isFreeSpace ? (
+                    <div className="text-center">
+                      <div className="text-xs font-black text-telegram-button mb-1">FREE</div>
+                      <Sparkles className="w-4 h-4 mx-auto text-yellow-500" />
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      {number}
+                    </div>
+                  )}
                   
-                  {/* Mark Indicator - Show for both manually marked and effectively marked cells */}
+                  {/* Mark Indicator - Only show for manually marked cells */}
                   {shouldShowMarked && (
-            <motion.div
-              className="absolute inset-0 flex items-center justify-center"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 0.3, type: "spring" }}
-            >
-              <Check className="w-6 h-6 text-white drop-shadow-md" />
-            </motion.div>
-          )}
+                    <motion.div
+                      className="absolute inset-0 flex items-center justify-center"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ duration: 0.3, type: "spring" }}
+                    >
+                      <Check className="w-6 h-6 text-white drop-shadow-md" />
+                    </motion.div>
+                  )}
 
                   {/* Pulse animation for called numbers that aren't marked yet */}
                   {shouldShowCalled && isInteractive && (
                     <motion.div
-                      className={`absolute inset-0 rounded-2xl border-2 ${
-                        preCalled ? 'border-purple-400' : 'border-orange-400'
-                      }`}
+                      className="absolute inset-0 rounded-2xl border-2 border-orange-400"
                       animate={{ 
                         scale: [1, 1.1, 1],
                         opacity: [0.5, 0.8, 0.5]
@@ -311,7 +243,6 @@ const getCellStatus = (row: number, col: number, number: number) => {
                       }}
                     />
                   )}
-                  
 
                   {/* Winner celebration */}
                   {isWinner && shouldShowMarked && (
@@ -333,7 +264,7 @@ const getCellStatus = (row: number, col: number, number: number) => {
                   )}
 
                   {/* Pre-called tooltip for late joiners */}
-                  {isLateJoiner && preCalled && !shouldShowMarked && (
+                  {shouldShowPreCalled && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
                       whileHover={{ opacity: 1, scale: 1 }}
@@ -343,15 +274,6 @@ const getCellStatus = (row: number, col: number, number: number) => {
                       <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 w-2 h-2 bg-purple-600 rotate-45" />
                     </motion.div>
                   )}
-
-                  {/* Effectively marked indicator (for debugging) */}
-                  {/* {isEffectivelyMarked && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="absolute -bottom-1 -left-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"
-                    />
-                  )} */}
                 </motion.div>
               );
             })
@@ -366,34 +288,25 @@ const getCellStatus = (row: number, col: number, number: number) => {
           transition={{ delay: 1 }}
         >
           <div className="text-sm text-gray-500 font-medium">
-            {isLateJoiner ? (
-              <div className="flex flex-col">
-                <span>Effective: {getEffectiveMarkedCount()}/25</span>
-                <span className="text-xs text-gray-400">
-                  (Manually marked: {card.markedPositions.length})
-                </span>
+            <span>Manually Marked: {card.markedPositions.length}/25</span>
+            {isLateJoiner && (
+              <div className="text-xs text-gray-400">
+                Effective for winning: {effectiveCalledNumbers.filter(num => 
+                  card.numbers.flat().includes(num)
+                ).length}/25
               </div>
-            ) : (
-              <span>Marked: {card.markedPositions.length}/25</span>
             )}
           </div>
           
           <div className="flex items-center gap-1">
             {[...Array(5)].map((_, i) => {
-              const effectiveMarked = getEffectiveMarkedCount();
-              const progressLevel = Math.min(5, Math.floor(effectiveMarked / 5));
+              const progressLevel = Math.min(5, Math.floor(card.markedPositions.length / 5));
               
               return (
                 <motion.div
                   key={i}
                   className={`w-2 h-2 rounded-full ${
-                    i < progressLevel
-                      ? isLateJoiner && i < Math.min(5, Math.floor(card.markedPositions.length / 5))
-                        ? 'bg-green-400'
-                        : isLateJoiner
-                        ? 'bg-purple-400'
-                        : 'bg-green-400'
-                      : 'bg-gray-300'
+                    i < progressLevel ? 'bg-green-400' : 'bg-gray-300'
                   }`}
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -419,7 +332,7 @@ const getCellStatus = (row: number, col: number, number: number) => {
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-orange-100 border-2 border-orange-300 rounded"></div>
-                <span>Called after join</span>
+                <span>Markable</span>
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-green-400 rounded"></div>
