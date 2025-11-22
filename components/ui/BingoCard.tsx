@@ -1,4 +1,4 @@
-// components/BingoCard.tsx - FIXED VERSION with Automatic Marking
+// components/BingoCard.tsx - COMPLETE FIXED VERSION
 import { motion, AnimatePresence } from 'framer-motion';
 import { BingoCard as BingoCardType } from '../../types';
 import { Sparkles, Check, Clock, AlertCircle } from 'lucide-react';
@@ -39,8 +39,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({
     
     if (isFreeSpace) return true; // FREE space is always marked
     
-    // For late joiners: automatically mark ALL called numbers (both pre-join and post-join)
-    // For regular players: automatically mark ALL called numbers
+    // For ALL players: automatically mark ALL called numbers
     return effectiveCalledNumbers.includes(number);
   };
 
