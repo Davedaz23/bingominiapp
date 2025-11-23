@@ -943,7 +943,7 @@ export default function GamePage() {
   const [showWinAnimation, setShowWinAnimation] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [showPlayersPanel, setShowPlayersPanel] = useState(false);
-
+console.log("players",game);
   // Get current user ID
   useEffect(() => {
     const userId = localStorage.getItem('user_id');
