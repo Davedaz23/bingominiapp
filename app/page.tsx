@@ -16,7 +16,8 @@ import {
   TrendingUp,
   Gamepad2,
   Clock,
-  Eye
+  Eye,
+  Wallet, CreditCard, DollarSign 
 } from 'lucide-react'
 
 // Animation variants
@@ -61,6 +62,10 @@ export default function Home() {
   const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null)
   const [showWinnerModal, setShowWinnerModal] = useState(false)
   const [winnerInfo, setWinnerInfo] = useState<any>(null)
+
+//wallte
+const [walletBalance, setWalletBalance] = useState(0);
+const [showDepositModal, setShowDepositModal] = useState(false);
 
   useEffect(() => {
     if (isReady && user && !authAttempted) {
@@ -153,20 +158,64 @@ export default function Home() {
     }
   }
 
-  const joinGame = async () => {
-    if (!mainGame) return
+  //wallte use effect
+// Fetch wallet balance
+const fetchWalletBalance = async () => {
+  try {
+    const userId = localStorage.getItem('user_id');
+    if (!userId) return;
     
-    const userId = localStorage.getItem('user_id')
-    if (!userId) return
-    
-    try {
-      await gameAPI.joinGame(mainGame.code, userId)
-      router.push(`/game/${mainGame._id}`)
-    } catch (error) {
-      console.error('Failed to join game:', error)
-      loadMainGame()
+    const response = await fetch('/api/wallet/balance', {
+      headers: {
+        'user-id': userId
+      }
+    });
+    const data = await response.json();
+    if (data.success) {
+      setWalletBalance(data.balance);
     }
+  } catch (error) {
+    console.error('Error fetching wallet balance:', error);
   }
+};
+
+// Update joinGame function to check balance
+const joinGame = async () => {
+  if (!mainGame) return;
+  
+  const userId = localStorage.getItem('user_id');
+  if (!userId) return;
+  
+  try {
+    // Check balance first
+    const balance = await fetchWalletBalance();
+    const entryFee = 10; // Your game entry fee
+    
+    if (walletBalance < entryFee) {
+      setShowDepositModal(true);
+      return;
+    }
+    
+    // Use wallet-enabled join endpoint
+    const response = await fetch(`/api/games/${mainGame.code}/join-with-wallet`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'user-id': userId
+      },
+      body: JSON.stringify({ entryFee })
+    });
+    
+    if (response.ok) {
+      router.push(`/game/${mainGame._id}`);
+    } else {
+      throw new Error('Failed to join game');
+    }
+  } catch (error) {
+    console.error('Failed to join game:', error);
+    loadMainGame();
+  }
+};
 
   const isSystemGame = (game: Game): boolean => {
     return game.isAutoCreated === true
@@ -297,6 +346,62 @@ export default function Home() {
     createdAt: new Date().toISOString()
   } as User : null)
 
+{/* Add this after the User Stats Card */}
+<motion.div
+  initial={{ y: 20, opacity: 0, scale: 0.9 }}
+  animate={{ y: 0, opacity: 1, scale: 1 }}
+  transition={{ delay: 0.3 }}
+  className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-green-500/30 shadow-2xl"
+>
+  <div className="flex items-center justify-between">
+    <div className="flex items-center gap-4">
+      <motion.div
+        whileHover={{ scale: 1.1, rotate: 5 }}
+        className="relative"
+      >
+        <Wallet className="w-12 h-12 text-green-400" />
+      </motion.div>
+      
+      <div>
+        <h3 className="font-black text-xl text-white">Wallet Balance</h3>
+        <p className="text-white/70 text-sm">Available for game entries</p>
+        <motion.div 
+          className="text-3xl font-black text-green-400 mt-1"
+          key={walletBalance}
+          initial={{ scale: 1.2 }}
+          animate={{ scale: 1 }}
+        >
+          ${walletBalance.toFixed(2)}
+        </motion.div>
+      </div>
+    </div>
+    
+    <motion.button
+      onClick={() => setShowDepositModal(true)}
+      className="flex items-center gap-2 px-4 py-3 bg-green-500 text-white rounded-2xl font-bold shadow-lg"
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+    >
+      <CreditCard className="w-4 h-4" />
+      Deposit
+    </motion.button>
+  </div>
+  
+  {/* Quick Stats */}
+  <div className="grid grid-cols-2 gap-3 mt-4">
+    <div className="bg-white/10 rounded-xl p-3 text-center">
+      <div className="text-white font-bold text-sm">Entry Fee</div>
+      <div className="text-green-400 font-black">$10</div>
+    </div>
+    <div className="bg-white/10 rounded-xl p-3 text-center">
+      <div className="text-white font-bold text-sm">Can Play</div>
+      <div className="text-green-400 font-black">
+        {Math.floor(walletBalance / 10)} games
+      </div>
+    </div>
+  </div>
+</motion.div>
+
   if (!isReady || isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
@@ -323,6 +428,61 @@ export default function Home() {
       </div>
     )
   }
+  const DepositModal = () => (
+  <AnimatePresence>
+    {showDepositModal && (
+      <motion.div
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      >
+        <motion.div
+          className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 border border-white/30 shadow-2xl w-full max-w-sm"
+          initial={{ scale: 0.8, y: 50 }}
+          animate={{ scale: 1, y: 0 }}
+          exit={{ scale: 0.8, y: 50 }}
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-white font-bold text-xl">Deposit Funds</h3>
+            <button 
+              onClick={() => setShowDepositModal(false)}
+              className="text-white/80 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="bg-white/10 rounded-2xl p-4 border border-white/20">
+              <div className="text-white/80 text-sm mb-2">Current Balance</div>
+              <div className="text-2xl font-black text-white">${walletBalance.toFixed(2)}</div>
+            </div>
+            
+            <div className="text-white/80 text-sm">
+              To deposit funds:
+              <ol className="list-decimal list-inside mt-2 space-y-1">
+                <li>Send money via bank transfer</li>
+                <li>Upload receipt screenshot</li>
+                <li>We'll approve within 24 hours</li>
+              </ol>
+            </div>
+            
+            <button
+              onClick={() => {
+                // Navigate to deposit page or open deposit form
+                router.push('/deposit');
+              }}
+              className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold"
+            >
+              Proceed to Deposit
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 relative overflow-hidden">
@@ -874,6 +1034,12 @@ export default function Home() {
           </p>
         </motion.div>
       </motion.div>
+  <DepositModal />
     </div>
+    
   )
+  // Add this modal component to your home page
+
+
+
 }
