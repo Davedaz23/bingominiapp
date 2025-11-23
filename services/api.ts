@@ -1,4 +1,4 @@
-// services/api.ts - UPDATED
+// services/api.ts - UPDATED WITH WALLET
 import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
@@ -16,8 +16,15 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('bingo_token');
+    const userId = localStorage.getItem('user_id');
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    
+    // Add user-id header for wallet endpoints
+    if (userId && config.url?.includes('/wallet/')) {
+      config.headers['user-id'] = userId;
     }
   }
   return config;
@@ -47,8 +54,6 @@ api.interceptors.response.use(
       if (typeof window !== 'undefined') {
         localStorage.removeItem('bingo_token');
         localStorage.removeItem('user_id');
-        // Optional: redirect to login
-        // window.location.href = '/';
       }
     }
     
@@ -81,6 +86,9 @@ export const gameAPI = {
   // Game management
   joinGame: (code: string, userId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${code}/join`, { userId }),
+  
+  joinGameWithWallet: (code: string, userId: string, entryFee: number = 10) =>
+    api.post<{ success: boolean; game: Game }>(`/games/${code}/join-with-wallet`, { userId, entryFee }),
   
   startGame: (gameId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${gameId}/start`),
@@ -139,6 +147,38 @@ export const gameAPI = {
   // Health check
   healthCheck: () =>
     api.get<{ status: string; timestamp: string; database: string }>('/health'),
+};
+
+export const walletAPI = {
+  // Balance
+  getBalance: (userId: string) =>
+    api.get<{ success: boolean; balance: number }>(`/wallet/balance`, {
+      headers: { 'user-id': userId }
+    }),
+  
+  // Transactions
+  getTransactions: (userId: string, limit?: number, page?: number) =>
+    api.get<{ success: boolean; transactions: any[]; pagination: any }>(`/wallet/transactions`, {
+      headers: { 'user-id': userId },
+      params: { limit, page }
+    }),
+  
+  // Deposit
+  createDeposit: (userId: string, data: { amount: number; receiptImage: string; reference: string; description?: string }) =>
+    api.post<{ success: boolean; transaction: any }>(`/wallet/deposit`, data, {
+      headers: { 'user-id': userId }
+    }),
+  
+  // Admin endpoints
+  getPendingDeposits: (userId: string) =>
+    api.get<{ success: boolean; deposits: any[] }>(`/wallet/admin/pending-deposits`, {
+      headers: { 'user-id': userId }
+    }),
+  
+  approveDeposit: (userId: string, transactionId: string) =>
+    api.post<{ success: boolean; wallet: any; transaction: any }>(`/wallet/admin/approve-deposit/${transactionId}`, {}, {
+      headers: { 'user-id': userId }
+    }),
 };
 
 export default api;
