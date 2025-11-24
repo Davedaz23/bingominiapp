@@ -793,101 +793,77 @@ export default function Home() {
         )}
 
         {/* Main Play Button */}
+     {/* Update Main Play Button */}
+<motion.button
+  onClick={joinGame}
+  disabled={!mainGame || mainGame.status === 'FINISHED' || walletBalance < 10}
+  className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${
+    mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10
+      ? mainGame.status === 'ACTIVE'
+        ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white hover:shadow-3xl'
+        : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl'
+      : 'bg-white/20 text-white/60 cursor-not-allowed'
+  }`}
+  whileHover={mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 ? { 
+    scale: 1.02,
+    y: -2
+  } : {}}
+  whileTap={mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 ? { scale: 0.98 } : {}}
+>
+  {mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && (
+    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+  )}
+  
+  {!mainGame ? (
+    <>
+      <Clock className="w-6 h-6" />
+      LOADING GAME...
+    </>
+  ) : walletBalance < 10 ? (
+    <>
+      <CreditCard className="w-6 h-6" />
+      NEED DEPOSIT
+      <motion.div
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+      >
+        ${walletBalance.toFixed(2)}
+      </motion.div>
+    </>
+  ) : mainGame.status === 'FINISHED' ? (
+    <>
+      <Trophy className="w-6 h-6" />
+      GAME FINISHED
+    </>
+  ) : mainGame.status === 'ACTIVE' ? (
+    <>
+      <Eye className="w-6 h-6" />
+      {isUserInGame() ? 'REJOIN GAME' : 'JOIN GAME'}
+      <motion.div
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ duration: 1.5, repeat: Infinity }}
+        className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+      >
+        {getCurrentPlayersCount()} playing
+      </motion.div>
+    </>
+  ) : (
+    <>
+      <Play className="w-6 h-6" />
+      {autoStartCountdown ? `STARTING IN ${autoStartCountdown}s` : 'PLAY NOW'}
+      {getCurrentPlayersCount() >= 2 && (
         <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="mb-6"
+          animate={{ scale: [1, 1.2, 1] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+          className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
         >
-          <motion.button
-            onClick={joinGame}
-            disabled={!mainGame || mainGame.status === 'FINISHED'}
-            className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${mainGame && mainGame.status !== 'FINISHED'
-                ? mainGame.status === 'ACTIVE'
-                  ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white hover:shadow-3xl'
-                  : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl'
-                : 'bg-white/20 text-white/60 cursor-not-allowed'
-              }`}
-            whileHover={mainGame && mainGame.status !== 'FINISHED' ? {
-              scale: 1.02,
-              y: -2
-            } : {}}
-            whileTap={mainGame && mainGame.status !== 'FINISHED' ? { scale: 0.98 } : {}}
-          >
-            {mainGame && mainGame.status !== 'FINISHED' && (
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-            )}
-
-            {!mainGame ? (
-              <>
-                <Clock className="w-6 h-6" />
-                LOADING GAME...
-              </>
-            ) : mainGame.status === 'FINISHED' ? (
-              <>
-                <Trophy className="w-6 h-6" />
-                GAME FINISHED
-              </>
-            ) : mainGame.status === 'ACTIVE' ? (
-              <>
-                <Eye className="w-6 h-6" />
-                {isUserInGame() ? 'REJOIN GAME' : 'JOIN GAME'}
-                <motion.div
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
-                >
-                  {getCurrentPlayersCount()} playing
-                </motion.div>
-              </>
-            ) : (
-              <>
-                <Play className="w-6 h-6" />
-                {autoStartCountdown ? `STARTING IN ${autoStartCountdown}s` : 'PLAY NOW'}
-                {getCurrentPlayersCount() >= 2 && (
-                  <motion.div
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ duration: 1.5, repeat: Infinity }}
-                    className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
-                  >
-                    {getCurrentPlayersCount()} ready
-                  </motion.div>
-                )}
-              </>
-            )}
-          </motion.button>
-
-          {!mainGame && (
-            <motion.p
-              className="text-center text-white/60 mt-3 text-sm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6 }}
-            >
-              Preparing your game experience...
-            </motion.p>
-          )}
-
-          {mainGame?.status === 'WAITING' && getCurrentPlayersCount() < 2 && (
-            <motion.p
-              className="text-center text-white/60 mt-3 text-sm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              Need {2 - getCurrentPlayersCount()} more players to start
-            </motion.p>
-          )}
-
-          {mainGame?.status === 'ACTIVE' && (
-            <motion.p
-              className="text-center text-white/60 mt-3 text-sm"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              Game in progress - {getNumbersCalledCount()} numbers called
-            </motion.p>
-          )}
+          {getCurrentPlayersCount()} ready
         </motion.div>
+      )}
+    </>
+  )}
+</motion.button>
 
         {/* Current Game Section */}
         <motion.div
