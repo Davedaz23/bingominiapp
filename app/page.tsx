@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTelegram } from '../hooks/useTelegram'
-import { authAPI, gameAPI } from '../services/api'
+import { authAPI, gameAPI, walletAPI } from '../services/api'
 import { Game, User } from '../types'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
@@ -165,14 +165,10 @@ const fetchWalletBalance = async () => {
     const userId = localStorage.getItem('user_id');
     if (!userId) return;
     
-    const response = await fetch('/api/wallet/balance', {
-      headers: {
-        'user-id': userId
-      }
-    });
-    const data = await response.json();
-    if (data.success) {
-      setWalletBalance(data.balance);
+    const response = await walletAPI.getBalance(userId);
+    const data = response;
+    if (data) {
+      setWalletBalance(data.data.balance);
     }
   } catch (error) {
     console.error('Error fetching wallet balance:', error);
