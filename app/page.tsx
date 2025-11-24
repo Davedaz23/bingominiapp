@@ -166,6 +166,7 @@ export default function Home() {
       if (!userId) return 0;
 
       const response = await walletAPI.getBalance(userId);
+      console.log("balance",response);
       const data = response.data;
       if (data.success) {
         setWalletBalance(data.balance);
