@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Upload, CreditCard } from 'lucide-react';
+import { walletAPI } from '@/services/api';
 
 export default function DepositPage() {
   const router = useRouter();
@@ -13,35 +14,49 @@ export default function DepositPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    
+    // Validate amount
+    const depositAmount = parseFloat(amount);
+    if (isNaN(depositAmount) || depositAmount < 10) {
+      alert('Minimum deposit amount is $10');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const userId = localStorage.getItem('user_id');
-      const response = await fetch('/api/wallet/deposit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'user-id': userId || ''
-        },
-        body: JSON.stringify({
-          amount: parseFloat(amount),
-          receiptImage,
-          reference,
-          description: `Bank deposit - Ref: ${reference}`
-        })
+      if (!userId) {
+        alert('User not found. Please log in again.');
+        router.push('/');
+        return;
+      }
+
+      // Use the centralized walletAPI service
+      const response = await walletAPI.createDeposit(userId, {
+        amount: depositAmount,
+        receiptImage,
+        reference,
+        description: `Bank deposit - Ref: ${reference}`
       });
 
-      const data = await response.json();
+      const data = response.data;
       
       if (data.success) {
         alert('Deposit request submitted! It will be approved within 24 hours.');
         router.push('/');
       } else {
-        alert('Deposit failed: ' + data.error);
+        alert('Deposit failed: ' + data.success);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Deposit error:', error);
-      alert('Deposit request failed. Please try again.');
+      
+      // Enhanced error handling based on API error structure
+      const errorMessage = error.response?.data?.error || 
+                          error.message || 
+                          'Deposit request failed. Please try again.';
+      
+      alert(`Deposit failed: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
