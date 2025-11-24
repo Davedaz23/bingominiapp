@@ -6,18 +6,18 @@ import { useTelegram } from '../hooks/useTelegram'
 import { authAPI, gameAPI, walletAPI } from '../services/api'
 import { Game, User } from '../types'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Trophy, 
-  Users, 
-  Play, 
-  Zap, 
-  Crown, 
+import {
+  Trophy,
+  Users,
+  Play,
+  Zap,
+  Crown,
   Sparkles,
   TrendingUp,
   Gamepad2,
   Clock,
   Eye,
-  Wallet, CreditCard, DollarSign 
+  Wallet, CreditCard, DollarSign
 } from 'lucide-react'
 
 // Animation variants
@@ -63,9 +63,9 @@ export default function Home() {
   const [showWinnerModal, setShowWinnerModal] = useState(false)
   const [winnerInfo, setWinnerInfo] = useState<any>(null)
 
-//wallte
-const [walletBalance, setWalletBalance] = useState(0);
-const [showDepositModal, setShowDepositModal] = useState(false);
+  //wallte
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [showDepositModal, setShowDepositModal] = useState(false);
 
   useEffect(() => {
     if (isReady && user && !authAttempted) {
@@ -76,11 +76,11 @@ const [showDepositModal, setShowDepositModal] = useState(false);
 
   // Auto-start countdown for system games
   useEffect(() => {
-    if (mainGame?.status === 'WAITING' && 
-        mainGame.currentPlayers >= 2 && 
-        isSystemGame(mainGame)) {
+    if (mainGame?.status === 'WAITING' &&
+      mainGame.currentPlayers >= 2 &&
+      isSystemGame(mainGame)) {
       setAutoStartCountdown(10)
-      
+
       const interval = setInterval(() => {
         setAutoStartCountdown((prev) => {
           if (prev === 1) {
@@ -114,10 +114,10 @@ const [showDepositModal, setShowDepositModal] = useState(false);
   const initializeUser = async () => {
     try {
       setAuthAttempted(true)
-      
+
       const response = await authAPI.telegramLogin(initData || 'development')
       const { token, user: userData } = response.data
-      
+
       localStorage.setItem('bingo_token', token)
       localStorage.setItem('user_id', userData.id)
       setUserStats(userData)
@@ -159,59 +159,83 @@ const [showDepositModal, setShowDepositModal] = useState(false);
   }
 
   //wallte use effect
-// Fetch wallet balance
-const fetchWalletBalance = async () => {
-  try {
+  // Fetch wallet balance
+  const fetchWalletBalance = async () => {
+    try {
+      const userId = localStorage.getItem('user_id');
+      if (!userId) return 0;
+
+      const response = await walletAPI.getBalance(userId);
+      const data = response.data;
+      if (data.success) {
+        setWalletBalance(data.balance);
+        return data.balance;
+      }
+      return 0;
+    } catch (error) {
+      console.error('Error fetching wallet balance:', error);
+      return 0;
+    }
+  };
+
+  // Update the useEffect to fetch wallet balance when user is ready
+  useEffect(() => {
+    if (isReady && user && !authAttempted) {
+      initializeUser();
+      loadMainGame();
+    }
+  }, [isReady, user, authAttempted]);
+
+  // Add this useEffect to fetch wallet balance after authentication
+  useEffect(() => {
+    if (userStats?._id && userStats._id !== 'pending') {
+      fetchWalletBalance();
+    }
+  }, [userStats?._id]);
+
+  // Update joinGame function to check balance
+  const joinGame = async () => {
+    if (!mainGame) return;
+
     const userId = localStorage.getItem('user_id');
     if (!userId) return;
-    
-    const response = await walletAPI.getBalance(userId);
-    const data = response;
-    if (data) {
-      setWalletBalance(data.data.balance);
-    }
-  } catch (error) {
-    console.error('Error fetching wallet balance:', error);
-  }
-};
 
-// Update joinGame function to check balance
-const joinGame = async () => {
-  if (!mainGame) return;
-  
-  const userId = localStorage.getItem('user_id');
-  if (!userId) return;
-  
-  try {
-    // Check balance first
-    const balance = await fetchWalletBalance();
-    const entryFee = 10; // Your game entry fee
-    
-    if (walletBalance < entryFee) {
-      setShowDepositModal(true);
-      return;
+    try {
+      // Check balance first
+      const entryFee = 10; // Your game entry fee
+
+      if (walletBalance < entryFee) {
+        setShowDepositModal(true);
+        return;
+      }
+
+      // If user has sufficient balance, join the game
+      console.log(`🎮 Joining game with wallet balance: $${walletBalance}`);
+
+      // Use the regular join endpoint (not join-with-wallet since we're not deducting upfront)
+      const response = await gameAPI.joinGame(mainGame.code, userId);
+
+      if (response.data.success) {
+        console.log('✅ Successfully joined game, redirecting...');
+        router.push(`/game/${mainGame._id}`);
+      } else {
+        throw new Error('Failed to join game');
+      }
+    } catch (error: any) {
+      console.error('Failed to join game:', error);
+
+      // Enhanced error handling
+      if (error.response?.data?.error?.includes('already in this game')) {
+        // User is already in the game, just redirect
+        router.push(`/game/${mainGame._id}`);
+        return;
+      }
+
+      // Reload game data to get current status
+      loadMainGame();
     }
-    
-    // Use wallet-enabled join endpoint
-    const response = await fetch(`/api/games/${mainGame.code}/join-with-wallet`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'user-id': userId
-      },
-      body: JSON.stringify({ entryFee })
-    });
-    
-    if (response.ok) {
-      router.push(`/game/${mainGame._id}`);
-    } else {
-      throw new Error('Failed to join game');
-    }
-  } catch (error) {
-    console.error('Failed to join game:', error);
-    loadMainGame();
-  }
-};
+  };
+
 
   const isSystemGame = (game: Game): boolean => {
     return game.isAutoCreated === true
@@ -293,7 +317,7 @@ const joinGame = async () => {
               <h2 className="text-3xl font-black text-white mb-4 drop-shadow-lg">
                 GAME OVER!
               </h2>
-              
+
               <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30">
                 <div className="flex items-center justify-center gap-3 mb-3">
                   <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
@@ -314,7 +338,7 @@ const joinGame = async () => {
                   <div>Numbers Called</div>
                 </div>
               </div>
-              
+
               <motion.button
                 onClick={() => setShowWinnerModal(false)}
                 className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
@@ -332,7 +356,7 @@ const joinGame = async () => {
 
   const displayUser = userStats || (user ? {
     _id: 'pending',
-    id: 'pending', 
+    id: 'pending',
     telegramId: user.id.toString(),
     firstName: user.first_name,
     username: user.username,
@@ -342,7 +366,8 @@ const joinGame = async () => {
     createdAt: new Date().toISOString()
   } as User : null)
 
-{/* Add this after the User Stats Card */}
+  {/* Add this after the User Stats Card */ }
+ {/* Update the Wallet Card */}
 <motion.div
   initial={{ y: 20, opacity: 0, scale: 0.9 }}
   animate={{ y: 0, opacity: 1, scale: 1 }}
@@ -356,16 +381,28 @@ const joinGame = async () => {
         className="relative"
       >
         <Wallet className="w-12 h-12 text-green-400" />
+        {walletBalance >= 10 && (
+          <motion.div
+            animate={{ scale: [1, 1.2, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"
+          />
+        )}
       </motion.div>
       
       <div>
         <h3 className="font-black text-xl text-white">Wallet Balance</h3>
-        <p className="text-white/70 text-sm">Available for game entries</p>
+        <p className="text-white/70 text-sm">
+          {walletBalance >= 10 ? 'Ready to play! 🎮' : 'Add funds to play games'}
+        </p>
         <motion.div 
-          className="text-3xl font-black text-green-400 mt-1"
+          className="text-3xl font-black mt-1"
           key={walletBalance}
           initial={{ scale: 1.2 }}
           animate={{ scale: 1 }}
+          style={{ 
+            color: walletBalance >= 10 ? '#4ADE80' : '#EF4444' 
+          }}
         >
           ${walletBalance.toFixed(2)}
         </motion.div>
@@ -373,21 +410,40 @@ const joinGame = async () => {
     </div>
     
     <motion.button
-      onClick={() => setShowDepositModal(true)}
-      className="flex items-center gap-2 px-4 py-3 bg-green-500 text-white rounded-2xl font-bold shadow-lg"
+      onClick={() => walletBalance >= 10 ? joinGame() : setShowDepositModal(true)}
+      className={`flex items-center gap-2 px-4 py-3 rounded-2xl font-bold shadow-lg ${
+        walletBalance >= 10 
+          ? 'bg-green-500 text-white hover:bg-green-600' 
+          : 'bg-red-500 text-white hover:bg-red-600'
+      }`}
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
     >
-      <CreditCard className="w-4 h-4" />
-      Deposit
+      {walletBalance >= 10 ? (
+        <>
+          <Play className="w-4 h-4" />
+          Play Game
+        </>
+      ) : (
+        <>
+          <CreditCard className="w-4 h-4" />
+          Deposit
+        </>
+      )}
     </motion.button>
   </div>
   
   {/* Quick Stats */}
   <div className="grid grid-cols-2 gap-3 mt-4">
-    <div className="bg-white/10 rounded-xl p-3 text-center">
+    <div className={`rounded-xl p-3 text-center ${
+      walletBalance >= 10 ? 'bg-green-500/20' : 'bg-red-500/20'
+    }`}>
       <div className="text-white font-bold text-sm">Entry Fee</div>
-      <div className="text-green-400 font-black">$10</div>
+      <div className={`font-black ${
+        walletBalance >= 10 ? 'text-green-400' : 'text-red-400'
+      }`}>
+        $10
+      </div>
     </div>
     <div className="bg-white/10 rounded-xl p-3 text-center">
       <div className="text-white font-bold text-sm">Can Play</div>
@@ -396,6 +452,19 @@ const joinGame = async () => {
       </div>
     </div>
   </div>
+
+  {/* Status Message */}
+  {walletBalance > 0 && walletBalance < 10 && (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      className="mt-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/30"
+    >
+      <p className="text-yellow-300 text-xs text-center">
+        Almost there! Need ${(10 - walletBalance).toFixed(2)} more to play
+      </p>
+    </motion.div>
+  )}
 </motion.div>
 
   if (!isReady || isLoading) {
@@ -403,17 +472,17 @@ const joinGame = async () => {
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
         <div className="text-center">
           <motion.div
-            animate={{ 
+            animate={{
               rotate: 360,
               scale: [1, 1.2, 1]
             }}
-            transition={{ 
+            transition={{
               rotate: { duration: 2, repeat: Infinity, ease: "linear" },
               scale: { duration: 1.5, repeat: Infinity }
             }}
             className="w-20 h-20 border-4 border-white border-t-transparent rounded-full mx-auto mb-6"
           />
-          <motion.p 
+          <motion.p
             className="text-white text-xl font-bold"
             animate={{ opacity: [0.5, 1, 0.5] }}
             transition={{ duration: 2, repeat: Infinity }}
@@ -425,60 +494,60 @@ const joinGame = async () => {
     )
   }
   const DepositModal = () => (
-  <AnimatePresence>
-    {showDepositModal && (
-      <motion.div
-        className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
+    <AnimatePresence>
+      {showDepositModal && (
         <motion.div
-          className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 border border-white/30 shadow-2xl w-full max-w-sm"
-          initial={{ scale: 0.8, y: 50 }}
-          animate={{ scale: 1, y: 0 }}
-          exit={{ scale: 0.8, y: 50 }}
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
         >
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-white font-bold text-xl">Deposit Funds</h3>
-            <button 
-              onClick={() => setShowDepositModal(false)}
-              className="text-white/80 hover:text-white"
-            >
-              ✕
-            </button>
-          </div>
-          
-          <div className="space-y-4">
-            <div className="bg-white/10 rounded-2xl p-4 border border-white/20">
-              <div className="text-white/80 text-sm mb-2">Current Balance</div>
-              <div className="text-2xl font-black text-white">${walletBalance.toFixed(2)}</div>
+          <motion.div
+            className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 border border-white/30 shadow-2xl w-full max-w-sm"
+            initial={{ scale: 0.8, y: 50 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.8, y: 50 }}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-white font-bold text-xl">Deposit Funds</h3>
+              <button
+                onClick={() => setShowDepositModal(false)}
+                className="text-white/80 hover:text-white"
+              >
+                ✕
+              </button>
             </div>
-            
-            <div className="text-white/80 text-sm">
-              To deposit funds:
-              <ol className="list-decimal list-inside mt-2 space-y-1">
-                <li>Send money via bank transfer</li>
-                <li>Upload receipt screenshot</li>
-                <li>We'll approve within 24 hours</li>
-              </ol>
+
+            <div className="space-y-4">
+              <div className="bg-white/10 rounded-2xl p-4 border border-white/20">
+                <div className="text-white/80 text-sm mb-2">Current Balance</div>
+                <div className="text-2xl font-black text-white">${walletBalance.toFixed(2)}</div>
+              </div>
+
+              <div className="text-white/80 text-sm">
+                To deposit funds:
+                <ol className="list-decimal list-inside mt-2 space-y-1">
+                  <li>Send money via bank transfer</li>
+                  <li>Upload receipt screenshot</li>
+                  <li>We'll approve within 24 hours</li>
+                </ol>
+              </div>
+
+              <button
+                onClick={() => {
+                  // Navigate to deposit page or open deposit form
+                  router.push('/deposit');
+                }}
+                className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold"
+              >
+                Proceed to Deposit
+              </button>
             </div>
-            
-            <button
-              onClick={() => {
-                // Navigate to deposit page or open deposit form
-                router.push('/deposit');
-              }}
-              className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold"
-            >
-              Proceed to Deposit
-            </button>
-          </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
-    )}
-  </AnimatePresence>
-);
+      )}
+    </AnimatePresence>
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 relative overflow-hidden">
@@ -558,7 +627,7 @@ const joinGame = async () => {
           className="text-center mb-8 pt-8"
         >
           <motion.div
-            animate={{ 
+            animate={{
               rotate: [0, -10, 10, 0],
               scale: [1, 1.1, 1]
             }}
@@ -639,13 +708,13 @@ const joinGame = async () => {
                   </motion.div>
                 )}
               </motion.div>
-              
+
               <div className="flex-1">
                 <h3 className="font-black text-xl text-white">
                   {displayUser.firstName || displayUser.username}
                 </h3>
                 <p className="text-white/70">@{displayUser.username}</p>
-                <motion.div 
+                <motion.div
                   className="flex items-center gap-1 mt-1"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -658,9 +727,9 @@ const joinGame = async () => {
                 </motion.div>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-3 gap-3">
-              <motion.div 
+              <motion.div
                 className="bg-white/20 rounded-2xl p-3 text-center backdrop-blur-sm"
                 whileHover={{ scale: 1.05 }}
                 transition={{ type: "spring", stiffness: 400 }}
@@ -670,8 +739,8 @@ const joinGame = async () => {
                 </div>
                 <div className="text-white/70 text-xs font-medium">Played</div>
               </motion.div>
-              
-              <motion.div 
+
+              <motion.div
                 className="bg-white/20 rounded-2xl p-3 text-center backdrop-blur-sm"
                 whileHover={{ scale: 1.05 }}
                 transition={{ type: "spring", stiffness: 400 }}
@@ -682,8 +751,8 @@ const joinGame = async () => {
                 </div>
                 <div className="text-white/70 text-xs font-medium">Wins</div>
               </motion.div>
-              
-              <motion.div 
+
+              <motion.div
                 className="bg-white/20 rounded-2xl p-3 text-center backdrop-blur-sm"
                 whileHover={{ scale: 1.05 }}
                 transition={{ type: "spring", stiffness: 400 }}
@@ -697,7 +766,7 @@ const joinGame = async () => {
 
             {/* Win Rate */}
             {(displayUser.gamesPlayed || 0) > 0 && (
-              <motion.div 
+              <motion.div
                 className="mt-4 bg-white/10 rounded-xl p-3"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -710,7 +779,7 @@ const joinGame = async () => {
                   </span>
                 </div>
                 <div className="w-full bg-white/20 rounded-full h-2">
-                  <motion.div 
+                  <motion.div
                     className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full"
                     initial={{ width: 0 }}
                     animate={{ width: `${((displayUser.gamesWon || 0) / (displayUser.gamesPlayed || 1)) * 100}%` }}
@@ -732,14 +801,13 @@ const joinGame = async () => {
           <motion.button
             onClick={joinGame}
             disabled={!mainGame || mainGame.status === 'FINISHED'}
-            className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${
-              mainGame && mainGame.status !== 'FINISHED'
+            className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${mainGame && mainGame.status !== 'FINISHED'
                 ? mainGame.status === 'ACTIVE'
                   ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white hover:shadow-3xl'
                   : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl'
                 : 'bg-white/20 text-white/60 cursor-not-allowed'
-            }`}
-            whileHover={mainGame && mainGame.status !== 'FINISHED' ? { 
+              }`}
+            whileHover={mainGame && mainGame.status !== 'FINISHED' ? {
               scale: 1.02,
               y: -2
             } : {}}
@@ -748,7 +816,7 @@ const joinGame = async () => {
             {mainGame && mainGame.status !== 'FINISHED' && (
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
             )}
-            
+
             {!mainGame ? (
               <>
                 <Clock className="w-6 h-6" />
@@ -787,9 +855,9 @@ const joinGame = async () => {
               </>
             )}
           </motion.button>
-          
+
           {!mainGame && (
-            <motion.p 
+            <motion.p
               className="text-center text-white/60 mt-3 text-sm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -800,7 +868,7 @@ const joinGame = async () => {
           )}
 
           {mainGame?.status === 'WAITING' && getCurrentPlayersCount() < 2 && (
-            <motion.p 
+            <motion.p
               className="text-center text-white/60 mt-3 text-sm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -810,7 +878,7 @@ const joinGame = async () => {
           )}
 
           {mainGame?.status === 'ACTIVE' && (
-            <motion.p 
+            <motion.p
               className="text-center text-white/60 mt-3 text-sm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -843,9 +911,9 @@ const joinGame = async () => {
               </motion.div>
             )}
           </div>
-          
+
           {!mainGame ? (
-            <motion.div 
+            <motion.div
               className="text-center py-8"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -870,15 +938,14 @@ const joinGame = async () => {
                       <h4 className="font-black text-white">
                         Game {mainGame.code}
                       </h4>
-                      <span className={`px-2 py-1 rounded-full text-xs font-black ${
-                        mainGame.status === 'ACTIVE' 
+                      <span className={`px-2 py-1 rounded-full text-xs font-black ${mainGame.status === 'ACTIVE'
                           ? 'bg-green-500/20 text-green-300 border border-green-500/30'
                           : mainGame.status === 'FINISHED'
-                          ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                          : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                      }`}>
-                        {mainGame.status === 'ACTIVE' ? 'LIVE' : 
-                         mainGame.status === 'FINISHED' ? 'FINISHED' : 'WAITING'}
+                            ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                            : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                        }`}>
+                        {mainGame.status === 'ACTIVE' ? 'LIVE' :
+                          mainGame.status === 'FINISHED' ? 'FINISHED' : 'WAITING'}
                       </span>
                       {isSystemGame(mainGame) && (
                         <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full font-bold border border-green-500/30">
@@ -886,7 +953,7 @@ const joinGame = async () => {
                         </span>
                       )}
                     </div>
-                    
+
                     <div className="flex items-center gap-4 text-sm">
                       <div className="flex items-center gap-1 text-white/70">
                         <Users className="w-4 h-4" />
@@ -896,11 +963,11 @@ const joinGame = async () => {
                       <div className="flex items-center gap-1 text-white/70">
                         <Clock className="w-4 h-4" />
                         <span>
-                          {mainGame.status === 'ACTIVE' 
+                          {mainGame.status === 'ACTIVE'
                             ? `${getNumbersCalledCount()} numbers called`
                             : mainGame.status === 'FINISHED'
-                            ? 'Game completed'
-                            : 'Waiting for players'
+                              ? 'Game completed'
+                              : 'Waiting for players'
                           }
                         </span>
                       </div>
@@ -913,21 +980,20 @@ const joinGame = async () => {
                   <div className="flex justify-between items-center text-xs mb-1">
                     <span className="text-white/70">Session Progress</span>
                     <span className="text-white font-bold">
-                      {mainGame.status === 'ACTIVE' 
+                      {mainGame.status === 'ACTIVE'
                         ? `${getNumbersCalledCount()}/75 numbers`
                         : `${Math.round((getCurrentPlayersCount() / mainGame.maxPlayers) * 100)}%`
                       }
                     </span>
                   </div>
                   <div className="w-full bg-white/20 rounded-full h-1.5">
-                    <motion.div 
-                      className={`h-1.5 rounded-full ${
-                        mainGame.status === 'ACTIVE'
+                    <motion.div
+                      className={`h-1.5 rounded-full ${mainGame.status === 'ACTIVE'
                           ? 'bg-gradient-to-r from-blue-400 to-purple-400'
                           : 'bg-gradient-to-r from-green-400 to-cyan-400'
-                      }`}
+                        }`}
                       initial={{ width: 0 }}
-                      animate={{ 
+                      animate={{
                         width: mainGame.status === 'ACTIVE'
                           ? `${((getNumbersCalledCount()) / 75) * 100}%`
                           : `${(getCurrentPlayersCount() / mainGame.maxPlayers) * 100}%`
@@ -947,11 +1013,10 @@ const joinGame = async () => {
                 >
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-white/80">Your status:</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                      getUserRole() === 'SPECTATOR' 
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${getUserRole() === 'SPECTATOR'
                         ? 'bg-blue-400/20 text-blue-300 border border-blue-400/30'
                         : 'bg-green-400/20 text-green-300 border border-green-400/30'
-                    }`}>
+                      }`}>
                       {getUserRole() === 'SPECTATOR' ? 'SPECTATOR' : 'PLAYER'}
                     </span>
                     <span className="text-white/60 text-xs">
@@ -1030,9 +1095,9 @@ const joinGame = async () => {
           </p>
         </motion.div>
       </motion.div>
-  <DepositModal />
+      <DepositModal />
     </div>
-    
+
   )
   // Add this modal component to your home page
 
