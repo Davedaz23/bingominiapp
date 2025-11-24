@@ -1,4 +1,4 @@
-// services/api.ts - UPDATED WITH WALLET
+// services/api.ts - UPDATED WITH FIXED WALLET ENDPOINTS
 import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
@@ -16,15 +16,9 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('bingo_token');
-    const userId = localStorage.getItem('user_id');
     
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    // Add user-id header for wallet endpoints
-    if (userId && config.url?.includes('/wallet/')) {
-      config.headers['user-id'] = userId;
     }
   }
   return config;
@@ -70,6 +64,12 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Helper function to get user ID
+const getUserId = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('user_id');
+};
 
 export const authAPI = {
   telegramLogin: (initData: string) => 
@@ -150,35 +150,56 @@ export const gameAPI = {
 };
 
 export const walletAPI = {
-  // Balance
+  // Balance - include userId in query params instead of headers
   getBalance: (userId: string) =>
     api.get<{ success: boolean; balance: number }>(`/wallet/balance`, {
-      headers: { 'user-id': userId }
+      params: { userId }
     }),
   
-  // Transactions
+  // Transactions - include userId in query params
   getTransactions: (userId: string, limit?: number, page?: number) =>
     api.get<{ success: boolean; transactions: any[]; pagination: any }>(`/wallet/transactions`, {
-      headers: { 'user-id': userId },
-      params: { limit, page }
+      params: { userId, limit, page }
     }),
   
-  // Deposit
+  // Deposit - include userId in request body
   createDeposit: (userId: string, data: { amount: number; receiptImage: string; reference: string; description?: string }) =>
-    api.post<{ success: boolean; transaction: any }>(`/wallet/deposit`, data, {
-      headers: { 'user-id': userId }
+    api.post<{ success: boolean; transaction: any }>(`/wallet/deposit`, {
+      userId,
+      ...data
     }),
   
-  // Admin endpoints
+  // Admin endpoints - include userId in query params
   getPendingDeposits: (userId: string) =>
     api.get<{ success: boolean; deposits: any[] }>(`/wallet/admin/pending-deposits`, {
-      headers: { 'user-id': userId }
+      params: { userId }
     }),
   
   approveDeposit: (userId: string, transactionId: string) =>
-    api.post<{ success: boolean; wallet: any; transaction: any }>(`/wallet/admin/approve-deposit/${transactionId}`, {}, {
-      headers: { 'user-id': userId }
+    api.post<{ success: boolean; wallet: any; transaction: any }>(`/wallet/admin/approve-deposit/${transactionId}`, {
+      userId
     }),
+};
+
+// Convenience methods that automatically get userId from localStorage
+export const walletAPIAuto = {
+  getBalance: () => {
+    const userId = getUserId();
+    if (!userId) throw new Error('User ID not found');
+    return walletAPI.getBalance(userId);
+  },
+  
+  getTransactions: (limit?: number, page?: number) => {
+    const userId = getUserId();
+    if (!userId) throw new Error('User ID not found');
+    return walletAPI.getTransactions(userId, limit, page);
+  },
+  
+  createDeposit: (data: { amount: number; receiptImage: string; reference: string; description?: string }) => {
+    const userId = getUserId();
+    if (!userId) throw new Error('User ID not found');
+    return walletAPI.createDeposit(userId, data);
+  },
 };
 
 export default api;
