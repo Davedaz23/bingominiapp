@@ -63,16 +63,43 @@ export default function Home() {
   const [showWinnerModal, setShowWinnerModal] = useState(false)
   const [winnerInfo, setWinnerInfo] = useState<any>(null)
 
-  //wallte
+  // Wallet state
   const [walletBalance, setWalletBalance] = useState(0);
   const [showDepositModal, setShowDepositModal] = useState(false);
+  const [isBalanceLoading, setIsBalanceLoading] = useState(true);
+
+  // Fetch wallet balance
+  const fetchWalletBalance = async () => {
+    try {
+      setIsBalanceLoading(true);
+      const userId = localStorage.getItem('user_id');
+      if (!userId) {
+        console.log('No user ID found for wallet balance');
+        return 0;
+      }
+
+      const response = await walletAPI.getBalance(userId);
+      console.log("Wallet balance response:", response);
+      
+      const data = response.data;
+      if (data.success) {
+        setWalletBalance(data.balance);
+        return data.balance;
+      }
+      return 0;
+    } catch (error) {
+      console.error('Error fetching wallet balance:', error);
+      return 0;
+    } finally {
+      setIsBalanceLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isReady && user && !authAttempted) {
-      initializeUser()
-      loadMainGame()
+      initializeUser();
     }
-  }, [isReady, user, authAttempted])
+  }, [isReady, user, authAttempted]);
 
   // Auto-start countdown for system games
   useEffect(() => {
@@ -114,6 +141,7 @@ export default function Home() {
   const initializeUser = async () => {
     try {
       setAuthAttempted(true)
+      setIsLoading(true)
 
       const response = await authAPI.telegramLogin(initData || 'development')
       const { token, user: userData } = response.data
@@ -128,6 +156,13 @@ export default function Home() {
       }
 
       console.log('User authenticated successfully')
+      
+      // Load wallet balance after authentication
+      await fetchWalletBalance();
+      
+      // Load main game after authentication and wallet balance
+      await loadMainGame();
+      
     } catch (error) {
       console.error('Authentication failed:', error)
       const fallbackUser = {
@@ -142,6 +177,12 @@ export default function Home() {
         createdAt: new Date().toISOString()
       }
       setUserStats(fallbackUser as User)
+      
+      // Try to load wallet balance even if auth fails
+      await fetchWalletBalance();
+      await loadMainGame();
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -153,48 +194,9 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to load main game:', error)
       setMainGame(null)
-    } finally {
-      setIsLoading(false)
     }
   }
 
-  //wallte use effect
-  // Fetch wallet balance
-  const fetchWalletBalance = async () => {
-    try {
-      const userId = localStorage.getItem('user_id');
-      if (!userId) return 0;
-
-      const response = await walletAPI.getBalance(userId);
-      console.log("balance",response);
-      const data = response.data;
-      if (data.success) {
-        setWalletBalance(data.balance);
-        return data.balance;
-      }
-      return 0;
-    } catch (error) {
-      console.error('Error fetching wallet balance:', error);
-      return 0;
-    }
-  };
-
-  // Update the useEffect to fetch wallet balance when user is ready
-  useEffect(() => {
-    if (isReady && user && !authAttempted) {
-      initializeUser();
-      loadMainGame();
-    }
-  }, [isReady, user, authAttempted]);
-
-  // Add this useEffect to fetch wallet balance after authentication
-  useEffect(() => {
-    if (userStats?._id && userStats._id !== 'pending') {
-      fetchWalletBalance();
-    }
-  }, [userStats?._id]);
-
-  // Update joinGame function to check balance
   const joinGame = async () => {
     if (!mainGame) return;
 
@@ -236,7 +238,6 @@ export default function Home() {
       loadMainGame();
     }
   };
-
 
   const isSystemGame = (game: Game): boolean => {
     return game.isAutoCreated === true
@@ -355,145 +356,7 @@ export default function Home() {
     </AnimatePresence>
   )
 
-  const displayUser = userStats || (user ? {
-    _id: 'pending',
-    id: 'pending',
-    telegramId: user.id.toString(),
-    firstName: user.first_name,
-    username: user.username,
-    gamesPlayed: 0,
-    gamesWon: 0,
-    totalScore: 0,
-    createdAt: new Date().toISOString()
-  } as User : null)
-
-  {/* Add this after the User Stats Card */ }
- {/* Update the Wallet Card */}
-<motion.div
-  initial={{ y: 20, opacity: 0, scale: 0.9 }}
-  animate={{ y: 0, opacity: 1, scale: 1 }}
-  transition={{ delay: 0.3 }}
-  className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-green-500/30 shadow-2xl"
->
-  <div className="flex items-center justify-between">
-    <div className="flex items-center gap-4">
-      <motion.div
-        whileHover={{ scale: 1.1, rotate: 5 }}
-        className="relative"
-      >
-        <Wallet className="w-12 h-12 text-green-400" />
-        {walletBalance >= 10 && (
-          <motion.div
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"
-          />
-        )}
-      </motion.div>
-      
-      <div>
-        <h3 className="font-black text-xl text-white">Wallet Balance</h3>
-        <p className="text-white/70 text-sm">
-          {walletBalance >= 10 ? 'Ready to play! 🎮' : 'Add funds to play games'}
-        </p>
-        <motion.div 
-          className="text-3xl font-black mt-1"
-          key={walletBalance}
-          initial={{ scale: 1.2 }}
-          animate={{ scale: 1 }}
-          style={{ 
-            color: walletBalance >= 10 ? '#4ADE80' : '#EF4444' 
-          }}
-        >
-          ${walletBalance.toFixed(2)}
-        </motion.div>
-      </div>
-    </div>
-    
-    <motion.button
-      onClick={() => walletBalance >= 10 ? joinGame() : setShowDepositModal(true)}
-      className={`flex items-center gap-2 px-4 py-3 rounded-2xl font-bold shadow-lg ${
-        walletBalance >= 10 
-          ? 'bg-green-500 text-white hover:bg-green-600' 
-          : 'bg-red-500 text-white hover:bg-red-600'
-      }`}
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
-    >
-      {walletBalance >= 10 ? (
-        <>
-          <Play className="w-4 h-4" />
-          Play Game
-        </>
-      ) : (
-        <>
-          <CreditCard className="w-4 h-4" />
-          Deposit
-        </>
-      )}
-    </motion.button>
-  </div>
-  
-  {/* Quick Stats */}
-  <div className="grid grid-cols-2 gap-3 mt-4">
-    <div className={`rounded-xl p-3 text-center ${
-      walletBalance >= 10 ? 'bg-green-500/20' : 'bg-red-500/20'
-    }`}>
-      <div className="text-white font-bold text-sm">Entry Fee</div>
-      <div className={`font-black ${
-        walletBalance >= 10 ? 'text-green-400' : 'text-red-400'
-      }`}>
-        $10
-      </div>
-    </div>
-    <div className="bg-white/10 rounded-xl p-3 text-center">
-      <div className="text-white font-bold text-sm">Can Play</div>
-      <div className="text-green-400 font-black">
-        {Math.floor(walletBalance / 10)} games
-      </div>
-    </div>
-  </div>
-
-  {/* Status Message */}
-  {walletBalance > 0 && walletBalance < 10 && (
-    <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      className="mt-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/30"
-    >
-      <p className="text-yellow-300 text-xs text-center">
-        Almost there! Need ${(10 - walletBalance).toFixed(2)} more to play
-      </p>
-    </motion.div>
-  )}
-</motion.div>
-
-  if (!isReady || isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
-        <div className="text-center">
-          <motion.div
-            animate={{
-              rotate: 360,
-              scale: [1, 1.2, 1]
-            }}
-            transition={{
-              rotate: { duration: 2, repeat: Infinity, ease: "linear" },
-              scale: { duration: 1.5, repeat: Infinity }
-            }}
-            className="w-20 h-20 border-4 border-white border-t-transparent rounded-full mx-auto mb-6"
-          />
-          <motion.p
-            className="text-white text-xl font-bold"
-            animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
-            {initData === 'development' ? 'Development Mode' : 'Loading Bingo...'}
-          </motion.p>
-        </div>
-      </div>
-    )
-  }
+  // Deposit Modal Component
   const DepositModal = () => (
     <AnimatePresence>
       {showDepositModal && (
@@ -536,10 +399,10 @@ export default function Home() {
 
               <button
                 onClick={() => {
-                  // Navigate to deposit page or open deposit form
+                  setShowDepositModal(false);
                   router.push('/deposit');
                 }}
-                className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold"
+                className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold hover:bg-green-600 transition-colors"
               >
                 Proceed to Deposit
               </button>
@@ -550,10 +413,52 @@ export default function Home() {
     </AnimatePresence>
   );
 
+  const displayUser = userStats || (user ? {
+    _id: 'pending',
+    id: 'pending',
+    telegramId: user.id.toString(),
+    firstName: user.first_name,
+    username: user.username,
+    gamesPlayed: 0,
+    gamesWon: 0,
+    totalScore: 0,
+    createdAt: new Date().toISOString()
+  } as User : null)
+
+  if (!isReady || isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
+        <div className="text-center">
+          <motion.div
+            animate={{
+              rotate: 360,
+              scale: [1, 1.2, 1]
+            }}
+            transition={{
+              rotate: { duration: 2, repeat: Infinity, ease: "linear" },
+              scale: { duration: 1.5, repeat: Infinity }
+            }}
+            className="w-20 h-20 border-4 border-white border-t-transparent rounded-full mx-auto mb-6"
+          />
+          <motion.p
+            className="text-white text-xl font-bold"
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          >
+            {initData === 'development' ? 'Development Mode' : 'Loading Bingo...'}
+          </motion.p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 relative overflow-hidden">
       {/* Winner Modal */}
       <WinnerModal />
+
+      {/* Deposit Modal */}
+      <DepositModal />
 
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
@@ -792,78 +697,193 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* Main Play Button */}
-     {/* Update Main Play Button */}
-<motion.button
-  onClick={joinGame}
-  disabled={!mainGame || mainGame.status === 'FINISHED' || walletBalance < 10}
-  className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${
-    mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10
-      ? mainGame.status === 'ACTIVE'
-        ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white hover:shadow-3xl'
-        : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl'
-      : 'bg-white/20 text-white/60 cursor-not-allowed'
-  }`}
-  whileHover={mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 ? { 
-    scale: 1.02,
-    y: -2
-  } : {}}
-  whileTap={mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 ? { scale: 0.98 } : {}}
->
-  {mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && (
-    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-  )}
-  
-  {!mainGame ? (
-    <>
-      <Clock className="w-6 h-6" />
-      LOADING GAME...
-    </>
-  ) : walletBalance < 10 ? (
-    <>
-      <CreditCard className="w-6 h-6" />
-      NEED DEPOSIT
-      <motion.div
-        animate={{ scale: [1, 1.2, 1] }}
-        transition={{ duration: 1.5, repeat: Infinity }}
-        className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
-      >
-        ${walletBalance.toFixed(2)}
-      </motion.div>
-    </>
-  ) : mainGame.status === 'FINISHED' ? (
-    <>
-      <Trophy className="w-6 h-6" />
-      GAME FINISHED
-    </>
-  ) : mainGame.status === 'ACTIVE' ? (
-    <>
-      <Eye className="w-6 h-6" />
-      {isUserInGame() ? 'REJOIN GAME' : 'JOIN GAME'}
-      <motion.div
-        animate={{ scale: [1, 1.2, 1] }}
-        transition={{ duration: 1.5, repeat: Infinity }}
-        className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
-      >
-        {getCurrentPlayersCount()} playing
-      </motion.div>
-    </>
-  ) : (
-    <>
-      <Play className="w-6 h-6" />
-      {autoStartCountdown ? `STARTING IN ${autoStartCountdown}s` : 'PLAY NOW'}
-      {getCurrentPlayersCount() >= 2 && (
+        {/* Wallet Card */}
         <motion.div
-          animate={{ scale: [1, 1.2, 1] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-          className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+          initial={{ y: 20, opacity: 0, scale: 0.9 }}
+          animate={{ y: 0, opacity: 1, scale: 1 }}
+          transition={{ delay: 0.3 }}
+          className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-green-500/30 shadow-2xl"
         >
-          {getCurrentPlayersCount()} ready
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <motion.div
+                whileHover={{ scale: 1.1, rotate: 5 }}
+                className="relative"
+              >
+                <Wallet className="w-12 h-12 text-green-400" />
+                {walletBalance >= 10 && (
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"
+                  />
+                )}
+              </motion.div>
+              
+              <div>
+                <h3 className="font-black text-xl text-white">Wallet Balance</h3>
+                <p className="text-white/70 text-sm">
+                  {isBalanceLoading ? 'Loading...' : 
+                   walletBalance >= 10 ? 'Ready to play! 🎮' : 'Add funds to play games'}
+                </p>
+                <motion.div 
+                  className="text-3xl font-black mt-1"
+                  key={walletBalance}
+                  initial={{ scale: 1.2 }}
+                  animate={{ scale: 1 }}
+                  style={{ 
+                    color: walletBalance >= 10 ? '#4ADE80' : '#EF4444' 
+                  }}
+                >
+                  {isBalanceLoading ? '...' : `$${walletBalance.toFixed(2)}`}
+                </motion.div>
+              </div>
+            </div>
+            
+            <motion.button
+              onClick={() => walletBalance >= 10 ? joinGame() : setShowDepositModal(true)}
+              disabled={isBalanceLoading}
+              className={`flex items-center gap-2 px-4 py-3 rounded-2xl font-bold shadow-lg ${
+                isBalanceLoading 
+                  ? 'bg-gray-500 text-white cursor-not-allowed' 
+                  : walletBalance >= 10 
+                    ? 'bg-green-500 text-white hover:bg-green-600' 
+                    : 'bg-red-500 text-white hover:bg-red-600'
+              }`}
+              whileHover={!isBalanceLoading ? { scale: 1.05 } : {}}
+              whileTap={!isBalanceLoading ? { scale: 0.95 } : {}}
+            >
+              {isBalanceLoading ? (
+                <>
+                  <Clock className="w-4 h-4" />
+                  Loading...
+                </>
+              ) : walletBalance >= 10 ? (
+                <>
+                  <Play className="w-4 h-4" />
+                  Play Game
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4" />
+                  Deposit
+                </>
+              )}
+            </motion.button>
+          </div>
+          
+          {/* Quick Stats */}
+          {!isBalanceLoading && (
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <div className={`rounded-xl p-3 text-center ${
+                walletBalance >= 10 ? 'bg-green-500/20' : 'bg-red-500/20'
+              }`}>
+                <div className="text-white font-bold text-sm">Entry Fee</div>
+                <div className={`font-black ${
+                  walletBalance >= 10 ? 'text-green-400' : 'text-red-400'
+                }`}>
+                  $10
+                </div>
+              </div>
+              <div className="bg-white/10 rounded-xl p-3 text-center">
+                <div className="text-white font-bold text-sm">Can Play</div>
+                <div className="text-green-400 font-black">
+                  {Math.floor(walletBalance / 10)} games
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Status Message */}
+          {!isBalanceLoading && walletBalance > 0 && walletBalance < 10 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="mt-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/30"
+            >
+              <p className="text-yellow-300 text-xs text-center">
+                Almost there! Need ${(10 - walletBalance).toFixed(2)} more to play
+              </p>
+            </motion.div>
+          )}
         </motion.div>
-      )}
-    </>
-  )}
-</motion.button>
+
+        {/* Main Play Button */}
+        <motion.button
+          onClick={joinGame}
+          disabled={!mainGame || mainGame.status === 'FINISHED' || walletBalance < 10 || isBalanceLoading}
+          className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${
+            mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && !isBalanceLoading
+              ? mainGame.status === 'ACTIVE'
+                ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white hover:shadow-3xl'
+                : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl'
+              : 'bg-white/20 text-white/60 cursor-not-allowed'
+          }`}
+          whileHover={mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && !isBalanceLoading ? { 
+            scale: 1.02,
+            y: -2
+          } : {}}
+          whileTap={mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && !isBalanceLoading ? { scale: 0.98 } : {}}
+        >
+          {mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && !isBalanceLoading && (
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+          )}
+          
+          {!mainGame ? (
+            <>
+              <Clock className="w-6 h-6" />
+              LOADING GAME...
+            </>
+          ) : isBalanceLoading ? (
+            <>
+              <Clock className="w-6 h-6" />
+              CHECKING BALANCE...
+            </>
+          ) : walletBalance < 10 ? (
+            <>
+              <CreditCard className="w-6 h-6" />
+              NEED DEPOSIT
+              <motion.div
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+              >
+                ${walletBalance.toFixed(2)}
+              </motion.div>
+            </>
+          ) : mainGame.status === 'FINISHED' ? (
+            <>
+              <Trophy className="w-6 h-6" />
+              GAME FINISHED
+            </>
+          ) : mainGame.status === 'ACTIVE' ? (
+            <>
+              <Eye className="w-6 h-6" />
+              {isUserInGame() ? 'REJOIN GAME' : 'JOIN GAME'}
+              <motion.div
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+              >
+                {getCurrentPlayersCount()} playing
+              </motion.div>
+            </>
+          ) : (
+            <>
+              <Play className="w-6 h-6" />
+              {autoStartCountdown ? `STARTING IN ${autoStartCountdown}s` : 'PLAY NOW'}
+              {getCurrentPlayersCount() >= 2 && (
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
+                >
+                  {getCurrentPlayersCount()} ready
+                </motion.div>
+              )}
+            </>
+          )}
+        </motion.button>
 
         {/* Current Game Section */}
         <motion.div
@@ -1072,12 +1092,6 @@ export default function Home() {
           </p>
         </motion.div>
       </motion.div>
-      <DepositModal />
     </div>
-
   )
-  // Add this modal component to your home page
-
-
-
 }
