@@ -58,11 +58,23 @@ export default function Home() {
   const [showDepositModal, setShowDepositModal] = useState(false)
   const [isBalanceLoading, setIsBalanceLoading] = useState(true)
 
-  // Use game hook when in game view
+  // Use game hook when in game view - this should handle real-time updates
   const gameHook = useGame(currentGameId || '')
 
   // Calculate prize pool (10 birr per player)
   const prizePool = (mainGame?.players?.length || 0) * 10
+
+  // Real-time game updates using useEffect
+  useEffect(() => {
+    if (gameView === 'game' && currentGameId) {
+      // Set up polling for real-time updates (every 3 seconds)
+      const interval = setInterval(() => {
+        gameHook.refreshGame()
+      }, 3000)
+
+      return () => clearInterval(interval)
+    }
+  }, [gameView, currentGameId, gameHook.refreshGame])
 
   // Initialize Telegram integration
   useEffect(() => {
@@ -372,20 +384,20 @@ export default function Home() {
     )
   }
 
-  // Current Number Display Component
+  // Current Number Display Component - Made smaller
   const CurrentNumberDisplay = () => {
     if (!gameHook.gameState.currentNumber ) return null;
 
     return (
       <motion.div
-        className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-2xl p-4 text-center border-2 border-white shadow-2xl"
+        className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-xl p-3 text-center border-2 border-white shadow-lg"
         initial={{ scale: 0, x: 100 }}
         animate={{ scale: 1, x: 0 }}
         transition={{ type: "spring", stiffness: 200, damping: 15 }}
       >
-        <div className="text-white/80 text-sm font-bold mb-2">CURRENT NUMBER</div>
+        <div className="text-white/80 text-xs font-bold mb-1">CURRENT NUMBER</div>
         <motion.div
-          className="text-4xl font-black text-white drop-shadow-lg"
+          className="text-2xl font-black text-white drop-shadow-lg"
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 300 }}
@@ -394,7 +406,7 @@ export default function Home() {
           {gameHook.gameState.currentNumber}
         </motion.div>
         <motion.div
-          className="text-white/90 text-base font-bold mt-2"
+          className="text-white/90 text-sm font-bold mt-1"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
@@ -415,7 +427,7 @@ export default function Home() {
     return '';
   };
 
-  // Game View Component
+  // Game View Component - Updated layout
   const GameView = () => {
     if (!currentGameId || !gameHook.game) {
       return (
@@ -462,77 +474,82 @@ export default function Home() {
           {/* Compact Game Navigation Bar */}
           <GameNavbar />
 
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Left Column - Game Info */}
-            <div className="lg:col-span-2 space-y-4">
-              {/* Game Header */}
-              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 border border-white/30">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
-                  <div>
-                    <h1 className="text-2xl font-black text-white mb-1">Game {gameHook.game.code}</h1>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 text-white/80 text-xs">
-                      <span>{gameHook.game.players?.length || 0} players</span>
-                      <span className="hidden sm:inline">•</span>
-                      <span>{gameHook.gameState.calledNumbers.length} numbers called</span>
-                    </div>
-                  </div>
-                  <div className={`px-3 py-1 rounded-xl font-black text-xs ${
-                    gameHook.game.status === 'ACTIVE' 
-                      ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                      : gameHook.game.status === 'FINISHED'
-                      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                      : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                  }`}>
-                    {gameHook.game.status === 'ACTIVE' ? 'LIVE' : 
-                     gameHook.game.status === 'FINISHED' ? 'FINISHED' : 
-                     'WAITING'}
+          {/* Main Content - Single Row Layout */}
+          <div className="space-y-4">
+            {/* Game Header */}
+            <div className="bg-white/20 backdrop-blur-lg rounded-xl p-3 border border-white/30">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                <div>
+                  <h1 className="text-xl font-black text-white mb-1">Game {gameHook.game.code}</h1>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1 text-white/80 text-xs">
+                    <span>{gameHook.game.players?.length || 0} players</span>
+                    <span className="hidden sm:inline">•</span>
+                    <span>{gameHook.gameState.calledNumbers.length} numbers called</span>
                   </div>
                 </div>
-              </div>
-
-              {/* Game Content */}
-              <div className="space-y-4">
-                {gameHook.bingoCard && (
-                  <BingoCard
-                    card={gameHook.bingoCard}
-                    calledNumbers={gameHook.gameState.calledNumbers}
-                    onMarkNumber={gameHook.markNumber}
-                    isInteractive={gameHook.game.status === 'ACTIVE'}
-                    isWinner={gameHook.bingoCard.isWinner}
-                  />
-                )}
-
-                <NumberGrid
-                  calledNumbers={gameHook.gameState.calledNumbers}
-                  currentNumber={gameHook.gameState.currentNumber}
-                />
+                <div className={`px-2 py-1 rounded-lg font-black text-xs ${
+                  gameHook.game.status === 'ACTIVE' 
+                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                    : gameHook.game.status === 'FINISHED'
+                    ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                    : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                }`}>
+                  {gameHook.game.status === 'ACTIVE' ? 'LIVE' : 
+                   gameHook.game.status === 'FINISHED' ? 'FINISHED' : 
+                   'WAITING'}
+                </div>
               </div>
             </div>
 
-            {/* Right Column - Current Number (Desktop) and Stats */}
-            <div className="space-y-4">
-              {/* Current Number Display - Right Side */}
-              <CurrentNumberDisplay />
+            {/* Card and Current Number in Single Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Bingo Card - Takes 2/3 width */}
+              <div className="lg:col-span-2">
+                {gameHook.bingoCard && (
+                  <div className="scale-90 transform origin-top">
+                    <BingoCard
+                      card={gameHook.bingoCard}
+                      calledNumbers={gameHook.gameState.calledNumbers}
+                      onMarkNumber={gameHook.markNumber}
+                      isInteractive={gameHook.game.status === 'ACTIVE'}
+                      isWinner={gameHook.bingoCard.isWinner}
+                    />
+                  </div>
+                )}
+              </div>
 
-              {/* Stats Footer */}
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 border border-white/20">
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div>
-                    <div className="text-lg font-black text-white">{gameHook.gameState.calledNumbers.length}</div>
-                    <div className="text-white/60 text-xs">Called</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-black text-white">
-                      {gameHook.bingoCard?.markedPositions?.length || 0}
+              {/* Right Column - Current Number and Stats */}
+              <div className="space-y-3">
+                {/* Current Number Display - Made smaller */}
+                <CurrentNumberDisplay />
+
+                {/* Number Grid - Made more compact */}
+                <div className="scale-90 transform origin-top">
+                  <NumberGrid
+                    calledNumbers={gameHook.gameState.calledNumbers}
+                    currentNumber={gameHook.gameState.currentNumber}
+                  />
+                </div>
+
+                {/* Stats Footer */}
+                <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div>
+                      <div className="text-lg font-black text-white">{gameHook.gameState.calledNumbers.length}</div>
+                      <div className="text-white/60 text-xs">Called</div>
                     </div>
-                    <div className="text-white/60 text-xs">Marked</div>
-                  </div>
-                  <div>
-                    <div className="text-lg font-black text-white">
-                      {Math.round(((gameHook.bingoCard?.markedPositions?.length || 0) / 25) * 100)}%
+                    <div>
+                      <div className="text-lg font-black text-white">
+                        {gameHook.bingoCard?.markedPositions?.length || 0}
+                      </div>
+                      <div className="text-white/60 text-xs">Marked</div>
                     </div>
-                    <div className="text-white/60 text-xs">Progress</div>
+                    <div>
+                      <div className="text-lg font-black text-white">
+                        {Math.round(((gameHook.bingoCard?.markedPositions?.length || 0) / 25) * 100)}%
+                      </div>
+                      <div className="text-white/60 text-xs">Progress</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -546,7 +563,7 @@ export default function Home() {
     )
   }
 
-  // Lobby View Component
+  // Lobby View Component (unchanged)
   const LobbyView = () => (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 relative overflow-hidden">
       {/* Animated Background Elements */}
@@ -792,7 +809,7 @@ export default function Home() {
     </div>
   )
 
-  // Deposit Modal Component
+  // Deposit Modal Component (unchanged)
   const DepositModal = () => (
     <AnimatePresence>
       {showDepositModal && (
