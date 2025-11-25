@@ -1,4 +1,4 @@
-// components/NumberGrid.tsx
+// components/ui/NumberGrid.tsx
 import { motion } from 'framer-motion';
 import { Clock, Sparkles } from 'lucide-react';
 
@@ -59,23 +59,23 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
     <div className="bg-gradient-to-br from-white to-gray-50 rounded-3xl shadow-xl p-6 border border-gray-200">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xl font-black text-gray-800">Called Numbers</h3>
+        <h3 className="text-xl font-black text-gray-800">All Numbers (1-75)</h3>
         
-        {/* Late Joiner Indicator */}
-        {isLateJoiner && (
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            className="flex items-center gap-2 bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-3 py-1 rounded-full text-xs font-bold"
-          >
-            <Clock className="w-3 h-3" />
-            Late Joiner
-          </motion.div>
-        )}
+        {/* Stats */}
+        <div className="flex items-center gap-4 text-sm text-gray-600">
+          <div className="text-center">
+            <div className="font-black text-telegram-button">{effectiveCalledNumbers.length}</div>
+            <div className="text-xs">Called</div>
+          </div>
+          <div className="text-center">
+            <div className="font-black text-gray-400">{75 - effectiveCalledNumbers.length}</div>
+            <div className="text-xs">Remaining</div>
+          </div>
+        </div>
       </div>
 
-      {/* Numbers Grid */}
-      <div className="grid grid-cols-10 gap-2 max-h-48 overflow-y-auto p-2 bg-gray-50 rounded-2xl">
+      {/* Numbers Grid - All 75 numbers */}
+      <div className="grid grid-cols-10 gap-2 max-h-64 overflow-y-auto p-2 bg-gray-50 rounded-2xl">
         {numbers.map((number) => (
           <motion.div
             key={number}

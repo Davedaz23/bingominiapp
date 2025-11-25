@@ -18,7 +18,9 @@ import {
   Eye,
   Wallet,
   CreditCard,
-  RotateCcw
+  RotateCcw,
+  DollarSign,
+  PhoneCall
 } from 'lucide-react'
 
 // Import game components
@@ -66,6 +68,9 @@ export default function Home() {
 
   // Use game hook when in game view
   const gameHook = useGame(currentGameId || '')
+
+  // Calculate prize pool (10 birr per player)
+  const prizePool = (mainGame?.players?.length || 0) * 10
 
   // Initialize Telegram integration
   useEffect(() => {
@@ -316,12 +321,6 @@ export default function Home() {
     setCurrentGameId(null)
   }
 
-  // const openDeposit = () => {
-  //   if (WebApp) {
-  //     WebApp.openTelegramLink('https://t.me/your_bot?start=deposit')
-  //   }
-  // }
-
   // Apply Telegram theme to document
   useEffect(() => {
     if (theme.bg_color) {
@@ -331,6 +330,58 @@ export default function Home() {
       document.documentElement.style.setProperty('--tg-theme-text-color', theme.text_color)
     }
   }, [theme])
+
+  // Game Navigation Header Component
+  const GameNavbar = () => {
+    const gameData = gameView === 'game' ? gameHook.game : mainGame
+    const calledNumbers = gameView === 'game' ? gameHook.gameState.calledNumbers : (mainGame?.numbersCalled || [])
+    
+    return (
+      <motion.div
+        initial={{ y: -50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30"
+      >
+        <div className="grid grid-cols-4 gap-4 text-center">
+          {/* Prize Pool */}
+          <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 rounded-xl p-3 border border-yellow-500/30">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <Trophy className="w-4 h-4 text-yellow-400" />
+              <span className="text-yellow-300 text-xs font-bold">PRIZE</span>
+            </div>
+            <div className="text-white font-black text-lg">{prizePool} ብር</div>
+          </div>
+
+          {/* Players Count */}
+          <div className="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl p-3 border border-blue-500/30">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <Users className="w-4 h-4 text-blue-400" />
+              <span className="text-blue-300 text-xs font-bold">PLAYERS</span>
+            </div>
+            <div className="text-white font-black text-lg">{gameData?.players?.length || 0}</div>
+          </div>
+
+          {/* Bet Amount */}
+          <div className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl p-3 border border-green-500/30">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <DollarSign className="w-4 h-4 text-green-400" />
+              <span className="text-green-300 text-xs font-bold">BET</span>
+            </div>
+            <div className="text-white font-black text-lg">10 ብር</div>
+          </div>
+
+          {/* Numbers Called */}
+          <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl p-3 border border-purple-500/30">
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <PhoneCall className="w-4 h-4 text-purple-400" />
+              <span className="text-purple-300 text-xs font-bold">CALLED</span>
+            </div>
+            <div className="text-white font-black text-lg">{calledNumbers.length}</div>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
 
   // Game View Component
   const GameView = () => {
@@ -352,9 +403,17 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
         <div className="relative z-10 max-w-md mx-auto p-4 safe-area-padding">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6 pt-4">
-            <div className="text-white">
+          {/* Header with Navigation */}
+          <div className="flex items-center justify-between mb-4 pt-4">
+            <button
+              onClick={handleBackToLobby}
+              className="flex items-center gap-2 px-4 py-3 bg-white/20 backdrop-blur-lg text-white rounded-2xl border border-white/30 hover:bg-white/30 transition-all"
+            >
+              <Eye className="w-5 h-5" />
+              <span className="font-bold">Lobby</span>
+            </button>
+
+            <div className="text-white text-center">
               <div className="text-sm opacity-80">Playing as</div>
               <div className="font-bold">{userStats?.firstName || 'Player'}</div>
             </div>
@@ -367,6 +426,9 @@ export default function Home() {
               <span className="font-bold">Refresh</span>
             </button>
           </div>
+
+          {/* Game Navigation Bar */}
+          <GameNavbar />
 
           {/* Game Header */}
           <div className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-white/30">
@@ -420,7 +482,7 @@ export default function Home() {
           </div>
 
           {/* Stats Footer */}
-          <div className="text-center mt-8 pb-20"> {/* Extra padding for Telegram button */}
+          <div className="text-center mt-8 pb-20">
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
@@ -493,6 +555,9 @@ export default function Home() {
           </h1>
           <p className="text-white/80 text-lg font-medium">Always Ready • Always Fun</p>
         </motion.div>
+
+        {/* Game Navigation Bar */}
+        <GameNavbar />
 
         {/* User Stats Card */}
         {userStats && (
@@ -729,7 +794,6 @@ export default function Home() {
               <button
                 onClick={() => {
                   setShowDepositModal(false)
-                  // openDeposit()
                 }}
                 className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold hover:bg-green-600 transition-colors"
               >
