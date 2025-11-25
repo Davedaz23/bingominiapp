@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useTelegram } from '../hooks/useTelegram'
+import { useTelegram, useTelegramMainButton } from '../hooks/useTelegram'
 import { authAPI, gameAPI, walletAPI } from '../services/api'
 import { Game, User } from '../types'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -17,8 +16,15 @@ import {
   Gamepad2,
   Clock,
   Eye,
-  Wallet, CreditCard, DollarSign
+  Wallet,
+  CreditCard,
+  RotateCcw
 } from 'lucide-react'
+
+// Import game components
+import { BingoCard } from '../components/ui/BingoCard'
+import { NumberGrid } from '../components/ui/NumberGrid'
+import { useGame } from '../hooks/useGame'
 
 // Animation variants
 const backgroundVariants = {
@@ -33,115 +39,135 @@ const backgroundVariants = {
   })
 }
 
-const confettiVariants = {
-  animate: (i: number) => ({
-    y: (typeof window !== 'undefined' ? window.innerHeight : 500) + 100,
-    rotate: 360,
-    transition: {
-      duration: 2 + Math.random() * 2,
-      ease: "easeOut",
-    }
-  }),
-  initial: {
-    y: -50,
-    rotate: 0,
-  },
-  exit: {
-    opacity: 0
-  }
-}
-
 export default function Home() {
-  const { user, isReady, WebApp, initData } = useTelegram()
-  const router = useRouter()
+  const { user, isReady, WebApp, initData, theme } = useTelegram()
+  const { 
+    updateButton, 
+    setButtonText, 
+    showButton, 
+    hideButton,
+    onButtonClick 
+  } = useTelegramMainButton(WebApp)
+  
   const [mainGame, setMainGame] = useState<Game | null>(null)
   const [userStats, setUserStats] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [showConfetti, setShowConfetti] = useState(false)
   const [authAttempted, setAuthAttempted] = useState(false)
-  const [autoStartCountdown, setAutoStartCountdown] = useState<number | null>(null)
-  const [showWinnerModal, setShowWinnerModal] = useState(false)
-  const [winnerInfo, setWinnerInfo] = useState<any>(null)
-
+  
+  // Game state
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null)
+  const [gameView, setGameView] = useState<'lobby' | 'game'>('lobby')
+  
   // Wallet state
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [showDepositModal, setShowDepositModal] = useState(false);
-  const [isBalanceLoading, setIsBalanceLoading] = useState(true);
+  const [walletBalance, setWalletBalance] = useState(0)
+  const [showDepositModal, setShowDepositModal] = useState(false)
+  const [isBalanceLoading, setIsBalanceLoading] = useState(true)
+
+  // Use game hook when in game view
+  const gameHook = useGame(currentGameId || '')
+
+  // Initialize Telegram integration
+  useEffect(() => {
+    if (isReady && WebApp) {
+      console.log('🚀 Telegram WebApp ready, initializing...')
+      
+      // Expand the WebApp to full height
+      WebApp.expand()
+      
+      // Setup Main Button
+      setButtonText('🎮 PLAY GAME - 10 ብር')
+      updateButton({
+        color: theme.button_color || '#3390ec',
+        textColor: theme.button_text_color || '#ffffff',
+        isVisible: true,
+        isActive: true
+      })
+      
+      // Setup Back Button behavior
+      WebApp.BackButton.onClick(() => {
+        if (gameView === 'game') {
+          handleBackToLobby()
+        }
+      })
+    }
+  }, [isReady, WebApp, theme])
+
+  // Update Telegram UI based on game state
+  useEffect(() => {
+    if (!WebApp || !isReady) return
+
+    if (gameView === 'game') {
+      // In game view - show Refresh button and Back button
+      setButtonText('🔄 REFRESH GAME')
+      WebApp.BackButton.show()
+    } else {
+      // In lobby view - show Play button and hide Back button
+      setButtonText('🎮 PLAY GAME - 10 ብር')
+      WebApp.BackButton.hide()
+    }
+  }, [WebApp, isReady, gameView])
+
+  // Setup Main Button click handler
+  useEffect(() => {
+    if (!WebApp || !isReady) return
+
+    const handleMainButtonClick = () => {
+      if (gameView === 'game') {
+        handleRefreshGame()
+      } else {
+        handlePlayGame()
+      }
+    }
+
+    onButtonClick(handleMainButtonClick)
+
+    // Cleanup
+    return () => {
+      if (WebApp) {
+        WebApp.MainButton.offClick(handleMainButtonClick)
+      }
+    }
+  }, [WebApp, isReady, gameView, mainGame, walletBalance])
 
   // Fetch wallet balance
   const fetchWalletBalance = async () => {
     try {
-      setIsBalanceLoading(true);
-      const userId = localStorage.getItem('user_id');
-      if (!userId) {
-        console.log('No user ID found for wallet balance');
-        return 0;
-      }
+      setIsBalanceLoading(true)
+      const userId = localStorage.getItem('user_id')
+      if (!userId) return 0
 
-      const response = await walletAPI.getBalance(userId);
-      console.log("Wallet balance response:", response);
-      
-      const data = response.data;
+      const response = await walletAPI.getBalance(userId)
+      const data = response.data
       if (data.success) {
-        setWalletBalance(data.balance);
-        return data.balance;
+        setWalletBalance(data.balance)
+        return data.balance
       }
-      return 0;
+      return 0
     } catch (error) {
-      console.error('Error fetching wallet balance:', error);
-      return 0;
+      console.error('Error fetching wallet balance:', error)
+      return 0
     } finally {
-      setIsBalanceLoading(false);
+      setIsBalanceLoading(false)
     }
-  };
+  }
 
+  // Initialize user when Telegram is ready
   useEffect(() => {
     if (isReady && user && !authAttempted) {
-      initializeUser();
+      initializeUser()
     }
-  }, [isReady, user, authAttempted]);
-
-  // Auto-start countdown for system games
-  useEffect(() => {
-    if (mainGame?.status === 'WAITING' &&
-      mainGame.currentPlayers >= 2 &&
-      isSystemGame(mainGame)) {
-      setAutoStartCountdown(10)
-
-      const interval = setInterval(() => {
-        setAutoStartCountdown((prev) => {
-          if (prev === 1) {
-            clearInterval(interval)
-            loadMainGame() // Reload to get updated status
-            return null
-          }
-          return prev ? prev - 1 : null
-        })
-      }, 1000)
-
-      return () => clearInterval(interval)
-    } else {
-      setAutoStartCountdown(null)
-    }
-  }, [mainGame?.status, mainGame?.currentPlayers, mainGame])
-
-  // Check for winner when game finishes
-  useEffect(() => {
-    if (mainGame?.status === 'FINISHED' && mainGame.winner) {
-      setWinnerInfo({
-        winner: mainGame.winner,
-        gameCode: mainGame.code,
-        totalPlayers: mainGame.currentPlayers,
-        numbersCalled: mainGame.numbersCalled?.length || 0
-      })
-      setShowWinnerModal(true)
-    }
-  }, [mainGame?.status, mainGame?.winner, mainGame?.code, mainGame?.currentPlayers, mainGame?.numbersCalled])
+  }, [isReady, user, authAttempted])
 
   const initializeUser = async () => {
     try {
       setAuthAttempted(true)
       setIsLoading(true)
+
+      console.log('🔐 Authenticating user with Telegram...', {
+        userId: user?.id,
+        initData: initData ? 'PRESENT' : 'MISSING'
+      })
 
       const response = await authAPI.telegramLogin(initData || 'development')
       const { token, user: userData } = response.data
@@ -155,32 +181,30 @@ export default function Home() {
         setTimeout(() => setShowConfetti(false), 3000)
       }
 
-      console.log('User authenticated successfully')
+      console.log('✅ User authenticated successfully')
       
-      // Load wallet balance after authentication
-      await fetchWalletBalance();
-      
-      // Load main game after authentication and wallet balance
-      await loadMainGame();
+      await fetchWalletBalance()
+      await loadMainGame()
       
     } catch (error) {
       console.error('Authentication failed:', error)
-      const fallbackUser = {
-        _id: 'fallback',
-        id: 'fallback',
+      
+      // Create fallback user from Telegram data
+      const fallbackUser: User = {
+        _id: user?.id?.toString() || 'fallback',
+        id: user?.id?.toString() || 'fallback',
         telegramId: user?.id?.toString() || 'fallback',
-        firstName: user?.first_name || 'Guest',
-        username: user?.username || 'guest',
+        firstName: user?.first_name || 'Telegram User',
+        username: user?.username || 'telegram_user',
         gamesPlayed: 0,
         gamesWon: 0,
         totalScore: 0,
         createdAt: new Date().toISOString()
       }
-      setUserStats(fallbackUser as User)
+      setUserStats(fallbackUser)
       
-      // Try to load wallet balance even if auth fails
-      await fetchWalletBalance();
-      await loadMainGame();
+      await fetchWalletBalance()
+      await loadMainGame()
     } finally {
       setIsLoading(false)
     }
@@ -188,172 +212,482 @@ export default function Home() {
 
   const loadMainGame = async () => {
     try {
+      console.log('🎮 Loading main game...')
       const response = await gameAPI.getActiveGames()
       const games = response.data.games || []
-      setMainGame(games[0] || null)
+      const activeGame = games[0] || null
+      setMainGame(activeGame)
+      
+      // Auto-join if user is already in the game
+      if (activeGame) {
+        const userId = localStorage.getItem('user_id')
+        const isUserInGame = activeGame.players?.some(player => 
+          player?.user?._id === userId || player?.userId === userId
+        )
+        
+        if (isUserInGame) {
+          console.log('✅ User already in game, switching to game view')
+          setCurrentGameId(activeGame._id)
+          setGameView('game')
+        }
+      }
     } catch (error) {
       console.error('Failed to load main game:', error)
       setMainGame(null)
     }
   }
 
-  const joinGame = async () => {
-    if (!mainGame) return;
+  const handlePlayGame = async () => {
+    if (!mainGame) {
+      console.log('❌ No main game available')
+      return
+    }
 
-    const userId = localStorage.getItem('user_id');
-    if (!userId) return;
+    const userId = localStorage.getItem('user_id')
+    if (!userId) {
+      console.log('❌ No user ID found')
+      return
+    }
 
     try {
       // Check balance first
-      const entryFee = 10; // Your game entry fee
+      const entryFee = 10
 
       if (walletBalance < entryFee) {
-        setShowDepositModal(true);
-        return;
+        console.log('💰 Insufficient balance, showing deposit modal')
+        setShowDepositModal(true)
+        return
       }
 
-      // If user has sufficient balance, join the game
-      console.log(`🎮 Joining game with wallet balance: $${walletBalance}`);
+      console.log(`🎮 Joining game with wallet balance: ${walletBalance} ብር`)
 
-      // Use the regular join endpoint (not join-with-wallet since we're not deducting upfront)
-      const response = await gameAPI.joinGame(mainGame.code, userId);
+      // Show loading state on button
+      if (WebApp) {
+        WebApp.MainButton.showProgress()
+      }
+
+      // Join the game
+      const response = await gameAPI.joinGame(mainGame.code, userId)
 
       if (response.data.success) {
-        console.log('✅ Successfully joined game, redirecting...');
-        router.push(`/game/${mainGame._id}`);
+        console.log('✅ Successfully joined game, switching to game view...')
+        setCurrentGameId(mainGame._id)
+        setGameView('game')
+        
+        // Refresh game data
+        gameHook.refreshGame()
       } else {
-        throw new Error('Failed to join game');
+        throw new Error('Failed to join game')
       }
     } catch (error: any) {
-      console.error('Failed to join game:', error);
+      console.error('Failed to join game:', error)
 
-      // Enhanced error handling
       if (error.response?.data?.error?.includes('already in this game')) {
-        // User is already in the game, just redirect
-        router.push(`/game/${mainGame._id}`);
-        return;
+        // User is already in the game, just switch to game view
+        console.log('ℹ️ User already in game, switching view')
+        setCurrentGameId(mainGame._id)
+        setGameView('game')
+        gameHook.refreshGame()
+        return
       }
 
-      // Reload game data to get current status
-      loadMainGame();
+      // Reload game data
+      loadMainGame()
+    } finally {
+      // Hide loading state
+      if (WebApp) {
+        WebApp.MainButton.hideProgress()
+      }
     }
-  };
-
-  const isSystemGame = (game: Game): boolean => {
-    return game.isAutoCreated === true
   }
 
-  const isUserInGame = (): boolean => {
-    if (!mainGame?.players || !userStats?._id) return false
-    return mainGame.players.some(player => player?.user?._id === userStats._id)
+  const handleRefreshGame = () => {
+    console.log('🔄 Refreshing game...')
+    if (gameView === 'game') {
+      gameHook.refreshGame()
+    } else {
+      loadMainGame()
+    }
   }
 
-  const getUserRole = (): 'PLAYER' | 'SPECTATOR' | null => {
-    if (!mainGame?.players || !userStats?._id) return null
-    const player = mainGame.players.find(p => p?.user?._id === userStats._id)
-    return player?.playerType || 'PLAYER'
+  const handleBackToLobby = () => {
+    console.log('↩️ Returning to lobby')
+    setGameView('lobby')
+    setCurrentGameId(null)
   }
 
-  const getCurrentPlayersCount = (): number => {
-    if (!mainGame?.players) return 0
-    return mainGame.players.filter(player => player?.user?._id).length
-  }
+  // const openDeposit = () => {
+  //   if (WebApp) {
+  //     WebApp.openTelegramLink('https://t.me/your_bot?start=deposit')
+  //   }
+  // }
 
-  const getNumbersCalledCount = (): number => {
-    return mainGame?.numbersCalled?.length || 0
-  }
+  // Apply Telegram theme to document
+  useEffect(() => {
+    if (theme.bg_color) {
+      document.documentElement.style.setProperty('--tg-theme-bg-color', theme.bg_color)
+    }
+    if (theme.text_color) {
+      document.documentElement.style.setProperty('--tg-theme-text-color', theme.text_color)
+    }
+  }, [theme])
 
-  // Winner Modal Component
-  const WinnerModal = () => (
-    <AnimatePresence>
-      {showWinnerModal && winnerInfo && (
-        <motion.div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            className="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-3xl p-8 mx-4 text-center shadow-2xl border-2 border-white/30 w-full max-w-sm"
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 200, damping: 15 }}
-          >
-            {/* Confetti Effect */}
-            <div className="absolute inset-0 overflow-hidden rounded-3xl">
-              {[...Array(30)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="absolute text-2xl"
-                  initial={{
-                    x: Math.random() * 300 - 150,
-                    y: -50,
-                    rotate: 0,
-                    scale: 0,
-                  }}
-                  animate={{
-                    y: 400,
-                    rotate: 360,
-                    scale: [0, 1, 0],
-                  }}
-                  transition={{
-                    duration: 2 + Math.random() * 1,
-                    delay: Math.random() * 0.5,
-                  }}
-                  style={{
-                    left: `${Math.random() * 100}%`,
-                  }}
-                >
-                  🎉
-                </motion.div>
-              ))}
+  // Game View Component
+  const GameView = () => {
+    if (!currentGameId || !gameHook.game) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 flex items-center justify-center">
+          <div className="text-center">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              className="w-20 h-20 border-4 border-white border-t-transparent rounded-full mx-auto mb-6"
+            />
+            <p className="text-white text-xl font-bold">Loading Game...</p>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
+        <div className="relative z-10 max-w-md mx-auto p-4 safe-area-padding">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6 pt-4">
+            <div className="text-white">
+              <div className="text-sm opacity-80">Playing as</div>
+              <div className="font-bold">{userStats?.firstName || 'Player'}</div>
             </div>
 
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.3, type: "spring" }}
-              className="relative z-10"
+            <button
+              onClick={handleRefreshGame}
+              className="flex items-center gap-2 px-4 py-3 bg-white/20 backdrop-blur-lg text-white rounded-2xl border border-white/30 hover:bg-white/30 transition-all"
             >
-              <Trophy className="w-16 h-16 text-white mx-auto mb-4 drop-shadow-2xl" />
-              <h2 className="text-3xl font-black text-white mb-4 drop-shadow-lg">
-                GAME OVER!
-              </h2>
+              <RotateCcw className="w-5 h-5" />
+              <span className="font-bold">Refresh</span>
+            </button>
+          </div>
 
-              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30">
-                <div className="flex items-center justify-center gap-3 mb-3">
-                  <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
-                  <h3 className="text-xl font-black text-white">
-                    {winnerInfo.winner.firstName || winnerInfo.winner.username}
-                  </h3>
-                </div>
-                <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
-                <div>
-                  <div className="font-bold">{winnerInfo.totalPlayers}</div>
-                  <div>Players</div>
-                </div>
-                <div>
-                  <div className="font-bold">{winnerInfo.numbersCalled}</div>
-                  <div>Numbers Called</div>
+          {/* Game Header */}
+          <div className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-white/30">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h1 className="text-3xl font-black text-white mb-2">Game {gameHook.game.code}</h1>
+                <div className="flex items-center gap-3 text-white/80 text-sm">
+                  <span>{gameHook.game.players?.length || 0} players</span>
+                  <span>•</span>
+                  <span>{gameHook.gameState.calledNumbers.length} numbers called</span>
                 </div>
               </div>
+              <div className={`px-4 py-2 rounded-2xl font-black text-sm ${
+                gameHook.game.status === 'ACTIVE' 
+                  ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                  : gameHook.game.status === 'FINISHED'
+                  ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+              }`}>
+                {gameHook.game.status === 'ACTIVE' ? 'LIVE' : 
+                 gameHook.game.status === 'FINISHED' ? 'FINISHED' : 
+                 'WAITING'}
+              </div>
+            </div>
+          </div>
 
-              <motion.button
-                onClick={() => setShowWinnerModal(false)}
-                className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Continue
-              </motion.button>
-            </motion.div>
+          {/* Current Number */}
+          {gameHook.gameState.currentNumber && gameHook.game.status === 'ACTIVE' && (
+            <div className="bg-white/20 backdrop-blur-lg rounded-3xl p-8 text-center mb-6 border border-white/30">
+              <div className="text-white/80 text-lg font-bold mb-3">Current Number</div>
+              <div className="text-8xl font-black text-white">{gameHook.gameState.currentNumber}</div>
+            </div>
+          )}
+
+          {/* Game Content */}
+          <div className="space-y-6">
+            {gameHook.bingoCard && (
+              <BingoCard
+                card={gameHook.bingoCard}
+                calledNumbers={gameHook.gameState.calledNumbers}
+                onMarkNumber={gameHook.markNumber}
+                isInteractive={gameHook.game.status === 'ACTIVE'}
+                isWinner={gameHook.bingoCard.isWinner}
+              />
+            )}
+
+            <NumberGrid
+              calledNumbers={gameHook.gameState.calledNumbers}
+              currentNumber={gameHook.gameState.currentNumber}
+            />
+          </div>
+
+          {/* Stats Footer */}
+          <div className="text-center mt-8 pb-20"> {/* Extra padding for Telegram button */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <div className="text-xl font-black text-white">{gameHook.gameState.calledNumbers.length}</div>
+                  <div className="text-white/60 text-xs">Numbers Called</div>
+                </div>
+                <div>
+                  <div className="text-xl font-black text-white">
+                    {gameHook.bingoCard?.markedPositions?.length || 0}
+                  </div>
+                  <div className="text-white/60 text-xs">Marked</div>
+                </div>
+                <div>
+                  <div className="text-xl font-black text-white">
+                    {Math.round(((gameHook.bingoCard?.markedPositions?.length || 0) / 25) * 100)}%
+                  </div>
+                  <div className="text-white/60 text-xs">Progress</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Lobby View Component
+  const LobbyView = () => (
+    <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        {[...Array(20)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-2 h-2 bg-white rounded-full opacity-20"
+            initial={{
+              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 100),
+              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 100),
+            }}
+            variants={backgroundVariants}
+            animate="animate"
+            custom={i}
+          />
+        ))}
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="relative z-10 max-w-md mx-auto p-4 safe-area-padding"
+      >
+        {/* Header */}
+        <motion.div
+          initial={{ y: -50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="text-center mb-8 pt-8"
+        >
+          <motion.div
+            animate={{
+              rotate: [0, -10, 10, 0],
+              scale: [1, 1.1, 1]
+            }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="text-6xl mb-4"
+          >
+            🎯
           </motion.div>
+          <h1 className="text-5xl font-black text-white mb-3 drop-shadow-lg">
+            BINGO
+          </h1>
+          <p className="text-white/80 text-lg font-medium">Always Ready • Always Fun</p>
         </motion.div>
-      )}
-    </AnimatePresence>
+
+        {/* User Stats Card */}
+        {userStats && (
+          <motion.div
+            initial={{ y: 20, opacity: 0, scale: 0.9 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-white/30 shadow-2xl"
+          >
+            <div className="flex items-center gap-4 mb-6">
+              <motion.div
+                whileHover={{ scale: 1.1, rotate: 5 }}
+                className="relative"
+              >
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white text-2xl font-black shadow-lg">
+                  {userStats.firstName?.[0]?.toUpperCase() || userStats.username?.[0]?.toUpperCase() || '?'}
+                </div>
+                {userStats.gamesWon > 0 && (
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="absolute -top-2 -right-2"
+                  >
+                    <Crown className="w-6 h-6 fill-yellow-400 text-yellow-400" />
+                  </motion.div>
+                )}
+              </motion.div>
+
+              <div className="flex-1">
+                <h3 className="font-black text-xl text-white">
+                  {userStats.firstName || userStats.username}
+                </h3>
+                <p className="text-white/70">@{userStats.username}</p>
+                <div className="grid grid-cols-3 gap-3 mt-3">
+                  <div className="text-center">
+                    <div className="text-2xl font-black text-white">{userStats.gamesPlayed || 0}</div>
+                    <div className="text-white/70 text-xs font-medium">Played</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-black text-white flex items-center justify-center gap-1">
+                      {userStats.gamesWon || 0}
+                      {userStats.gamesWon > 0 && <Trophy className="w-4 h-4 fill-yellow-400 text-yellow-400" />}
+                    </div>
+                    <div className="text-white/70 text-xs font-medium">Wins</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-black text-white">{userStats.totalScore || 0}</div>
+                    <div className="text-white/70 text-xs font-medium">Score</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Wallet Card */}
+        <motion.div
+          initial={{ y: 20, opacity: 0, scale: 0.9 }}
+          animate={{ y: 0, opacity: 1, scale: 1 }}
+          transition={{ delay: 0.3 }}
+          className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-green-500/30 shadow-2xl"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Wallet className="w-12 h-12 text-green-400" />
+              <div>
+                <h3 className="font-black text-xl text-white">Wallet Balance</h3>
+                <div className="text-3xl font-black mt-1 text-green-400">
+                  {isBalanceLoading ? '...' : `${walletBalance.toFixed(2)} ብር`}
+                </div>
+                <div className="text-white/70 text-sm mt-1">
+                  {walletBalance >= 10 ? 'Ready to play! 🎮' : 'Need 10 ብር to play'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Game Status */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-2xl"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Gamepad2 className="w-6 h-6 text-white" />
+              <h3 className="font-black text-xl text-white">Current Session</h3>
+            </div>
+            {mainGame && (
+              <div className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1">
+                <Users className="w-4 h-4 text-white" />
+                <span className="text-white text-sm font-bold">{mainGame.players?.length || 0}</span>
+              </div>
+            )}
+          </div>
+
+          {!mainGame ? (
+            <div className="text-center py-8">
+              <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <TrendingUp className="text-white/50 w-8 h-8" />
+              </div>
+              <p className="text-white/80 font-medium mb-2">Game session loading</p>
+              <p className="text-white/60 text-sm">Ready in a moment...</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-white/10 hover:bg-white/20 rounded-2xl p-4 border border-white/10 hover:border-white/30 transition-all duration-300 backdrop-blur-sm">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h4 className="font-black text-white">Game {mainGame.code}</h4>
+                      <span className={`px-2 py-1 rounded-full text-xs font-black ${
+                        mainGame.status === 'ACTIVE'
+                          ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                          : mainGame.status === 'FINISHED'
+                            ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                            : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                      }`}>
+                        {mainGame.status === 'ACTIVE' ? 'LIVE' :
+                          mainGame.status === 'FINISHED' ? 'FINISHED' : 'WAITING'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-sm">
+                      <div className="flex items-center gap-1 text-white/70">
+                        <Users className="w-4 h-4" />
+                        <span>{mainGame.players?.length || 0} players</span>
+                      </div>
+                      <span className="text-white/50">•</span>
+                      <div className="flex items-center gap-1 text-white/70">
+                        <Clock className="w-4 h-4" />
+                        <span>
+                          {mainGame.status === 'ACTIVE'
+                            ? `${mainGame.numbersCalled?.length || 0} numbers called`
+                            : mainGame.status === 'FINISHED'
+                              ? 'Game completed'
+                              : 'Waiting for players'
+                          }
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Message */}
+              {mainGame.status === 'WAITING' && (
+                <div className="p-3 bg-yellow-500/20 rounded-xl border border-yellow-500/30">
+                  <div className="flex items-center gap-2 text-sm text-yellow-300">
+                    <Clock className="w-4 h-4" />
+                    <span>Game will start automatically when 2+ players join</span>
+                  </div>
+                </div>
+              )}
+
+              {mainGame.status === 'ACTIVE' && (
+                <div className="p-3 bg-green-500/20 rounded-xl border border-green-500/30">
+                  <div className="flex items-center gap-2 text-sm text-green-300">
+                    <Eye className="w-4 h-4" />
+                    <span>Game in progress - Click PLAY to join!</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </motion.div>
+
+        {/* Quick Stats */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.8 }}
+          className="text-center mt-6 pb-20"
+        >
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-2xl font-black text-white">{mainGame ? 1 : 0}</div>
+                <div className="text-white/60 text-xs">Active Session</div>
+              </div>
+              <div>
+                <div className="text-2xl font-black text-white">{mainGame?.players?.length || 0}</div>
+                <div className="text-white/60 text-xs">Players Online</div>
+              </div>
+              <div>
+                <div className="text-2xl font-black text-white">{mainGame?.status === 'ACTIVE' ? 1 : 0}</div>
+                <div className="text-white/60 text-xs">Live Game</div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </div>
   )
 
   // Deposit Modal Component
@@ -385,45 +719,28 @@ export default function Home() {
             <div className="space-y-4">
               <div className="bg-white/10 rounded-2xl p-4 border border-white/20">
                 <div className="text-white/80 text-sm mb-2">Current Balance</div>
-                <div className="text-2xl font-black text-white">${walletBalance.toFixed(2)}</div>
+                <div className="text-2xl font-black text-white">{walletBalance.toFixed(2)} ብር</div>
               </div>
 
               <div className="text-white/80 text-sm">
-                To deposit funds:
-                <ol className="list-decimal list-inside mt-2 space-y-1">
-                  <li>Send money via bank transfer</li>
-                  <li>Upload receipt screenshot</li>
-                  <li>We'll approve within 24 hours</li>
-                </ol>
+                You need at least <strong>10 ብር</strong> to play a game.
               </div>
 
               <button
                 onClick={() => {
-                  setShowDepositModal(false);
-                  router.push('/deposit');
+                  setShowDepositModal(false)
+                  // openDeposit()
                 }}
                 className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold hover:bg-green-600 transition-colors"
               >
-                Proceed to Deposit
+                Deposit Now
               </button>
             </div>
           </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
-  );
-
-  const displayUser = userStats || (user ? {
-    _id: 'pending',
-    id: 'pending',
-    telegramId: user.id.toString(),
-    firstName: user.first_name,
-    username: user.username,
-    gamesPlayed: 0,
-    gamesWon: 0,
-    totalScore: 0,
-    createdAt: new Date().toISOString()
-  } as User : null)
+  )
 
   if (!isReady || isLoading) {
     return (
@@ -453,645 +770,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 relative overflow-hidden">
-      {/* Winner Modal */}
-      <WinnerModal />
-
-      {/* Deposit Modal */}
+    <>
       <DepositModal />
-
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        {[...Array(20)].map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-2 h-2 bg-white rounded-full opacity-20"
-            initial={{
-              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 100),
-              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 100),
-            }}
-            variants={backgroundVariants}
-            animate="animate"
-            custom={i}
-          />
-        ))}
-      </div>
-
-      {/* Confetti Effect */}
-      <AnimatePresence>
-        {showConfetti && (
-          <div className="absolute inset-0 pointer-events-none">
-            {[...Array(50)].map((_, i) => (
-              <motion.div
-                key={i}
-                className="absolute text-2xl"
-                initial={{
-                  x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 100),
-                  ...confettiVariants.initial
-                }}
-                variants={confettiVariants}
-                animate="animate"
-                exit="exit"
-                custom={i}
-                style={{
-                  left: `${Math.random() * 100}%`,
-                }}
-              >
-                🎉
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Development Mode Banner */}
-      {initData === 'development' && (
-        <motion.div
-          initial={{ y: -50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="absolute top-4 left-4 right-4 z-20"
-        >
-          <div className="bg-yellow-500/90 backdrop-blur-lg text-yellow-900 rounded-2xl p-3 text-center border border-yellow-600/30">
-            <div className="flex items-center justify-center gap-2">
-              <Sparkles className="w-4 h-4" />
-              <span className="font-bold text-sm">Development Mode</span>
-              <Sparkles className="w-4 h-4" />
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="relative z-10 max-w-md mx-auto p-4 safe-area-padding"
-      >
-        {/* Header */}
-        <motion.div
-          initial={{ y: -50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="text-center mb-8 pt-8"
-        >
-          <motion.div
-            animate={{
-              rotate: [0, -10, 10, 0],
-              scale: [1, 1.1, 1]
-            }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="text-6xl mb-4"
-          >
-            🎯
-          </motion.div>
-          <h1 className="text-5xl font-black text-white mb-3 drop-shadow-lg">
-            BINGO
-          </h1>
-          <p className="text-white/80 text-lg font-medium">Always Ready • Always Fun</p>
-        </motion.div>
-
-        {/* System Game Banner */}
-        {mainGame && isSystemGame(mainGame) && (
-          <motion.div
-            initial={{ y: -20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="mb-4"
-          >
-            <div className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 border border-green-500/30 text-center">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Sparkles className="w-5 h-5 text-green-400" />
-                <span className="text-green-300 font-bold text-lg">Always Available Game</span>
-                <Sparkles className="w-5 h-5 text-green-400" />
-              </div>
-              <p className="text-green-400/80 text-sm">
-                This game is automatically managed by the system. Join anytime!
-              </p>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Game Status Banner */}
-        {mainGame?.status === 'ACTIVE' && (
-          <motion.div
-            initial={{ y: -20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="mb-4"
-          >
-            <div className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 border border-blue-500/30 text-center">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Eye className="w-5 h-5 text-blue-400" />
-                <span className="text-blue-300 font-bold text-lg">Game In Progress</span>
-                <Eye className="w-5 h-5 text-blue-400" />
-              </div>
-              <p className="text-blue-400/80 text-sm">
-                Jump in and play! You can join as a player or spectator.
-              </p>
-            </div>
-          </motion.div>
-        )}
-
-        {/* User Stats Card */}
-        {displayUser && (
-          <motion.div
-            initial={{ y: 20, opacity: 0, scale: 0.9 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
-            className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-white/30 shadow-2xl"
-          >
-            <div className="flex items-center gap-4 mb-6">
-              <motion.div
-                whileHover={{ scale: 1.1, rotate: 5 }}
-                className="relative"
-              >
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white text-2xl font-black shadow-lg">
-                  {displayUser.firstName?.[0]?.toUpperCase() || displayUser.username?.[0]?.toUpperCase() || '?'}
-                </div>
-                {displayUser.gamesWon > 0 && (
-                  <motion.div
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="absolute -top-2 -right-2"
-                  >
-                    <Crown className="w-6 h-6 fill-yellow-400 text-yellow-400" />
-                  </motion.div>
-                )}
-              </motion.div>
-
-              <div className="flex-1">
-                <h3 className="font-black text-xl text-white">
-                  {displayUser.firstName || displayUser.username}
-                </h3>
-                <p className="text-white/70">@{displayUser.username}</p>
-                <motion.div
-                  className="flex items-center gap-1 mt-1"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                >
-                  <Sparkles className="w-4 h-4 text-yellow-400" />
-                  <span className="text-yellow-400 text-sm font-bold">
-                    Level {Math.floor((displayUser.totalScore || 0) / 100) + 1}
-                  </span>
-                </motion.div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <motion.div
-                className="bg-white/20 rounded-2xl p-3 text-center backdrop-blur-sm"
-                whileHover={{ scale: 1.05 }}
-                transition={{ type: "spring", stiffness: 400 }}
-              >
-                <div className="text-2xl font-black text-white">
-                  {displayUser.gamesPlayed || 0}
-                </div>
-                <div className="text-white/70 text-xs font-medium">Played</div>
-              </motion.div>
-
-              <motion.div
-                className="bg-white/20 rounded-2xl p-3 text-center backdrop-blur-sm"
-                whileHover={{ scale: 1.05 }}
-                transition={{ type: "spring", stiffness: 400 }}
-              >
-                <div className="text-2xl font-black text-white flex items-center justify-center gap-1">
-                  {displayUser.gamesWon || 0}
-                  {displayUser.gamesWon > 0 && <Trophy className="w-4 h-4 fill-yellow-400 text-yellow-400" />}
-                </div>
-                <div className="text-white/70 text-xs font-medium">Wins</div>
-              </motion.div>
-
-              <motion.div
-                className="bg-white/20 rounded-2xl p-3 text-center backdrop-blur-sm"
-                whileHover={{ scale: 1.05 }}
-                transition={{ type: "spring", stiffness: 400 }}
-              >
-                <div className="text-2xl font-black text-white">
-                  {displayUser.totalScore || 0}
-                </div>
-                <div className="text-white/70 text-xs font-medium">Score</div>
-              </motion.div>
-            </div>
-
-            {/* Win Rate */}
-            {(displayUser.gamesPlayed || 0) > 0 && (
-              <motion.div
-                className="mt-4 bg-white/10 rounded-xl p-3"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.8 }}
-              >
-                <div className="flex justify-between items-center text-sm mb-2">
-                  <span className="text-white/80 font-medium">Win Rate</span>
-                  <span className="text-white font-bold">
-                    {(((displayUser.gamesWon || 0) / (displayUser.gamesPlayed || 1)) * 100).toFixed(1)}%
-                  </span>
-                </div>
-                <div className="w-full bg-white/20 rounded-full h-2">
-                  <motion.div
-                    className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${((displayUser.gamesWon || 0) / (displayUser.gamesPlayed || 1)) * 100}%` }}
-                    transition={{ duration: 1.5, delay: 1 }}
-                  />
-                </div>
-              </motion.div>
-            )}
-          </motion.div>
-        )}
-
-        {/* Wallet Card */}
-        <motion.div
-          initial={{ y: 20, opacity: 0, scale: 0.9 }}
-          animate={{ y: 0, opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-green-500/30 shadow-2xl"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <motion.div
-                whileHover={{ scale: 1.1, rotate: 5 }}
-                className="relative"
-              >
-                <Wallet className="w-12 h-12 text-green-400" />
-                {walletBalance >= 10 && (
-                  <motion.div
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"
-                  />
-                )}
-              </motion.div>
-              
-              <div>
-                <h3 className="font-black text-xl text-white">Wallet Balance</h3>
-                <p className="text-white/70 text-sm">
-                  {isBalanceLoading ? 'Loading...' : 
-                   walletBalance >= 10 ? 'Ready to play! 🎮' : 'Add funds to play games'}
-                </p>
-                <motion.div 
-                  className="text-3xl font-black mt-1"
-                  key={walletBalance}
-                  initial={{ scale: 1.2 }}
-                  animate={{ scale: 1 }}
-                  style={{ 
-                    color: walletBalance >= 10 ? '#4ADE80' : '#EF4444' 
-                  }}
-                >
-                  {isBalanceLoading ? '...' : `$${walletBalance.toFixed(2)}`}
-                </motion.div>
-              </div>
-            </div>
-            
-            <motion.button
-              onClick={() => walletBalance >= 10 ? joinGame() : setShowDepositModal(true)}
-              disabled={isBalanceLoading}
-              className={`flex items-center gap-2 px-4 py-3 rounded-2xl font-bold shadow-lg ${
-                isBalanceLoading 
-                  ? 'bg-gray-500 text-white cursor-not-allowed' 
-                  : walletBalance >= 10 
-                    ? 'bg-green-500 text-white hover:bg-green-600' 
-                    : 'bg-red-500 text-white hover:bg-red-600'
-              }`}
-              whileHover={!isBalanceLoading ? { scale: 1.05 } : {}}
-              whileTap={!isBalanceLoading ? { scale: 0.95 } : {}}
-            >
-              {isBalanceLoading ? (
-                <>
-                  <Clock className="w-4 h-4" />
-                  Loading...
-                </>
-              ) : walletBalance >= 10 ? (
-                <>
-                  <Play className="w-4 h-4" />
-                  Play Game
-                </>
-              ) : (
-                <>
-                  <CreditCard className="w-4 h-4" />
-                  Deposit
-                </>
-              )}
-            </motion.button>
-          </div>
-          
-          {/* Quick Stats */}
-          {!isBalanceLoading && (
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <div className={`rounded-xl p-3 text-center ${
-                walletBalance >= 10 ? 'bg-green-500/20' : 'bg-red-500/20'
-              }`}>
-                <div className="text-white font-bold text-sm">Entry Fee</div>
-                <div className={`font-black ${
-                  walletBalance >= 10 ? 'text-green-400' : 'text-red-400'
-                }`}>
-                  $10
-                </div>
-              </div>
-              <div className="bg-white/10 rounded-xl p-3 text-center">
-                <div className="text-white font-bold text-sm">Can Play</div>
-                <div className="text-green-400 font-black">
-                  {Math.floor(walletBalance / 10)} games
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Status Message */}
-          {!isBalanceLoading && walletBalance > 0 && walletBalance < 10 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="mt-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/30"
-            >
-              <p className="text-yellow-300 text-xs text-center">
-                Almost there! Need ${(10 - walletBalance).toFixed(2)} more to play
-              </p>
-            </motion.div>
-          )}
-        </motion.div>
-
-        {/* Main Play Button */}
-        <motion.button
-          onClick={joinGame}
-          disabled={!mainGame || mainGame.status === 'FINISHED' || walletBalance < 10 || isBalanceLoading}
-          className={`w-full py-5 rounded-2xl font-black text-xl shadow-2xl flex items-center justify-center gap-3 group relative overflow-hidden ${
-            mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && !isBalanceLoading
-              ? mainGame.status === 'ACTIVE'
-                ? 'bg-gradient-to-r from-blue-400 to-purple-400 text-white hover:shadow-3xl'
-                : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-3xl'
-              : 'bg-white/20 text-white/60 cursor-not-allowed'
-          }`}
-          whileHover={mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && !isBalanceLoading ? { 
-            scale: 1.02,
-            y: -2
-          } : {}}
-          whileTap={mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && !isBalanceLoading ? { scale: 0.98 } : {}}
-        >
-          {mainGame && mainGame.status !== 'FINISHED' && walletBalance >= 10 && !isBalanceLoading && (
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-          )}
-          
-          {!mainGame ? (
-            <>
-              <Clock className="w-6 h-6" />
-              LOADING GAME...
-            </>
-          ) : isBalanceLoading ? (
-            <>
-              <Clock className="w-6 h-6" />
-              CHECKING BALANCE...
-            </>
-          ) : walletBalance < 10 ? (
-            <>
-              <CreditCard className="w-6 h-6" />
-              NEED DEPOSIT
-              <motion.div
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-                className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
-              >
-                ${walletBalance.toFixed(2)}
-              </motion.div>
-            </>
-          ) : mainGame.status === 'FINISHED' ? (
-            <>
-              <Trophy className="w-6 h-6" />
-              GAME FINISHED
-            </>
-          ) : mainGame.status === 'ACTIVE' ? (
-            <>
-              <Eye className="w-6 h-6" />
-              {isUserInGame() ? 'REJOIN GAME' : 'JOIN GAME'}
-              <motion.div
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-                className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
-              >
-                {getCurrentPlayersCount()} playing
-              </motion.div>
-            </>
-          ) : (
-            <>
-              <Play className="w-6 h-6" />
-              {autoStartCountdown ? `STARTING IN ${autoStartCountdown}s` : 'PLAY NOW'}
-              {getCurrentPlayersCount() >= 2 && (
-                <motion.div
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  className="px-3 py-1 bg-white/20 rounded-full text-sm font-bold"
-                >
-                  {getCurrentPlayersCount()} ready
-                </motion.div>
-              )}
-            </>
-          )}
-        </motion.button>
-
-        {/* Current Game Section */}
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-2xl"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Gamepad2 className="w-6 h-6 text-white" />
-              <h3 className="font-black text-xl text-white">Current Session</h3>
-            </div>
-            {mainGame && (
-              <motion.div
-                animate={{ scale: [1, 1.1, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1"
-              >
-                <Users className="w-4 h-4 text-white" />
-                <span className="text-white text-sm font-bold">{getCurrentPlayersCount()}</span>
-              </motion.div>
-            )}
-          </div>
-
-          {!mainGame ? (
-            <motion.div
-              className="text-center py-8"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <TrendingUp className="text-white/50 w-8 h-8" />
-              </div>
-              <p className="text-white/80 font-medium mb-2">Game session loading</p>
-              <p className="text-white/60 text-sm">Ready in a moment...</p>
-            </motion.div>
-          ) : (
-            <div className="space-y-4">
-              {/* Game Status Card */}
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="bg-white/10 hover:bg-white/20 rounded-2xl p-4 border border-white/10 hover:border-white/30 transition-all duration-300 backdrop-blur-sm"
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h4 className="font-black text-white">
-                        Game {mainGame.code}
-                      </h4>
-                      <span className={`px-2 py-1 rounded-full text-xs font-black ${mainGame.status === 'ACTIVE'
-                          ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                          : mainGame.status === 'FINISHED'
-                            ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                            : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                        }`}>
-                        {mainGame.status === 'ACTIVE' ? 'LIVE' :
-                          mainGame.status === 'FINISHED' ? 'FINISHED' : 'WAITING'}
-                      </span>
-                      {isSystemGame(mainGame) && (
-                        <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full font-bold border border-green-500/30">
-                          SYSTEM
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-4 text-sm">
-                      <div className="flex items-center gap-1 text-white/70">
-                        <Users className="w-4 h-4" />
-                        <span>{getCurrentPlayersCount()} players</span>
-                      </div>
-                      <span className="text-white/50">•</span>
-                      <div className="flex items-center gap-1 text-white/70">
-                        <Clock className="w-4 h-4" />
-                        <span>
-                          {mainGame.status === 'ACTIVE'
-                            ? `${getNumbersCalledCount()} numbers called`
-                            : mainGame.status === 'FINISHED'
-                              ? 'Game completed'
-                              : 'Waiting for players'
-                          }
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Game Progress Bar */}
-                <div className="mt-3">
-                  <div className="flex justify-between items-center text-xs mb-1">
-                    <span className="text-white/70">Session Progress</span>
-                    <span className="text-white font-bold">
-                      {mainGame.status === 'ACTIVE'
-                        ? `${getNumbersCalledCount()}/75 numbers`
-                        : `${Math.round((getCurrentPlayersCount() / mainGame.maxPlayers) * 100)}%`
-                      }
-                    </span>
-                  </div>
-                  <div className="w-full bg-white/20 rounded-full h-1.5">
-                    <motion.div
-                      className={`h-1.5 rounded-full ${mainGame.status === 'ACTIVE'
-                          ? 'bg-gradient-to-r from-blue-400 to-purple-400'
-                          : 'bg-gradient-to-r from-green-400 to-cyan-400'
-                        }`}
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: mainGame.status === 'ACTIVE'
-                          ? `${((getNumbersCalledCount()) / 75) * 100}%`
-                          : `${(getCurrentPlayersCount() / mainGame.maxPlayers) * 100}%`
-                      }}
-                      transition={{ duration: 1, delay: 0.5 }}
-                    />
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* User Status in Game */}
-              {isUserInGame() && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-3 bg-white/10 rounded-xl border border-white/20"
-                >
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-white/80">Your status:</span>
-                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${getUserRole() === 'SPECTATOR'
-                        ? 'bg-blue-400/20 text-blue-300 border border-blue-400/30'
-                        : 'bg-green-400/20 text-green-300 border border-green-400/30'
-                      }`}>
-                      {getUserRole() === 'SPECTATOR' ? 'SPECTATOR' : 'PLAYER'}
-                    </span>
-                    <span className="text-white/60 text-xs">
-                      • Click above to rejoin
-                    </span>
-                  </div>
-                </motion.div>
-              )}
-            </div>
-          )}
-        </motion.div>
-
-        {/* Quick Stats */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
-          className="text-center mt-6"
-        >
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <div className="text-2xl font-black text-white">
-                  {mainGame ? 1 : 0}
-                </div>
-                <div className="text-white/60 text-xs">Active Session</div>
-              </div>
-              <div>
-                <div className="text-2xl font-black text-white">
-                  {getCurrentPlayersCount()}
-                </div>
-                <div className="text-white/60 text-xs">Players Online</div>
-              </div>
-              <div>
-                <div className="text-2xl font-black text-white">
-                  {mainGame?.status === 'ACTIVE' ? 1 : 0}
-                </div>
-                <div className="text-white/60 text-xs">Live Game</div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Quick Tips */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-          className="text-center mt-6"
-        >
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-            <h5 className="text-white font-bold mb-2">🎮 Quick Tips</h5>
-            <div className="grid grid-cols-2 gap-2 text-xs text-white/60">
-              <div>• Always one game available</div>
-              <div>• Need 2+ players to start</div>
-              <div>• Mark numbers on your card</div>
-              <div>• First to complete a line wins!</div>
-            </div>
-            {mainGame?.status === 'ACTIVE' && (
-              <div className="mt-2 text-blue-300 text-xs">
-                • Join anytime - spectators welcome!
-              </div>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Footer */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.2 }}
-          className="text-center mt-8 pb-8"
-        >
-          <p className="text-white/40 text-sm">
-            Jump in and play anytime!
-          </p>
-        </motion.div>
-      </motion.div>
-    </div>
+      {gameView === 'game' ? <GameView /> : <LobbyView />}
+    </>
   )
 }
