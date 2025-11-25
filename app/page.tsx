@@ -340,48 +340,91 @@ export default function Home() {
       <motion.div
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30"
+        className="bg-white/20 backdrop-blur-lg rounded-2xl p-3 sm:p-4 mb-4 sm:mb-6 border border-white/30"
       >
-        <div className="grid grid-cols-4 gap-4 text-center">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-center">
           {/* Prize Pool */}
-          <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 rounded-xl p-3 border border-yellow-500/30">
+          <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 rounded-lg sm:rounded-xl p-2 sm:p-3 border border-yellow-500/30">
             <div className="flex items-center justify-center gap-1 mb-1">
-              <Trophy className="w-4 h-4 text-yellow-400" />
+              <Trophy className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-400" />
               <span className="text-yellow-300 text-xs font-bold">PRIZE</span>
             </div>
-            <div className="text-white font-black text-lg">{prizePool} ብር</div>
+            <div className="text-white font-black text-base sm:text-lg">{prizePool} ብር</div>
           </div>
 
           {/* Players Count */}
-          <div className="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl p-3 border border-blue-500/30">
+          <div className="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-lg sm:rounded-xl p-2 sm:p-3 border border-blue-500/30">
             <div className="flex items-center justify-center gap-1 mb-1">
-              <Users className="w-4 h-4 text-blue-400" />
+              <Users className="w-3 h-3 sm:w-4 sm:h-4 text-blue-400" />
               <span className="text-blue-300 text-xs font-bold">PLAYERS</span>
             </div>
-            <div className="text-white font-black text-lg">{gameData?.players?.length || 0}</div>
+            <div className="text-white font-black text-base sm:text-lg">{gameData?.players?.length || 0}</div>
           </div>
 
           {/* Bet Amount */}
-          <div className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl p-3 border border-green-500/30">
+          <div className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-lg sm:rounded-xl p-2 sm:p-3 border border-green-500/30">
             <div className="flex items-center justify-center gap-1 mb-1">
-              <DollarSign className="w-4 h-4 text-green-400" />
+              <DollarSign className="w-3 h-3 sm:w-4 sm:h-4 text-green-400" />
               <span className="text-green-300 text-xs font-bold">BET</span>
             </div>
-            <div className="text-white font-black text-lg">10 ብር</div>
+            <div className="text-white font-black text-base sm:text-lg">10 ብር</div>
           </div>
 
           {/* Numbers Called */}
-          <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl p-3 border border-purple-500/30">
+          <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg sm:rounded-xl p-2 sm:p-3 border border-purple-500/30">
             <div className="flex items-center justify-center gap-1 mb-1">
-              <PhoneCall className="w-4 h-4 text-purple-400" />
+              <PhoneCall className="w-3 h-3 sm:w-4 sm:h-4 text-purple-400" />
               <span className="text-purple-300 text-xs font-bold">CALLED</span>
             </div>
-            <div className="text-white font-black text-lg">{calledNumbers.length}</div>
+            <div className="text-white font-black text-base sm:text-lg">{calledNumbers.length}</div>
           </div>
         </div>
       </motion.div>
     )
   }
+
+  // Current Number Display Component
+  const CurrentNumberDisplay = () => {
+    if (!gameHook.gameState.currentNumber ) return null;
+
+    return (
+      <motion.div
+        className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 text-center border-2 border-white shadow-2xl"
+        initial={{ scale: 0, x: 100 }}
+        animate={{ scale: 1, x: 0 }}
+        transition={{ type: "spring", stiffness: 200, damping: 15 }}
+      >
+        <div className="text-white/80 text-sm sm:text-lg font-bold mb-2 sm:mb-3">CURRENT NUMBER</div>
+        <motion.div
+          className="text-4xl sm:text-6xl lg:text-7xl xl:text-8xl font-black text-white drop-shadow-lg"
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.2, type: "spring", stiffness: 300 }}
+          key={gameHook.gameState.currentNumber} // This ensures re-animation when number changes
+        >
+          {gameHook.gameState.currentNumber}
+        </motion.div>
+        <motion.div
+          className="text-white/90 text-base sm:text-lg lg:text-xl font-bold mt-2 sm:mt-3"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+        >
+          {getColumnLetter(gameHook.gameState.currentNumber)}
+        </motion.div>
+      </motion.div>
+    );
+  };
+
+  // Helper function to get BINGO column letter
+  const getColumnLetter = (number: number): string => {
+    if (number >= 1 && number <= 15) return 'B';
+    if (number >= 16 && number <= 30) return 'I';
+    if (number >= 31 && number <= 45) return 'N';
+    if (number >= 46 && number <= 60) return 'G';
+    if (number >= 61 && number <= 75) return 'O';
+    return '';
+  };
 
   // Game View Component
   const GameView = () => {
@@ -392,9 +435,9 @@ export default function Home() {
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              className="w-20 h-20 border-4 border-white border-t-transparent rounded-full mx-auto mb-6"
+              className="w-16 h-16 sm:w-20 sm:h-20 border-4 border-white border-t-transparent rounded-full mx-auto mb-4 sm:mb-6"
             />
-            <p className="text-white text-xl font-bold">Loading Game...</p>
+            <p className="text-white text-lg sm:text-xl font-bold">Loading Game...</p>
           </div>
         </div>
       )
@@ -402,27 +445,27 @@ export default function Home() {
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
-        <div className="relative z-10 max-w-md mx-auto p-4 safe-area-padding">
+        <div className="relative z-10 max-w-7xl mx-auto p-3 sm:p-4 safe-area-padding">
           {/* Header with Navigation */}
-          <div className="flex items-center justify-between mb-4 pt-4">
+          <div className="flex items-center justify-between mb-3 sm:mb-4 pt-3 sm:pt-4">
             <button
               onClick={handleBackToLobby}
-              className="flex items-center gap-2 px-4 py-3 bg-white/20 backdrop-blur-lg text-white rounded-2xl border border-white/30 hover:bg-white/30 transition-all"
+              className="flex items-center gap-1 sm:gap-2 px-3 py-2 sm:px-4 sm:py-3 bg-white/20 backdrop-blur-lg text-white rounded-xl sm:rounded-2xl border border-white/30 hover:bg-white/30 transition-all text-sm sm:text-base"
             >
-              <Eye className="w-5 h-5" />
+              <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
               <span className="font-bold">Lobby</span>
             </button>
 
             <div className="text-white text-center">
-              <div className="text-sm opacity-80">Playing as</div>
-              <div className="font-bold">{userStats?.firstName || 'Player'}</div>
+              <div className="text-xs sm:text-sm opacity-80">Playing as</div>
+              <div className="font-bold text-sm sm:text-base">{userStats?.firstName || 'Player'}</div>
             </div>
 
             <button
               onClick={handleRefreshGame}
-              className="flex items-center gap-2 px-4 py-3 bg-white/20 backdrop-blur-lg text-white rounded-2xl border border-white/30 hover:bg-white/30 transition-all"
+              className="flex items-center gap-1 sm:gap-2 px-3 py-2 sm:px-4 sm:py-3 bg-white/20 backdrop-blur-lg text-white rounded-xl sm:rounded-2xl border border-white/30 hover:bg-white/30 transition-all text-sm sm:text-base"
             >
-              <RotateCcw className="w-5 h-5" />
+              <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
               <span className="font-bold">Refresh</span>
             </button>
           </div>
@@ -430,80 +473,85 @@ export default function Home() {
           {/* Game Navigation Bar */}
           <GameNavbar />
 
-          {/* Game Header */}
-          <div className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-white/30">
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h1 className="text-3xl font-black text-white mb-2">Game {gameHook.game.code}</h1>
-                <div className="flex items-center gap-3 text-white/80 text-sm">
-                  <span>{gameHook.game.players?.length || 0} players</span>
-                  <span>•</span>
-                  <span>{gameHook.gameState.calledNumbers.length} numbers called</span>
-                </div>
-              </div>
-              <div className={`px-4 py-2 rounded-2xl font-black text-sm ${
-                gameHook.game.status === 'ACTIVE' 
-                  ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                  : gameHook.game.status === 'FINISHED'
-                  ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-              }`}>
-                {gameHook.game.status === 'ACTIVE' ? 'LIVE' : 
-                 gameHook.game.status === 'FINISHED' ? 'FINISHED' : 
-                 'WAITING'}
-              </div>
-            </div>
-          </div>
-
-          {/* Current Number */}
-          {gameHook.gameState.currentNumber && gameHook.game.status === 'ACTIVE' && (
-            <div className="bg-white/20 backdrop-blur-lg rounded-3xl p-8 text-center mb-6 border border-white/30">
-              <div className="text-white/80 text-lg font-bold mb-3">Current Number</div>
-              <div className="text-8xl font-black text-white">{gameHook.gameState.currentNumber}</div>
-            </div>
-          )}
-
-          {/* Game Content */}
-          <div className="space-y-6">
-            {gameHook.bingoCard && (
-              <BingoCard
-                card={gameHook.bingoCard}
-                calledNumbers={gameHook.gameState.calledNumbers}
-                onMarkNumber={gameHook.markNumber}
-                isInteractive={gameHook.game.status === 'ACTIVE'}
-                isWinner={gameHook.bingoCard.isWinner}
-              />
-            )}
-
-            <NumberGrid
-              calledNumbers={gameHook.gameState.calledNumbers}
-              currentNumber={gameHook.gameState.currentNumber}
-            />
-          </div>
-
-          {/* Stats Footer */}
-          <div className="text-center mt-8 pb-20">
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <div className="text-xl font-black text-white">{gameHook.gameState.calledNumbers.length}</div>
-                  <div className="text-white/60 text-xs">Numbers Called</div>
-                </div>
-                <div>
-                  <div className="text-xl font-black text-white">
-                    {gameHook.bingoCard?.markedPositions?.length || 0}
+          {/* Main Content Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+            {/* Left Column - Game Info */}
+            <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+              {/* Game Header */}
+              <div className="bg-white/20 backdrop-blur-lg rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/30">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-0">
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-black text-white mb-1 sm:mb-2">Game {gameHook.game.code}</h1>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-white/80 text-xs sm:text-sm">
+                      <span>{gameHook.game.players?.length || 0} players</span>
+                      <span className="hidden sm:inline">•</span>
+                      <span>{gameHook.gameState.calledNumbers.length} numbers called</span>
+                    </div>
                   </div>
-                  <div className="text-white/60 text-xs">Marked</div>
-                </div>
-                <div>
-                  <div className="text-xl font-black text-white">
-                    {Math.round(((gameHook.bingoCard?.markedPositions?.length || 0) / 25) * 100)}%
+                  <div className={`px-3 py-1 sm:px-4 sm:py-2 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm ${
+                    gameHook.game.status === 'ACTIVE' 
+                      ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                      : gameHook.game.status === 'FINISHED'
+                      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+                      : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                  }`}>
+                    {gameHook.game.status === 'ACTIVE' ? 'LIVE' : 
+                     gameHook.game.status === 'FINISHED' ? 'FINISHED' : 
+                     'WAITING'}
                   </div>
-                  <div className="text-white/60 text-xs">Progress</div>
+                </div>
+              </div>
+
+              {/* Game Content */}
+              <div className="space-y-4 sm:space-y-6">
+                {gameHook.bingoCard && (
+                  <BingoCard
+                    card={gameHook.bingoCard}
+                    calledNumbers={gameHook.gameState.calledNumbers}
+                    onMarkNumber={gameHook.markNumber}
+                    isInteractive={gameHook.game.status === 'ACTIVE'}
+                    isWinner={gameHook.bingoCard.isWinner}
+                  />
+                )}
+
+                <NumberGrid
+                  calledNumbers={gameHook.gameState.calledNumbers}
+                  currentNumber={gameHook.gameState.currentNumber}
+                />
+              </div>
+            </div>
+
+            {/* Right Column - Current Number (Desktop) and Stats */}
+            <div className="space-y-4 sm:space-y-6">
+              {/* Current Number Display - Right Side */}
+              <CurrentNumberDisplay />
+
+              {/* Stats Footer */}
+              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 sm:p-4 border border-white/20">
+                <div className="grid grid-cols-3 gap-3 sm:gap-4 text-center">
+                  <div>
+                    <div className="text-lg sm:text-xl font-black text-white">{gameHook.gameState.calledNumbers.length}</div>
+                    <div className="text-white/60 text-xs">Called</div>
+                  </div>
+                  <div>
+                    <div className="text-lg sm:text-xl font-black text-white">
+                      {gameHook.bingoCard?.markedPositions?.length || 0}
+                    </div>
+                    <div className="text-white/60 text-xs">Marked</div>
+                  </div>
+                  <div>
+                    <div className="text-lg sm:text-xl font-black text-white">
+                      {Math.round(((gameHook.bingoCard?.markedPositions?.length || 0) / 25) * 100)}%
+                    </div>
+                    <div className="text-white/60 text-xs">Progress</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Bottom Padding for Telegram Button */}
+          <div className="h-16 sm:h-20"></div>
         </div>
       </div>
     )
@@ -532,13 +580,13 @@ export default function Home() {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="relative z-10 max-w-md mx-auto p-4 safe-area-padding"
+        className="relative z-10 max-w-md mx-auto p-3 sm:p-4 safe-area-padding"
       >
         {/* Header */}
         <motion.div
           initial={{ y: -50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          className="text-center mb-8 pt-8"
+          className="text-center mb-6 sm:mb-8 pt-6 sm:pt-8"
         >
           <motion.div
             animate={{
@@ -546,14 +594,14 @@ export default function Home() {
               scale: [1, 1.1, 1]
             }}
             transition={{ duration: 2, repeat: Infinity }}
-            className="text-6xl mb-4"
+            className="text-5xl sm:text-6xl mb-3 sm:mb-4"
           >
             🎯
           </motion.div>
-          <h1 className="text-5xl font-black text-white mb-3 drop-shadow-lg">
+          <h1 className="text-4xl sm:text-5xl font-black text-white mb-2 sm:mb-3 drop-shadow-lg">
             BINGO
           </h1>
-          <p className="text-white/80 text-lg font-medium">Always Ready • Always Fun</p>
+          <p className="text-white/80 text-base sm:text-lg font-medium">Always Ready • Always Fun</p>
         </motion.div>
 
         {/* Game Navigation Bar */}
@@ -565,46 +613,46 @@ export default function Home() {
             initial={{ y: 20, opacity: 0, scale: 0.9 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             transition={{ delay: 0.2 }}
-            className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-white/30 shadow-2xl"
+            className="bg-white/20 backdrop-blur-lg rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-4 sm:mb-6 border border-white/30 shadow-2xl"
           >
-            <div className="flex items-center gap-4 mb-6">
+            <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
               <motion.div
                 whileHover={{ scale: 1.1, rotate: 5 }}
                 className="relative"
               >
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white text-2xl font-black shadow-lg">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white text-xl sm:text-2xl font-black shadow-lg">
                   {userStats.firstName?.[0]?.toUpperCase() || userStats.username?.[0]?.toUpperCase() || '?'}
                 </div>
                 {userStats.gamesWon > 0 && (
                   <motion.div
                     animate={{ scale: [1, 1.2, 1] }}
                     transition={{ duration: 2, repeat: Infinity }}
-                    className="absolute -top-2 -right-2"
+                    className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2"
                   >
-                    <Crown className="w-6 h-6 fill-yellow-400 text-yellow-400" />
+                    <Crown className="w-4 h-4 sm:w-6 sm:h-6 fill-yellow-400 text-yellow-400" />
                   </motion.div>
                 )}
               </motion.div>
 
               <div className="flex-1">
-                <h3 className="font-black text-xl text-white">
+                <h3 className="font-black text-lg sm:text-xl text-white">
                   {userStats.firstName || userStats.username}
                 </h3>
-                <p className="text-white/70">@{userStats.username}</p>
-                <div className="grid grid-cols-3 gap-3 mt-3">
+                <p className="text-white/70 text-sm">@{userStats.username}</p>
+                <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-2 sm:mt-3">
                   <div className="text-center">
-                    <div className="text-2xl font-black text-white">{userStats.gamesPlayed || 0}</div>
+                    <div className="text-xl sm:text-2xl font-black text-white">{userStats.gamesPlayed || 0}</div>
                     <div className="text-white/70 text-xs font-medium">Played</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-black text-white flex items-center justify-center gap-1">
+                    <div className="text-xl sm:text-2xl font-black text-white flex items-center justify-center gap-1">
                       {userStats.gamesWon || 0}
-                      {userStats.gamesWon > 0 && <Trophy className="w-4 h-4 fill-yellow-400 text-yellow-400" />}
+                      {userStats.gamesWon > 0 && <Trophy className="w-3 h-3 sm:w-4 sm:h-4 fill-yellow-400 text-yellow-400" />}
                     </div>
                     <div className="text-white/70 text-xs font-medium">Wins</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-black text-white">{userStats.totalScore || 0}</div>
+                    <div className="text-xl sm:text-2xl font-black text-white">{userStats.totalScore || 0}</div>
                     <div className="text-white/70 text-xs font-medium">Score</div>
                   </div>
                 </div>
@@ -618,14 +666,14 @@ export default function Home() {
           initial={{ y: 20, opacity: 0, scale: 0.9 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
           transition={{ delay: 0.3 }}
-          className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-lg rounded-3xl p-6 mb-6 border border-green-500/30 shadow-2xl"
+          className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-lg rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-4 sm:mb-6 border border-green-500/30 shadow-2xl"
         >
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Wallet className="w-12 h-12 text-green-400" />
+            <div className="flex items-center gap-3 sm:gap-4">
+              <Wallet className="w-10 h-10 sm:w-12 sm:h-12 text-green-400" />
               <div>
-                <h3 className="font-black text-xl text-white">Wallet Balance</h3>
-                <div className="text-3xl font-black mt-1 text-green-400">
+                <h3 className="font-black text-lg sm:text-xl text-white">Wallet Balance</h3>
+                <div className="text-2xl sm:text-3xl font-black mt-1 text-green-400">
                   {isBalanceLoading ? '...' : `${walletBalance.toFixed(2)} ብር`}
                 </div>
                 <div className="text-white/70 text-sm mt-1">
@@ -641,32 +689,32 @@ export default function Home() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-2xl"
+          className="bg-white/10 backdrop-blur-lg rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/20 shadow-2xl"
         >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <Gamepad2 className="w-6 h-6 text-white" />
-              <h3 className="font-black text-xl text-white">Current Session</h3>
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Gamepad2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              <h3 className="font-black text-lg sm:text-xl text-white">Current Session</h3>
             </div>
             {mainGame && (
-              <div className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1">
-                <Users className="w-4 h-4 text-white" />
-                <span className="text-white text-sm font-bold">{mainGame.players?.length || 0}</span>
+              <div className="flex items-center gap-1 bg-white/20 rounded-full px-2 py-1 sm:px-3 sm:py-1">
+                <Users className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
+                <span className="text-white text-xs sm:text-sm font-bold">{mainGame.players?.length || 0}</span>
               </div>
             )}
           </div>
 
           {!mainGame ? (
-            <div className="text-center py-8">
-              <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <TrendingUp className="text-white/50 w-8 h-8" />
+            <div className="text-center py-6 sm:py-8">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/10 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                <TrendingUp className="text-white/50 w-6 h-6 sm:w-8 sm:h-8" />
               </div>
               <p className="text-white/80 font-medium mb-2">Game session loading</p>
               <p className="text-white/60 text-sm">Ready in a moment...</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="bg-white/10 hover:bg-white/20 rounded-2xl p-4 border border-white/10 hover:border-white/30 transition-all duration-300 backdrop-blur-sm">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="bg-white/10 hover:bg-white/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/10 hover:border-white/30 transition-all duration-300 backdrop-blur-sm">
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
@@ -683,14 +731,14 @@ export default function Home() {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-4 text-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs sm:text-sm">
                       <div className="flex items-center gap-1 text-white/70">
-                        <Users className="w-4 h-4" />
+                        <Users className="w-3 h-3 sm:w-4 sm:h-4" />
                         <span>{mainGame.players?.length || 0} players</span>
                       </div>
-                      <span className="text-white/50">•</span>
+                      <span className="hidden sm:inline text-white/50">•</span>
                       <div className="flex items-center gap-1 text-white/70">
-                        <Clock className="w-4 h-4" />
+                        <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
                         <span>
                           {mainGame.status === 'ACTIVE'
                             ? `${mainGame.numbersCalled?.length || 0} numbers called`
@@ -707,18 +755,18 @@ export default function Home() {
 
               {/* Status Message */}
               {mainGame.status === 'WAITING' && (
-                <div className="p-3 bg-yellow-500/20 rounded-xl border border-yellow-500/30">
-                  <div className="flex items-center gap-2 text-sm text-yellow-300">
-                    <Clock className="w-4 h-4" />
+                <div className="p-2 sm:p-3 bg-yellow-500/20 rounded-lg sm:rounded-xl border border-yellow-500/30">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-yellow-300">
+                    <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
                     <span>Game will start automatically when 2+ players join</span>
                   </div>
                 </div>
               )}
 
               {mainGame.status === 'ACTIVE' && (
-                <div className="p-3 bg-green-500/20 rounded-xl border border-green-500/30">
-                  <div className="flex items-center gap-2 text-sm text-green-300">
-                    <Eye className="w-4 h-4" />
+                <div className="p-2 sm:p-3 bg-green-500/20 rounded-lg sm:rounded-xl border border-green-500/30">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-green-300">
+                    <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
                     <span>Game in progress - Click PLAY to join!</span>
                   </div>
                 </div>
@@ -732,20 +780,20 @@ export default function Home() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.8 }}
-          className="text-center mt-6 pb-20"
+          className="text-center mt-4 sm:mt-6 pb-16 sm:pb-20"
         >
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-            <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/20">
+            <div className="grid grid-cols-3 gap-3 sm:gap-4 text-center">
               <div>
-                <div className="text-2xl font-black text-white">{mainGame ? 1 : 0}</div>
+                <div className="text-xl sm:text-2xl font-black text-white">{mainGame ? 1 : 0}</div>
                 <div className="text-white/60 text-xs">Active Session</div>
               </div>
               <div>
-                <div className="text-2xl font-black text-white">{mainGame?.players?.length || 0}</div>
+                <div className="text-xl sm:text-2xl font-black text-white">{mainGame?.players?.length || 0}</div>
                 <div className="text-white/60 text-xs">Players Online</div>
               </div>
               <div>
-                <div className="text-2xl font-black text-white">{mainGame?.status === 'ACTIVE' ? 1 : 0}</div>
+                <div className="text-xl sm:text-2xl font-black text-white">{mainGame?.status === 'ACTIVE' ? 1 : 0}</div>
                 <div className="text-white/60 text-xs">Live Game</div>
               </div>
             </div>
@@ -760,19 +808,19 @@ export default function Home() {
     <AnimatePresence>
       {showDepositModal && (
         <motion.div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
           <motion.div
-            className="bg-white/20 backdrop-blur-lg rounded-3xl p-6 border border-white/30 shadow-2xl w-full max-w-sm"
+            className="bg-white/20 backdrop-blur-lg rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/30 shadow-2xl w-full max-w-sm"
             initial={{ scale: 0.8, y: 50 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.8, y: 50 }}
           >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-white font-bold text-xl">Deposit Funds</h3>
+            <div className="flex justify-between items-center mb-3 sm:mb-4">
+              <h3 className="text-white font-bold text-lg sm:text-xl">Deposit Funds</h3>
               <button
                 onClick={() => setShowDepositModal(false)}
                 className="text-white/80 hover:text-white"
@@ -781,10 +829,10 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div className="bg-white/10 rounded-2xl p-4 border border-white/20">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="bg-white/10 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-white/20">
                 <div className="text-white/80 text-sm mb-2">Current Balance</div>
-                <div className="text-2xl font-black text-white">{walletBalance.toFixed(2)} ብር</div>
+                <div className="text-xl sm:text-2xl font-black text-white">{walletBalance.toFixed(2)} ብር</div>
               </div>
 
               <div className="text-white/80 text-sm">
@@ -795,7 +843,7 @@ export default function Home() {
                 onClick={() => {
                   setShowDepositModal(false)
                 }}
-                className="w-full bg-green-500 text-white py-4 rounded-2xl font-bold hover:bg-green-600 transition-colors"
+                className="w-full bg-green-500 text-white py-3 sm:py-4 rounded-xl sm:rounded-2xl font-bold hover:bg-green-600 transition-colors"
               >
                 Deposit Now
               </button>
@@ -819,10 +867,10 @@ export default function Home() {
               rotate: { duration: 2, repeat: Infinity, ease: "linear" },
               scale: { duration: 1.5, repeat: Infinity }
             }}
-            className="w-20 h-20 border-4 border-white border-t-transparent rounded-full mx-auto mb-6"
+            className="w-16 h-16 sm:w-20 sm:h-20 border-4 border-white border-t-transparent rounded-full mx-auto mb-4 sm:mb-6"
           />
           <motion.p
-            className="text-white text-xl font-bold"
+            className="text-white text-lg sm:text-xl font-bold"
             animate={{ opacity: [0.5, 1, 0.5] }}
             transition={{ duration: 2, repeat: Infinity }}
           >
