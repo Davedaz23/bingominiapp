@@ -362,36 +362,20 @@ export default function Home() {
     )
   }
 
-  // Current Number Display Component
+  // Current Number Display Component - No animations
   const CurrentNumberDisplay = () => {
     if (!gameHook.gameState.currentNumber) return null;
 
     return (
-      <motion.div
-        className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-xl p-3 text-center border-2 border-white shadow-lg"
-        initial={{ scale: 0, x: 100 }}
-        animate={{ scale: 1, x: 0 }}
-        transition={{ type: "spring", stiffness: 200, damping: 15 }}
-      >
+      <div className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-xl p-3 text-center border-2 border-white shadow-lg">
         <div className="text-white/80 text-xs font-bold mb-1">CURRENT NUMBER</div>
-        <motion.div
-          className="text-2xl font-black text-white drop-shadow-lg"
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.2, type: "spring", stiffness: 300 }}
-          key={gameHook.gameState.currentNumber}
-        >
+        <div className="text-2xl font-black text-white drop-shadow-lg">
           {gameHook.gameState.currentNumber}
-        </motion.div>
-        <motion.div
-          className="text-white/90 text-sm font-bold mt-1"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-        >
+        </div>
+        <div className="text-white/90 text-sm font-bold mt-1">
           {getColumnLetter(gameHook.gameState.currentNumber)}
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     );
   };
 
@@ -405,7 +389,7 @@ export default function Home() {
     return '';
   };
 
-  // Game View Component - Simplified to always show game interface
+  // Game View Component - Always show game interface
   const GameView = () => {
     const userId = localStorage.getItem('user_id')
     const isUserInGame = mainGame?.players?.some(player => 
@@ -413,15 +397,11 @@ export default function Home() {
     )
 
     // Show loading state if no game data
-    if (!currentGameId || !gameHook.game || !mainGame) {
+    if (!currentGameId || !mainGame) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 flex items-center justify-center">
           <div className="text-center">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              className="w-16 h-16 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"
-            />
+            <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full mx-auto mb-4 animate-spin" />
             <p className="text-white text-lg font-bold">Loading Game...</p>
           </div>
         </div>
@@ -464,22 +444,22 @@ export default function Home() {
             <div className="bg-white/20 backdrop-blur-lg rounded-xl p-3 border border-white/30">
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
                 <div>
-                  <h1 className="text-xl font-black text-white mb-1">Game {gameHook.game.code}</h1>
+                  <h1 className="text-xl font-black text-white mb-1">Game {mainGame.code}</h1>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-1 text-white/80 text-xs">
-                    <span>{gameHook.game.players?.length || 0} players</span>
+                    <span>{mainGame.players?.length || 0} players</span>
                     <span className="hidden sm:inline">•</span>
-                    <span>{gameHook.gameState.calledNumbers.length} numbers called</span>
+                    <span>{mainGame.numbersCalled?.length || 0} numbers called</span>
                   </div>
                 </div>
                 <div className={`px-2 py-1 rounded-lg font-black text-xs ${
-                  gameHook.game.status === 'ACTIVE' 
+                  mainGame.status === 'ACTIVE' 
                     ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                    : gameHook.game.status === 'FINISHED'
+                    : mainGame.status === 'FINISHED'
                     ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
                     : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                 }`}>
-                  {gameHook.game.status === 'ACTIVE' ? 'LIVE' : 
-                   gameHook.game.status === 'FINISHED' ? 'FINISHED' : 
+                  {mainGame.status === 'ACTIVE' ? 'LIVE' : 
+                   mainGame.status === 'FINISHED' ? 'FINISHED' : 
                    'WAITING'}
                 </div>
               </div>
@@ -489,17 +469,12 @@ export default function Home() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Bingo Card - Takes 2/3 width on left */}
               <div className="lg:col-span-2">
-                {gameHook.bingoCard && (
-                  <div className="scale-90 transform origin-top">
-                    <BingoCard
-                      card={gameHook.bingoCard}
-                      calledNumbers={gameHook.gameState.calledNumbers}
-                      onMarkNumber={gameHook.markNumber}
-                      isInteractive={gameHook.game.status === 'ACTIVE'}
-                      isWinner={gameHook.bingoCard.isWinner}
-                    />
-                  </div>
-                )}
+                <div className="transform origin-top">
+                  <BingoCard
+                    calledNumbers={mainGame.numbersCalled || []}
+                    currentNumber={gameHook.gameState.currentNumber}
+                  />
+                </div>
               </div>
 
               {/* Right Column - Current Number and Stats */}
@@ -508,9 +483,9 @@ export default function Home() {
                 <CurrentNumberDisplay />
 
                 {/* Number Grid */}
-                <div className="scale-90 transform origin-top">
+                <div className="transform origin-top">
                   <NumberGrid
-                    calledNumbers={gameHook.gameState.calledNumbers}
+                    calledNumbers={mainGame.numbersCalled || []}
                     currentNumber={gameHook.gameState.currentNumber}
                   />
                 </div>
@@ -519,18 +494,18 @@ export default function Home() {
                 <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
                   <div className="grid grid-cols-3 gap-3 text-center">
                     <div>
-                      <div className="text-lg font-black text-white">{gameHook.gameState.calledNumbers.length}</div>
+                      <div className="text-lg font-black text-white">{mainGame.numbersCalled?.length || 0}</div>
                       <div className="text-white/60 text-xs">Called</div>
                     </div>
                     <div>
                       <div className="text-lg font-black text-white">
-                        {gameHook.bingoCard?.markedPositions?.length || 0}
+                        {mainGame.numbersCalled?.length || 0}
                       </div>
                       <div className="text-white/60 text-xs">Marked</div>
                     </div>
                     <div>
                       <div className="text-lg font-black text-white">
-                        {Math.round(((gameHook.bingoCard?.markedPositions?.length || 0) / 25) * 100)}%
+                        {Math.round(((mainGame.numbersCalled?.length || 0) / 75) * 100)}%
                       </div>
                       <div className="text-white/60 text-xs">Progress</div>
                     </div>
@@ -542,11 +517,7 @@ export default function Home() {
 
           {/* Join Game Button if not in game */}
           {!isUserInGame && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-20"
-            >
+            <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-20">
               <button
                 onClick={handlePlayGame}
                 disabled={walletBalance < 10}
@@ -554,7 +525,7 @@ export default function Home() {
               >
                 {walletBalance >= 10 ? 'JOIN GAME - 10 ብር' : 'NEED 10 ብር TO PLAY'}
               </button>
-            </motion.div>
+            </div>
           )}
 
           {/* Bottom Padding for Telegram Button */}
@@ -568,18 +539,8 @@ export default function Home() {
   const DepositModal = () => (
     <AnimatePresence>
       {showDepositModal && (
-        <motion.div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 border border-white/30 shadow-2xl w-full max-w-sm"
-            initial={{ scale: 0.8, y: 50 }}
-            animate={{ scale: 1, y: 0 }}
-            exit={{ scale: 0.8, y: 50 }}
-          >
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3">
+          <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 border border-white/30 shadow-2xl w-full max-w-sm">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-white font-bold text-lg">Deposit Funds</h3>
               <button
@@ -609,8 +570,8 @@ export default function Home() {
                 Deposit Now
               </button>
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       )}
     </AnimatePresence>
   )
@@ -619,24 +580,10 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 flex items-center justify-center">
         <div className="text-center">
-          <motion.div
-            animate={{
-              rotate: 360,
-              scale: [1, 1.2, 1]
-            }}
-            transition={{
-              rotate: { duration: 2, repeat: Infinity, ease: "linear" },
-              scale: { duration: 1.5, repeat: Infinity }
-            }}
-            className="w-16 h-16 border-4 border-white border-t-transparent rounded-full mx-auto mb-4"
-          />
-          <motion.p
-            className="text-white text-lg font-bold"
-            animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          >
+          <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full mx-auto mb-4 animate-spin" />
+          <p className="text-white text-lg font-bold">
             {initData === 'development' ? 'Development Mode' : 'Loading Bingo...'}
-          </motion.p>
+          </p>
         </div>
       </div>
     )
