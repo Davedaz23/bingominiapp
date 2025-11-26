@@ -44,8 +44,29 @@ export interface WalletInfo {
   betAmount: number;
   potentialWin: number;
 }
+export interface GamePlayerUser {
+  _id: string;
+  id: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  telegramId?: string; // Added for better user identification
+}
 
+export interface GamePlayer {
+  _id: string;
+  userId: string; // This should be string, not GamePlayerUser
+  user?: GamePlayerUser; // This is populated by Mongoose
+  isReady: boolean;
+  joinedAt: string;
+  playerType?: 'PLAYER' | 'SPECTATOR';
+  isLateJoiner?: boolean; // Added: Track if player joined after game started
+  numbersCalledAtJoin?: number[]; // Added: Numbers called when player joined
+}
 export interface Game {
+  isAutoCreated: boolean;
+  winner: boolean;
+  numbersCalled: any;
   _id: string;
   id?: string;
   code: string;
