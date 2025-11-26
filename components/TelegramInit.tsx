@@ -1,35 +1,26 @@
-// app/components/TelegramInit.tsx
+// app/components/TelegramInit.tsx - FIXED (with type assertion)
 'use client';
 
 import { useEffect } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
-
-// Move the declaration to a separate types file or use a more specific approach
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp: any;
-    };
-  }
-}
 
 export default function TelegramInit() {
   const { login, isLoading } = useAuth();
 
   useEffect(() => {
     const initializeTelegram = async () => {
-      // Check if we're in Telegram WebApp
-      if (window.Telegram?.WebApp) {
-        const webApp = window.Telegram.WebApp;
-        
+      // Use type assertion to access the Telegram WebApp with extended methods
+      const telegramWebApp = (window as any).Telegram?.WebApp as any;
+      
+      if (telegramWebApp) {
         // Expand the WebApp to full height
-        webApp.expand();
+        telegramWebApp.expand();
         
-        // Enable closing confirmation
-        webApp.enableClosingConfirmation();
+        // Enable closing confirmation (using type assertion to bypass TypeScript)
+        telegramWebApp.enableClosingConfirmation?.();
         
         // Get init data for authentication
-        const initData = webApp.initData;
+        const initData = telegramWebApp.initData;
         
         if (initData) {
           try {
@@ -54,7 +45,7 @@ export default function TelegramInit() {
         }
         
         // Set theme params
-        const themeParams = webApp.themeParams;
+        const themeParams = telegramWebApp.themeParams;
         if (themeParams) {
           document.documentElement.style.setProperty('--tg-theme-bg-color', themeParams.bg_color || '#ffffff');
           document.documentElement.style.setProperty('--tg-theme-text-color', themeParams.text_color || '#000000');
