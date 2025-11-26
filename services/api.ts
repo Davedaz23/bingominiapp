@@ -1,21 +1,22 @@
-// services/api.ts
+// services/api.ts - UPDATED WITH FIXED WALLET ENDPOINTS
 import axios from 'axios';
-import { Game, User, BingoCard } from '../types';
+import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-const apiClient = axios.create({
+const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000,
+  timeout: 10000, // 10 second timeout
 });
 
 // Add auth token to requests
-apiClient.interceptors.request.use((config) => {
+api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('bingo_token');
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -23,28 +24,16 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for error handling
-// services/api.ts - Replace your response interceptor with this:
-apiClient.interceptors.response.use(
+// Enhanced response interceptor for better error handling
+api.interceptors.response.use(
   (response) => {
+    // Log successful API calls in development
     if (process.env.NODE_ENV === 'development') {
       console.log(`✅ API ${response.config.method?.toUpperCase()} ${response.config.url}`, response.data);
     }
     return response;
   },
   (error) => {
-    // 🛠️ Handle empty error objects gracefully
-    if (!error || Object.keys(error).length === 0) {
-      console.error('❌ Network Error: Request failed completely (CORS, network down, or invalid URL)');
-      
-      // Create a proper error object with essential info
-      const networkError = new Error('Network request failed');
-      (networkError as any).isNetworkError = true;
-      (networkError as any).code = 'NETWORK_ERROR';
-      return Promise.reject(networkError);
-    }
-    
-    // Existing error handling for non-empty errors
     console.error('❌ API Error:', {
       url: error.config?.url,
       method: error.config?.method,
@@ -53,11 +42,23 @@ apiClient.interceptors.response.use(
       message: error.message
     });
     
+    // Handle specific error cases
     if (error.response?.status === 401) {
+      // Clear invalid token
       if (typeof window !== 'undefined') {
         localStorage.removeItem('bingo_token');
         localStorage.removeItem('user_id');
       }
+    }
+    
+    // Network errors
+    if (error.code === 'NETWORK_ERROR' || error.message === 'Network Error') {
+      console.warn('🌐 Network error - check connection');
+    }
+    
+    // Timeout errors
+    if (error.code === 'ECONNABORTED') {
+      console.warn('⏰ Request timeout');
     }
     
     return Promise.reject(error);
@@ -65,188 +66,140 @@ apiClient.interceptors.response.use(
 );
 
 // Helper function to get user ID
-// services/api.ts - Update getUserId function
 const getUserId = (): string | null => {
   if (typeof window === 'undefined') return null;
-  
-  // Try multiple ways to get user ID
-  const userId = localStorage.getItem('user_id');
-  if (userId) return userId;
-  
-  // If no user_id in localStorage, try to extract from token
-  const token = localStorage.getItem('bingo_token');
-  if (token) {
-    try {
-      // Simple extraction - you might want to decode JWT properly
-      const parts = token.split('.');
-      if (parts.length > 1) {
-        const payload = JSON.parse(atob(parts[1]));
-        return payload.userId || payload.sub || 'default-user';
-      }
-    } catch (error) {
-      console.warn('Failed to parse token for user ID:', error);
-    }
-  }
-  
-  return 'default-user'; // Fallback for development
+  return localStorage.getItem('user_id');
 };
 
-class ApiService {
-  private token: string | null = null;
+export const authAPI = {
+  telegramLogin: (initData: string) => 
+    api.post<{ success: boolean; token: string; user: User }>('/auth/telegram', { initData }),
+  
+  getProfile: (userId: string) =>
+    api.get<{ success: boolean; user: User }>(`/auth/profile/${userId}`),
+  
+  getStats: (userId: string) =>
+    api.get<{ success: boolean; stats: any }>(`/auth/stats/${userId}`),
+};
 
-  setToken(token: string) {
-    this.token = token;
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('bingo_token', token);
-      localStorage.setItem('user_id', token.split('.')[1] || 'default'); // Simple user ID extraction
-    }
-  }
+export const gameAPI = {
+  // Game management
+  joinGame: (code: string, userId: string) =>
+    api.post<{ success: boolean; game: Game }>(`/games/${code}/join`, { userId }),
+  
+  joinGameWithWallet: (code: string, userId: string, entryFee: number = 10) =>
+    api.post<{ success: boolean; game: Game }>(`/games/${code}/join-with-wallet`, { userId, entryFee }),
+  
+  startGame: (gameId: string) =>
+    api.post<{ success: boolean; game: Game }>(`/games/${gameId}/start`),
+  
+  callNumber: (gameId: string) =>
+    api.post<{ success: boolean; number: number; calledNumbers: number[]; totalCalled: number }>(`/games/${gameId}/call-number`),
+  
+  markNumber: (gameId: string, userId: string, number: number) =>
+    api.post<{ success: boolean; bingoCard: BingoCard; isWinner: boolean; isSpectator?: boolean }>(`/games/${gameId}/mark-number`, { userId, number }),
+  
+  // Game queries
+  getActiveGames: () =>
+    api.get<{ success: boolean; games: Game[] }>('/games/active'),
+  
+  getWaitingGames: () =>
+    api.get<{ success: boolean; games: Game[] }>('/games/waiting'),
+  
+  getGame: (gameId: string) =>
+    api.get<{ success: boolean; game: Game }>(`/games/${gameId}`),
+  
+  getGameByCode: (code: string) =>
+    api.get<{ success: boolean; game: Game }>(`/games/code/${code}`),
+  
+  getUserBingoCard: (gameId: string, userId: string) =>
+    api.get<{ success: boolean; bingoCard: BingoCard }>(`/games/${gameId}/card/${userId}`),
+  
+  // Game actions
+  leaveGame: (gameId: string, userId: string) =>
+    api.post<{ success: boolean; game: Game }>(`/games/${gameId}/leave`, { userId }),
+  
+  endGame: (gameId: string) =>
+    api.post<{ success: boolean; game: Game }>(`/games/${gameId}/end`),
+  
+  checkForWin: (gameId: string, userId: string) =>
+    api.post<{ success: boolean; isWinner: boolean; bingoCard: BingoCard; winningPattern?: string }>(`/games/${gameId}/check-win`, { userId }),
+  
+  // Game info
+  getWinnerInfo: (gameId: string) =>
+    api.get<{ success: boolean; winnerInfo: WinnerInfo }>(`/games/${gameId}/winner`),
+  
+  getGameStats: (gameId: string) =>
+    api.get<{ success: boolean; stats: GameStats }>(`/games/${gameId}/stats`),
+  
+  // User games
+  getUserActiveGames: (userId: string) =>
+    api.get<{ success: boolean; games: Game[] }>(`/games/user/${userId}/active`),
+  
+  getUserGameHistory: (userId: string, limit?: number, page?: number) =>
+    api.get<{ success: boolean; games: Game[]; pagination: any }>(`/games/user/${userId}/history`, {
+      params: { limit, page }
+    }),
+  
+  getUserGameRole: (gameId: string, userId: string) =>
+    api.get<{ success: boolean; role: any }>(`/games/user/${userId}/role/${gameId}`),
+  
+  // Health check
+  healthCheck: () =>
+    api.get<{ status: string; timestamp: string; database: string }>('/health'),
+};
 
-  // Auth endpoints
-  async telegramAuth(initData: string) {
-    const response = await apiClient.post<{ success: boolean; token: string; user: User }>('/auth/telegram', { initData });
-    
-    if (response.data.success && response.data.user) {
-      this.setToken(response.data.token);
-    }
-    
-    return response.data;
-  }
+export const walletAPI = {
+  // Balance - include userId in query params instead of headers
+  getBalance: (userId: string) =>
+    api.get<{ success: boolean; balance: number }>(`/wallet/balance`, {
+      params: { userId }
+    }),
+  
+  // Transactions - include userId in query params
+  getTransactions: (userId: string, limit?: number, page?: number) =>
+    api.get<{ success: boolean; transactions: any[]; pagination: any }>(`/wallet/transactions`, {
+      params: { userId, limit, page }
+    }),
+  
+  // Deposit - include userId in request body
+  createDeposit: (userId: string, data: { amount: number; receiptImage: string; reference: string; description?: string }) =>
+    api.post<{ success: boolean; transaction: any }>(`/wallet/deposit`, {
+      userId,
+      ...data
+    }),
+  
+  // Admin endpoints - include userId in query params
+  getPendingDeposits: (userId: string) =>
+    api.get<{ success: boolean; deposits: any[] }>(`/wallet/admin/pending-deposits`, {
+      params: { userId }
+    }),
+  
+  approveDeposit: (userId: string, transactionId: string) =>
+    api.post<{ success: boolean; wallet: any; transaction: any }>(`/wallet/admin/approve-deposit/${transactionId}`, {
+      userId
+    }),
+};
 
-  // Game endpoints - USING YOUR EXACT ENDPOINTS
-  async createGame(hostId: string, maxPlayers?: number, isPrivate?: boolean) {
-    const response = await apiClient.post<{ success: boolean; game: Game }>('/games', { hostId, maxPlayers, isPrivate });
-    return response.data;
-  }
-
-  async joinGame(code: string, userId: string) {
-    const response = await apiClient.post<{ success: boolean; game: Game }>(`/games/${code}/join`, { userId });
-    return response.data;
-  }
-
-  async startGame(gameId: string, hostId: string) {
-    const response = await apiClient.post<{ success: boolean; game: Game }>(`/games/${gameId}/start`, { hostId });
-    return response.data;
-  }
-
-  async callNumber(gameId: string) {
-    const response = await apiClient.post<{ success: boolean; number: number; calledNumbers: number[] }>(`/games/${gameId}/call-number`);
-    return response.data;
-  }
-
-  async markNumber(gameId: string, userId: string, number: number) {
-    const response = await apiClient.post<{ success: boolean; bingoCard: BingoCard; isWinner: boolean }>(`/games/${gameId}/mark-number`, { userId, number });
-    return response.data;
-  }
-
-  async getActiveGames() {
-    const response = await apiClient.get<{ success: boolean; games: Game[] }>('/games/active');
-    return response.data;
-  }
-
-  async getGame(gameId: string) {
-    const response = await apiClient.get<{ success: boolean; game: Game }>(`/games/${gameId}`);
-    return response.data;
-  }
-
-  // Helper methods for additional functionality
-  async getWaitingGames() {
-    try {
-      // Try to get waiting games specifically
-      const response = await apiClient.get<{ success: boolean; games: Game[] }>('/games/waiting');
-      return response.data;
-    } catch (error) {
-      // Fallback: filter active games for waiting status
-      const activeGames = await this.getActiveGames();
-      if (activeGames.success) {
-        const waitingGames = activeGames.games.filter(game => game.status === 'WAITING');
-        return {
-          success: true,
-          games: waitingGames
-        };
-      }
-      throw error;
-    }
-  }
-
-  // Wallet endpoints
-// services/api.ts - Update getWallet method
-async getWallet() {
-  try {
+// Convenience methods that automatically get userId from localStorage
+export const walletAPIAuto = {
+  getBalance: () => {
     const userId = getUserId();
-    if (!userId) {
-      console.warn('No user ID found, using fallback balance');
-      return {
-        success: true,
-        balance: 100
-      };
-    }
-    
-    console.log(`Fetching wallet for user: ${userId}`);
-    
-    // Try the wallet endpoint
-    const response = await apiClient.get<{ success: boolean; balance: number }>(`/wallet/balance/${userId}`);
-    
-    return response.data;
-  } catch (error: any) {
-    console.error('Wallet API error:', {
-      message: error.message,
-      status: error.response?.status,
-      url: error.config?.url
-    });
-    
-    // Development fallback - check if API is reachable
-    if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
-      console.warn('API server not reachable, using development fallback');
-    }
-    
-    // Fallback for development
-    return {
-      success: true,
-      balance: 100
-    };
-  }
-}
+    if (!userId) throw new Error('User ID not found');
+    return walletAPI.getBalance(userId);
+  },
+  
+  getTransactions: (limit?: number, page?: number) => {
+    const userId = getUserId();
+    if (!userId) throw new Error('User ID not found');
+    return walletAPI.getTransactions(userId, limit, page);
+  },
+  
+  createDeposit: (data: { amount: number; receiptImage: string; reference: string; description?: string }) => {
+    const userId = getUserId();
+    if (!userId) throw new Error('User ID not found');
+    return walletAPI.createDeposit(userId, data);
+  },
+};
 
-// services/api.ts - Add to ApiService class
-async healthCheck(): Promise<boolean> {
-  try {
-    const response = await apiClient.get('/health');
-    return response.status === 200;
-  } catch (error) {
-    console.warn('API health check failed:', error);
-    return false;
-  }
-}
-  // Helper to generate bingo cards locally
-  generateBingoCard(id: string, owner: string): BingoCard {
-    const numbers: number[][] = [];
-    
-    for (let i = 0; i < 5; i++) {
-      const column: number[] = [];
-      const start = i * 15 + 1;
-      
-      const columnNumbers = Array.from({ length: 15 }, (_, index) => start + index)
-        .sort(() => Math.random() - 0.5)
-        .slice(0, 5);
-      
-      numbers.push(columnNumbers);
-    }
-    
-    const rows: number[][] = [];
-    for (let i = 0; i < 5; i++) {
-      rows.push(numbers.map(col => col[i]));
-    }
-    
-    rows[2][2] = 0; // Free space
-    
-    return {
-      id,
-      numbers: rows,
-      selected: rows.map(row => row.map(() => false)),
-      owner
-    };
-  }
-}
-
-export const apiService = new ApiService();
+export default api;

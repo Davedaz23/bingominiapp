@@ -4,9 +4,10 @@
 import { useEffect } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
 
+// Move the declaration to a separate types file or use a more specific approach
 declare global {
   interface Window {
-    Telegram: {
+    Telegram?: {
       WebApp: any;
     };
   }

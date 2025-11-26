@@ -4,40 +4,41 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 // import { gameService } from '../services/gameService';
-import { apiService } from '../services/api';
+import { walletAPIAuto } from '../services/api';
 
 export default function Home() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const [walletBalance, setWalletBalance] = useState<number>(0);
 
-// app/page.tsx - Update the useEffect
-useEffect(() => {
-  const loadWallet = async () => {
-    try {
-      console.log('Loading wallet for authenticated user...');
-      const response = await apiService.getWallet();
-      
-      if (response.success) {
-        console.log('Wallet loaded successfully:', response.balance);
-        setWalletBalance(response.balance);
-      } else {
-        console.warn('Wallet response not successful, using fallback');
+  useEffect(() => {
+    const loadWallet = async () => {
+      try {
+        console.log('Loading wallet for authenticated user...');
+        
+        // Use walletAPIAuto which automatically gets the user ID
+        const response = await walletAPIAuto.getBalance();
+        
+        if (response.data.success) {
+          console.log('Wallet loaded successfully:', response.data.balance);
+          setWalletBalance(response.data.balance);
+        } else {
+          console.warn('Wallet response not successful, using fallback');
+          setWalletBalance(100);
+        }
+      } catch (error) {
+        console.error('Failed to load wallet:', error);
+        // Use fallback balance
         setWalletBalance(100);
       }
-    } catch (error) {
-      console.error('Failed to load wallet:', error);
-      // Use fallback balance
-      setWalletBalance(100);
-    }
-  };
+    };
 
-  if (isAuthenticated) {
-    loadWallet();
-  } else {
-    // Reset balance when not authenticated
-    setWalletBalance(0);
-  }
-}, [isAuthenticated]);
+    if (isAuthenticated) {
+      loadWallet();
+    } else {
+      // Reset balance when not authenticated
+      setWalletBalance(0);
+    }
+  }, [isAuthenticated]);
 
   if (isLoading) {
     return (
