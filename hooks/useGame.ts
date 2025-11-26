@@ -18,8 +18,6 @@ interface UseGameReturn {
   bingoCard: BingoCard | null;
   gameState: GameState & {
     timeSinceLastNumber: string;
-    isLateJoiner?: boolean;
-    numbersCalledAtJoin?: number[];
   };
   isLoading: boolean;
   error: string | null;
@@ -34,25 +32,19 @@ interface UseGameReturn {
   isUserInGame: boolean;
   userRole: 'PLAYER' | 'SPECTATOR' | null;
   userId: string | null;
-  
-  // Late joiner info
-  isLateJoiner: boolean;
-  numbersCalledAtJoin: number[];
-  
-  // Utilities
-  stopPolling: () => void;
-  startPolling: () => void;
 }
 
 export const useGame = (gameId: string): UseGameReturn => {
   const [game, setGame] = useState<Game | null>(null);
   const [bingoCard, setBingoCard] = useState<BingoCard | null>(null);
   const [gameState, setGameState] = useState<GameState>({
-    currentNumber: undefined,
+    isStarted: false,
     calledNumbers: [],
+    currentNumber: null,
+    players: 0,
+    potAmount: 0,
     timeRemaining: 0,
-    isPlaying: false,
-    lastCalledAt: null,
+    gameEnded: false
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +71,15 @@ export const useGame = (gameId: string): UseGameReturn => {
     gameStateRef.current = gameState;
   }, [gameState]);
 
+  // Stop polling (internal function)
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+      console.log('🛑 Stopped polling');
+    }
+  }, []);
+
   // Set mounted flag
   useEffect(() => {
     isMountedRef.current = true;
@@ -86,7 +87,7 @@ export const useGame = (gameId: string): UseGameReturn => {
       isMountedRef.current = false;
       stopPolling();
     };
-  }, []);
+  }, [stopPolling]);
 
   // Get current user ID
   const getCurrentUserId = (): string | null => {
@@ -94,7 +95,7 @@ export const useGame = (gameId: string): UseGameReturn => {
     return localStorage.getItem('user_id');
   };
 
-  // Enhanced bingo card fetching with better error handling and timeout management
+  // Enhanced bingo card fetching with better error handling
   const fetchBingoCard = useCallback(async (gameId: string, userId: string): Promise<BingoCard | null> => {
     if (!gameId || !userId) return null;
 
@@ -108,11 +109,6 @@ export const useGame = (gameId: string): UseGameReturn => {
         // Only update if card actually changed
         if (JSON.stringify(bingoCardRef.current) !== JSON.stringify(cardData)) {
           setBingoCard(cardData);
-          
-          // Log late joiner status for debugging
-          if (cardData.isLateJoiner) {
-            console.log(`🎯 User ${userId} is a late joiner. Pre-called numbers:`, cardData.numbersCalledAtJoin?.length || 0);
-          }
         }
         
         consecutiveErrorsRef.current = 0; // Reset error counter on success
@@ -132,25 +128,34 @@ export const useGame = (gameId: string): UseGameReturn => {
 
   // Smart game state update - only update when data actually changes
   const updateGameState = useCallback((gameData: Game) => {
-    const calledNumbers = gameData.numbersCalled || [];
-    const latestNumber = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : undefined;
+    const calledNumbers = gameData.calledNumbers || [];
+    const latestNumber = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null;
     
     setGameState(prev => {
       const isNewNumber = latestNumber && latestNumber !== prev.currentNumber;
       const calledNumbersChanged = JSON.stringify(prev.calledNumbers) !== JSON.stringify(calledNumbers);
+      const isStarted = gameData.status === 'ACTIVE' || gameData.status === 'FINISHED';
+      const gameEnded = gameData.status === 'FINISHED';
       
       // Only update if something actually changed
-      if (!isNewNumber && !calledNumbersChanged && prev.isPlaying === (gameData.status === 'ACTIVE')) {
+      if (!isNewNumber && !calledNumbersChanged && 
+          prev.isStarted === isStarted && 
+          prev.gameEnded === gameEnded) {
         return prev;
       }
       
-      return {
-        ...prev,
+      // Return a proper GameState object without the status field
+      const newState: GameState = {
+        isStarted,
         currentNumber: latestNumber,
         calledNumbers: calledNumbers,
-        isPlaying: gameData.status === 'ACTIVE',
-        lastCalledAt: isNewNumber ? new Date() : prev.lastCalledAt,
+        players: gameData.currentPlayers || gameData.players?.length || 0,
+        potAmount: gameData.potAmount || 0,
+        timeRemaining: gameData.timeRemaining || 0,
+        gameEnded
       };
+      
+      return newState;
     });
   }, []);
 
@@ -187,7 +192,7 @@ export const useGame = (gameId: string): UseGameReturn => {
 
       // Fetch user's bingo card with enhanced error handling
       const userId = getCurrentUserId();
-      if (userId && gameData.status === 'ACTIVE') {
+      if (userId && (gameData.status === 'ACTIVE' || gameData.status === 'FINISHED')) {
         await fetchBingoCard(gameId, userId);
       }
 
@@ -217,7 +222,7 @@ export const useGame = (gameId: string): UseGameReturn => {
     }
   }, [gameId, fetchBingoCard, updateGameState]);
 
-  // Adaptive polling system with error-based backoff
+  // Adaptive polling system with error-based backoff (internal function)
   const startPolling = useCallback(() => {
     // Clear existing interval
     if (pollingIntervalRef.current) {
@@ -232,16 +237,8 @@ export const useGame = (gameId: string): UseGameReturn => {
     let baseInterval = 10000; // Default: 10 seconds
     
     if (currentGame.status === 'ACTIVE') {
-      // Faster polling for active games with recent activity
-      const lastCalled = gameStateRef.current.lastCalledAt;
-      const now = new Date();
-      const timeSinceLastCall = lastCalled ? now.getTime() - lastCalled.getTime() : Infinity;
-      
-      if (timeSinceLastCall < 30000) { // 30 seconds
-        baseInterval = 3000; // 3 seconds for very active games
-      } else {
-        baseInterval = 5000; // 5 seconds for less active games
-      }
+      // Faster polling for active games
+      baseInterval = 5000; // 5 seconds for active games
     } else if (currentGame.status === 'WAITING') {
       baseInterval = 8000; // 8 seconds for waiting games
     } else if (currentGame.status === 'FINISHED') {
@@ -263,15 +260,6 @@ export const useGame = (gameId: string): UseGameReturn => {
 
   }, [fetchGame]);
 
-  // Stop polling
-  const stopPolling = useCallback(() => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-      console.log('🛑 Stopped polling');
-    }
-  }, []);
-
   // Enhanced mark number function with better error handling
   const markNumber = useCallback(async (number: number): Promise<boolean> => {
     try {
@@ -292,11 +280,6 @@ export const useGame = (gameId: string): UseGameReturn => {
       if (response.data.isWinner) {
         console.log('🎉 BINGO! User won!');
         
-        // Special logging for late joiners
-        if (updatedCard.isLateJoiner) {
-          console.log('🏆 LATE JOINER VICTORY! User won with pre-called numbers!');
-        }
-        
         // Refresh game to get final state
         await fetchGame(true);
         return true;
@@ -307,13 +290,8 @@ export const useGame = (gameId: string): UseGameReturn => {
       console.error('Error marking number:', err);
       const apiError = err as ApiError;
       
-      // Enhanced error messages for late joiners
+      // Enhanced error messages
       const errorMessage = apiError.response?.data?.error || apiError.message || 'Failed to mark number';
-      
-      if (errorMessage.includes('called before you joined')) {
-        throw new Error('This number was called before you joined. All numbers count towards your bingo automatically!');
-      }
-      
       throw new Error(errorMessage);
     }
   }, [gameId, fetchGame]);
@@ -329,7 +307,6 @@ export const useGame = (gameId: string): UseGameReturn => {
         ...prev,
         currentNumber: response.data.number,
         calledNumbers: response.data.calledNumbers,
-        lastCalledAt: new Date(),
       }));
       
       // Refresh full game state after a short delay
@@ -357,66 +334,28 @@ export const useGame = (gameId: string): UseGameReturn => {
   // Check if user is in the game
   const isUserInGame = useCallback((): boolean => {
     if (!game?.players || !getCurrentUserId()) return false;
-    return game.players.some(player => player.userId === getCurrentUserId());
+    return game.players.some((player: any) => player.userId === getCurrentUserId());
   }, [game]);
 
   // Get current user's role in the game
   const getUserRole = useCallback((): 'PLAYER' | 'SPECTATOR' | null => {
     if (!game?.players || !getCurrentUserId()) return null;
-    const player = game.players.find(p => p.userId === getCurrentUserId());
+    const player = game.players.find((p: any) => p.userId === getCurrentUserId());
     return player?.playerType || 'PLAYER';
   }, [game]);
 
-  // Get time since last number
+  // Get time since last number (simplified since we don't have lastCalledAt)
   const getTimeSinceLastNumber = useCallback((): string => {
-    if (!gameState.lastCalledAt) return 'Waiting for first number...';
-    
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - gameState.lastCalledAt.getTime()) / 1000);
-    
-    if (diffInSeconds < 5) return 'Just now';
-    if (diffInSeconds < 60) return `${diffInSeconds}s ago`;
-    
-    return `${Math.floor(diffInSeconds / 60)}m ago`;
-  }, [gameState.lastCalledAt]);
+    // Since we don't have lastCalledAt in the Game type, we'll use a simple approach
+    if (!gameState.currentNumber) return 'Waiting for first number...';
+    return 'Active game'; // Simplified since we don't have timestamp data
+  }, [gameState.currentNumber]);
 
-  // Late joiner information
-  const isLateJoiner = bingoCard?.isLateJoiner || false;
-  const numbersCalledAtJoin = bingoCard?.numbersCalledAtJoin || [];
-
-  // Enhanced game state with late joiner info
+  // Enhanced game state with time info
   const enhancedGameState = {
     ...gameState,
     timeSinceLastNumber: getTimeSinceLastNumber(),
-    isLateJoiner,
-    numbersCalledAtJoin,
   };
-
-  // Check automatic win
-  const checkAutomaticWin = useCallback(async (): Promise<boolean> => {
-    try {
-      const userId = getCurrentUserId();
-      if (!userId || !bingoCardRef.current?.isLateJoiner) return false;
-
-      // Only check for automatic wins for late joiners
-      const response = await gameAPI.checkForWin(gameId, userId);
-      
-      if (response.data.isWinner && !bingoCardRef.current?.isWinner) {
-        console.log('🎉 AUTOMATIC BINGO DETECTED for late joiner!');
-        
-        // Update bingo card with winner status
-        setBingoCard(prev => prev ? { ...prev, isWinner: true } : null);
-        
-        // Show win animation
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.error('Error checking automatic win:', error);
-      return false;
-    }
-  }, [gameId]);
 
   // Main effect - initialize game and polling
   useEffect(() => {
@@ -444,24 +383,12 @@ export const useGame = (gameId: string): UseGameReturn => {
     }
   }, [game?.status, startPolling]);
 
-  // Debug effect for number calls and late joiner status
+  // Debug effect for number calls
   useEffect(() => {
-    if (gameState.currentNumber && gameState.lastCalledAt) {
-      console.log(`🔢 New number detected: ${gameState.currentNumber}, Total called: ${gameState.calledNumbers.length}, Time: ${gameState.lastCalledAt.toLocaleTimeString()}`);
+    if (gameState.currentNumber) {
+      console.log(`🔢 Current number: ${gameState.currentNumber}, Total called: ${gameState.calledNumbers.length}`);
     }
-  }, [gameState.currentNumber, gameState.calledNumbers.length, gameState.lastCalledAt]);
-
-  // Automatic win checking for late joiners
-  useEffect(() => {
-    if (bingoCard?.isLateJoiner && !bingoCard.isWinner && gameState.calledNumbers.length > 0) {
-      // Debounced automatic win check for late joiners
-      const timeoutId = setTimeout(() => {
-        checkAutomaticWin();
-      }, 1000);
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [gameState.calledNumbers, bingoCard?.isLateJoiner, bingoCard?.isWinner, checkAutomaticWin]);
+  }, [gameState.currentNumber, gameState.calledNumbers.length]);
 
   return {
     // State
@@ -481,13 +408,5 @@ export const useGame = (gameId: string): UseGameReturn => {
     isUserInGame: isUserInGame(),
     userRole: getUserRole(),
     userId: getCurrentUserId(),
-    
-    // Late joiner info
-    isLateJoiner,
-    numbersCalledAtJoin,
-    
-    // Utilities
-    stopPolling,
-    startPolling,
   };
 };
