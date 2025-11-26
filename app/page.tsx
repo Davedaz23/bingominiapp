@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useTelegram, useTelegramMainButton } from '../hooks/useTelegram'
 import { authAPI, gameAPI, walletAPI } from '../services/api'
 import { Game, User } from '../types'
@@ -48,9 +48,13 @@ export default function Home() {
   const gameHook = useGame(currentGameId || '')
 
   // Calculate prize pool (10 birr per player)
-  const prizePool = (mainGame?.players?.length || 0) * 10
+  const prizePool = useMemo(() => (mainGame?.players?.length || 0) * 10, [mainGame?.players?.length])
 
-  // Real-time game updates
+  // Memoize game data to prevent unnecessary re-renders
+  const gameData = useMemo(() => gameView === 'game' ? gameHook.game : mainGame, [gameView, gameHook.game, mainGame])
+  const calledNumbers = useMemo(() => gameView === 'game' ? gameHook.gameState.calledNumbers : (mainGame?.numbersCalled || []), [gameView, gameHook.gameState.calledNumbers, mainGame?.numbersCalled])
+
+  // Real-time game updates - optimized
   useEffect(() => {
     if (gameView === 'game' && currentGameId) {
       const interval = setInterval(() => {
@@ -119,7 +123,7 @@ export default function Home() {
   }, [WebApp, isReady, gameView, mainGame, walletBalance])
 
   // Fetch wallet balance
-  const fetchWalletBalance = async () => {
+  const fetchWalletBalance = useCallback(async () => {
     try {
       setIsBalanceLoading(true)
       const userId = localStorage.getItem('user_id')
@@ -138,7 +142,7 @@ export default function Home() {
     } finally {
       setIsBalanceLoading(false)
     }
-  }
+  }, [])
 
   // Initialize user when Telegram is ready
   useEffect(() => {
@@ -147,7 +151,7 @@ export default function Home() {
     }
   }, [isReady, user, authAttempted])
 
-  const initializeUser = async () => {
+  const initializeUser = useCallback(async () => {
     try {
       setAuthAttempted(true)
       setIsLoading(true)
@@ -187,9 +191,9 @@ export default function Home() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user, initData, fetchWalletBalance])
 
-  const loadMainGame = async () => {
+  const loadMainGame = useCallback(async () => {
     try {
       console.log('🎮 Loading main game...')
       const response = await gameAPI.getActiveGames()
@@ -201,20 +205,15 @@ export default function Home() {
       if (activeGame) {
         setCurrentGameId(activeGame._id)
         setGameView('game')
-        
-        // Refresh game data
-        setTimeout(() => {
-          gameHook.refreshGame()
-        }, 1000)
       }
       
     } catch (error) {
       console.error('Failed to load main game:', error)
       setMainGame(null)
     }
-  }
+  }, [])
 
-  const handlePlayGame = async () => {
+  const handlePlayGame = useCallback(async () => {
     if (!mainGame) {
       console.log('❌ No main game available')
       return
@@ -247,8 +246,6 @@ export default function Home() {
         console.log('✅ Successfully joined game, refreshing game data...')
         setCurrentGameId(mainGame._id)
         setGameView('game')
-        
-        gameHook.refreshGame()
       } else {
         throw new Error('Failed to join game')
       }
@@ -258,7 +255,6 @@ export default function Home() {
       if (error.response?.data?.error?.includes('already in this game')) {
         setCurrentGameId(mainGame._id)
         setGameView('game')
-        gameHook.refreshGame()
         return
       }
 
@@ -268,9 +264,9 @@ export default function Home() {
         WebApp.MainButton.hideProgress()
       }
     }
-  }
+  }, [mainGame, walletBalance, WebApp, loadMainGame])
 
-  const handleRefreshGame = () => {
+  const handleRefreshGame = useCallback(() => {
     console.log('🔄 Refreshing game data...')
     if (gameView === 'game') {
       gameHook.refreshGame()
@@ -278,13 +274,13 @@ export default function Home() {
     } else {
       loadMainGame()
     }
-  }
+  }, [gameView, gameHook, loadMainGame])
 
-  const handleBackToLobby = () => {
+  const handleBackToLobby = useCallback(() => {
     console.log('↩️ Returning to lobby')
     setGameView('lobby')
     setCurrentGameId(null)
-  }
+  }, [])
 
   // Apply Telegram theme to document
   useEffect(() => {
@@ -296,11 +292,18 @@ export default function Home() {
     }
   }, [theme])
 
+  // Helper function to get BINGO column letter
+  const getColumnLetter = useCallback((number: number): string => {
+    if (number >= 1 && number <= 15) return 'B';
+    if (number >= 16 && number <= 30) return 'I';
+    if (number >= 31 && number <= 45) return 'N';
+    if (number >= 46 && number <= 60) return 'G';
+    if (number >= 61 && number <= 75) return 'O';
+    return '';
+  }, [])
+
   // Compact Single Line Navbar Component - NO ANIMATIONS
-  const GameNavbar = () => {
-    const gameData = gameView === 'game' ? gameHook.game : mainGame
-    const calledNumbers = gameView === 'game' ? gameHook.gameState.calledNumbers : (mainGame?.numbersCalled || [])
-    
+  const GameNavbar = useMemo(() => {
     return (
       <div className="bg-white/20 backdrop-blur-lg rounded-xl p-2 mb-4 border border-white/30">
         <div className="flex items-center justify-between text-center">
@@ -342,10 +345,10 @@ export default function Home() {
         </div>
       </div>
     )
-  }
+  }, [prizePool, gameData?.players?.length, calledNumbers.length])
 
   // Current Number Display Component - NO ANIMATIONS
-  const CurrentNumberDisplay = () => {
+  const CurrentNumberDisplay = useMemo(() => {
     if (!gameHook.gameState.currentNumber) return null;
 
     return (
@@ -359,20 +362,10 @@ export default function Home() {
         </div>
       </div>
     );
-  };
-
-  // Helper function to get BINGO column letter
-  const getColumnLetter = (number: number): string => {
-    if (number >= 1 && number <= 15) return 'B';
-    if (number >= 16 && number <= 30) return 'I';
-    if (number >= 31 && number <= 45) return 'N';
-    if (number >= 46 && number <= 60) return 'G';
-    if (number >= 61 && number <= 75) return 'O';
-    return '';
-  };
+  }, [gameHook.gameState.currentNumber, getColumnLetter])
 
   // Game View Component - Always show game interface
-  const GameView = () => {
+  const GameView = useMemo(() => {
     const userId = localStorage.getItem('user_id')
     const isUserInGame = mainGame?.players?.some(player => 
       player?.user?._id === userId || player?.userId === userId
@@ -418,7 +411,7 @@ export default function Home() {
           </div>
 
           {/* Compact Game Navigation Bar */}
-          <GameNavbar />
+          {GameNavbar}
 
           {/* Main Content - Game Cards and Current Number */}
           <div className="space-y-4">
@@ -452,7 +445,7 @@ export default function Home() {
               {/* Bingo Card - Takes 2/3 width on left */}
               <div className="lg:col-span-2">
                 <BingoCard
-                  calledNumbers={mainGame.numbersCalled || []}
+                  calledNumbers={calledNumbers}
                   currentNumber={gameHook.gameState.currentNumber}
                 />
               </div>
@@ -460,11 +453,11 @@ export default function Home() {
               {/* Right Column - Current Number and Stats */}
               <div className="space-y-3">
                 {/* Current Number Display */}
-                <CurrentNumberDisplay />
+                {CurrentNumberDisplay}
 
                 {/* Number Grid */}
                 <NumberGrid
-                  calledNumbers={mainGame.numbersCalled || []}
+                  calledNumbers={calledNumbers}
                   currentNumber={gameHook.gameState.currentNumber}
                 />
 
@@ -472,18 +465,18 @@ export default function Home() {
                 <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
                   <div className="grid grid-cols-3 gap-3 text-center">
                     <div>
-                      <div className="text-lg font-black text-white">{mainGame.numbersCalled?.length || 0}</div>
+                      <div className="text-lg font-black text-white">{calledNumbers.length}</div>
                       <div className="text-white/60 text-xs">Called</div>
                     </div>
                     <div>
                       <div className="text-lg font-black text-white">
-                        {mainGame.numbersCalled?.length || 0}
+                        {calledNumbers.length}
                       </div>
                       <div className="text-white/60 text-xs">Marked</div>
                     </div>
                     <div>
                       <div className="text-lg font-black text-white">
-                        {Math.round(((mainGame.numbersCalled?.length || 0) / 75) * 100)}%
+                        {Math.round((calledNumbers.length / 75) * 100)}%
                       </div>
                       <div className="text-white/60 text-xs">Progress</div>
                     </div>
@@ -511,10 +504,10 @@ export default function Home() {
         </div>
       </div>
     )
-  }
+  }, [currentGameId, mainGame, GameNavbar, CurrentNumberDisplay, calledNumbers, gameHook.gameState.currentNumber, walletBalance, handleBackToLobby, handleRefreshGame, handlePlayGame, userStats])
 
   // Deposit Modal Component - NO ANIMATIONS
-  const DepositModal = () => {
+  const DepositModal = useMemo(() => {
     if (!showDepositModal) return null;
 
     return (
@@ -552,7 +545,7 @@ export default function Home() {
         </div>
       </div>
     )
-  }
+  }, [showDepositModal, walletBalance])
 
   if (!isReady || isLoading) {
     return (
@@ -569,8 +562,8 @@ export default function Home() {
 
   return (
     <>
-      <DepositModal />
-      <GameView />
+      {DepositModal}
+      {GameView}
     </>
   )
 }
