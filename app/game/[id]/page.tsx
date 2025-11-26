@@ -37,19 +37,19 @@ export default function GamePage() {
   }, [game?.status, bingoCard?.isWinner]);
 
   // Handle winner modal for all players when game finishes
-  useEffect(() => {
-    if (game?.status === 'FINISHED' && game.winner) {
-      const winnerData = {
-        winner: game.winner,
-        gameCode: game.code,
-        totalPlayers: game.players?.length || 0,
-        numbersCalled: game.numbersCalled?.length || 0,
-        isCurrentUserWinner: bingoCard?.isWinner || false
-      };
-      setWinnerInfo(winnerData);
-      setShowWinnerModal(true);
-    }
-  }, [game?.status, game?.winner, game?.code, game?.players, game?.numbersCalled, bingoCard?.isWinner]);
+  // useEffect(() => {
+  //   if (game?.status === 'FINISHED' && game.winner) {
+  //     const winnerData = {
+  //       winner: game.winner,
+  //       gameCode: game.code,
+  //       totalPlayers: game.players?.length || 0,
+  //       numbersCalled: game.numbersCalled?.length || 0,
+  //       isCurrentUserWinner: bingoCard?.isWinner || false
+  //     };
+  //     setWinnerInfo(winnerData);
+  //     setShowWinnerModal(true);
+  //   }
+  // }, [game?.status, game?.winner, game?.code, game?.players, game?.numbersCalled, bingoCard?.isWinner]);
 
   // Memoized handlers
   const handleMarkNumber = useCallback(async (number: number) => {
@@ -318,65 +318,66 @@ export default function GamePage() {
               
               <div className="space-y-3 max-h-64 overflow-y-auto">
                 {game.players?.map((player, index) => (
-                  <motion.div
-                    key={player._id || index}
-                    className={`flex items-center gap-3 p-3 rounded-2xl border ${
-                      isCurrentUser(player) 
-                        ? 'bg-blue-500/20 border-blue-500/30' 
-                        : 'bg-white/10 border-white/20'
-                    } ${
-                      game.status === 'FINISHED' && game.winner && 
-                      (player.userId === game.winner?._id || 
-                       (typeof game.winner === 'string' && player.userId === game.winner) ||
-                       (player.user && player.user._id === game.winner?._id))
-                        ? 'ring-2 ring-yellow-400 shadow-lg'
-                        : ''
-                    }`}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <div className="relative">
-                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                        <User className="w-4 h-4 text-white" />
-                      </div>
-                      {game.status === 'FINISHED' && game.winner && 
-                       (player.userId === game.winner?._id || 
-                        (typeof game.winner === 'string' && player.userId === game.winner) ||
-                        (player.user && player.user._id === game.winner?._id)) && (
-                        <motion.div
-                          className="absolute -top-1 -right-1"
-                          animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                        >
-                          <Crown className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        </motion.div>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-white font-medium flex items-center gap-2">
-                        {getPlayerDisplayName(player)}
-                        {isCurrentUser(player) && (
-                          <span className="text-blue-300 text-sm">(You)</span>
-                        )}
-                        {game.status === 'FINISHED' && game.winner && 
-                         (player.userId === game.winner?._id || 
-                          (typeof game.winner === 'string' && player.userId === game.winner) ||
-                          (player.user && player.user._id === game.winner?._id)) && (
-                          <motion.span
-                            className="text-yellow-400 text-sm font-bold"
-                            animate={{ opacity: [1, 0.7, 1] }}
-                            transition={{ duration: 1.5, repeat: Infinity }}
-                          >
-                            🏆 Winner
-                          </motion.span>
-                        )}
-                      </div>
-                      <div className="text-white/60 text-xs">
-                        {player.playerType === 'SPECTATOR' ? 'Spectator' : 'Player'}
-                      </div>
-                    </div>
-                  </motion.div>
+                  // <motion.div
+                  //   key={player._id || index}
+                  //   className={`flex items-center gap-3 p-3 rounded-2xl border ${
+                  //     isCurrentUser(player) 
+                  //       ? 'bg-blue-500/20 border-blue-500/30' 
+                  //       : 'bg-white/10 border-white/20'
+                  //   } ${
+                  //     game.status === 'FINISHED' && game.winner && 
+                  //     (player.userId === game.winner?._id || 
+                  //      (typeof game.winner === 'string' && player.userId === game.winner) ||
+                  //      (player.user && player.user._id === game.winner?._id))
+                  //       ? 'ring-2 ring-yellow-400 shadow-lg'
+                  //       : ''
+                  //   }`}
+                  //   initial={{ opacity: 0, x: -20 }}
+                  //   animate={{ opacity: 1, x: 0 }}
+                  //   transition={{ delay: index * 0.1 }}
+                  // >
+                  //   {/* <div className="relative">
+                  //     <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                  //       <User className="w-4 h-4 text-white" />
+                  //     </div>
+                  //     {game.status === 'FINISHED' && game.winner && 
+                  //      (player.userId === game.winner?._id || 
+                  //       (typeof game.winner === 'string' && player.userId === game.winner) ||
+                  //       (player.user && player.user._id === game.winner?._id)) && (
+                  //       <motion.div
+                  //         className="absolute -top-1 -right-1"
+                  //         animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
+                  //         transition={{ duration: 2, repeat: Infinity }}
+                  //       >
+                  //         <Crown className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                  //       </motion.div>
+                  //     )}
+                  //   </div> */}
+                  //   {/* <div className="flex-1">
+                  //     <div className="text-white font-medium flex items-center gap-2">
+                  //       {getPlayerDisplayName(player)}
+                  //       {isCurrentUser(player) && (
+                  //         <span className="text-blue-300 text-sm">(You)</span>
+                  //       )}
+                  //       {game.status === 'FINISHED' && game.winner && 
+                  //        (player.userId === game.winner?._id || 
+                  //         (typeof game.winner === 'string' && player.userId === game.winner) ||
+                  //         (player.user && player.user._id === game.winner?._id)) && (
+                  //         <motion.span
+                  //           className="text-yellow-400 text-sm font-bold"
+                  //           animate={{ opacity: [1, 0.7, 1] }}
+                  //           transition={{ duration: 1.5, repeat: Infinity }}
+                  //         >
+                  //           🏆 Winner
+                  //         </motion.span>
+                  //       )}
+                  //     </div>
+                  //     <div className="text-white/60 text-xs">
+                  //       {player.playerType === 'SPECTATOR' ? 'Spectator' : 'Player'}
+                  //     </div>
+                  //   </div> */}
+                  // </motion.div>
+                  <div>d</div>
                 ))}
               </div>
             </motion.div>
@@ -490,7 +491,7 @@ export default function GamePage() {
                 <span>{playersData.active.length} players</span>
                 <span>•</span>
                 <span>{calledNumbers.length} numbers called</span>
-                {game.status === 'FINISHED' && game.winner && (
+                {game.status === 'FINISHED' && game.winnerId && (
                   <>
                     <span>•</span>
                     <span className="text-yellow-300 font-bold">
@@ -514,7 +515,7 @@ export default function GamePage() {
           </div>
 
           {/* Winner Banner */}
-          {game.status === 'FINISHED' && game.winner && (
+          {game.status === 'FINISHED' && game.winnerId && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -553,22 +554,7 @@ export default function GamePage() {
         )}
 
         {/* Game Content */}
-        <div className="space-y-6">
-          {bingoCard && (
-            <BingoCard
-              card={bingoCard}
-              calledNumbers={calledNumbers}
-              onMarkNumber={handleMarkNumber}
-              isInteractive={game.status === 'ACTIVE'}
-              isWinner={bingoCard.isWinner}
-            />
-          )}
-
-          <NumberGrid
-            calledNumbers={calledNumbers}
-            currentNumber={gameState.currentNumber}
-          />
-        </div>
+        
 
         {/* Stats Footer */}
         <div className="text-center mt-8">
