@@ -1,7 +1,19 @@
 // app/layout.tsx
 import type { Metadata } from 'next';
+import { Geist, Geist_Mono } from 'next/font/google';
+import './globals.css';
 import { AuthProvider } from './contexts/AuthContext';
 import TelegramInit from '../components/TelegramInit';
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
   title: 'Bingo Game',
@@ -15,7 +27,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-gradient-to-br from-purple-600 to-blue-600 min-h-screen">
+      <head>
+        <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+      </head>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gradient-to-br from-purple-600 to-blue-600 min-h-screen`}>
         <AuthProvider>
           <TelegramInit />
           {children}
