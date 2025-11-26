@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { walletAPIAuto, gameAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
-import { Check, Grid3X3, RotateCcw } from 'lucide-react';
+import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 // Memoized Bingo Card Component matching your design system
@@ -157,6 +157,10 @@ export default function Home() {
   const [loading, setLoading] = useState<boolean>(true);
   const [joining, setJoining] = useState<boolean>(false);
   const [joinError, setJoinError] = useState<string>('');
+  const [gameStatus, setGameStatus] = useState<'WAITING' | 'ACTIVE' | 'FINISHED' | 'RESTARTING'>('WAITING');
+  const [restartCountdown, setRestartCountdown] = useState<number>(30);
+  const [currentPlayers, setCurrentPlayers] = useState<number>(0);
+  const [gameData, setGameData] = useState<any>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -182,6 +186,8 @@ export default function Home() {
           return;
         }
 
+        // Check current game status
+        await checkGameStatus();
         setShowNumberSelection(true);
       } catch (error) {
         console.error('Initialization error:', error);
@@ -193,6 +199,74 @@ export default function Home() {
 
     initializeApp();
   }, [isAuthenticated, router, user]);
+
+  // Check game status periodically
+  useEffect(() => {
+    if (!showNumberSelection) return;
+
+    const interval = setInterval(async () => {
+      await checkGameStatus();
+    }, 3000); // Check every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [showNumberSelection]);
+
+  // Handle restart countdown
+  useEffect(() => {
+    let countdownInterval: NodeJS.Timeout;
+
+    if (gameStatus === 'FINISHED' && restartCountdown > 0) {
+      countdownInterval = setInterval(() => {
+        setRestartCountdown(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownInterval);
+            setGameStatus('RESTARTING');
+            // Check for new game after countdown
+            setTimeout(() => checkGameStatus(), 1000);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (countdownInterval) clearInterval(countdownInterval);
+    };
+  }, [gameStatus, restartCountdown]);
+
+  const checkGameStatus = async () => {
+    try {
+      const waitingGamesResponse = await gameAPI.getWaitingGames();
+      const activeGamesResponse = await gameAPI.getActiveGames();
+
+      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+        const game = activeGamesResponse.data.games[0];
+        setGameStatus('ACTIVE');
+        setCurrentPlayers(game.currentPlayers || 0);
+        setGameData(game);
+        setRestartCountdown(0);
+        
+        // If user already selected a card and game is active, auto-join
+        if (selectedNumber && !joining) {
+          handleJoinGame();
+        }
+      } else if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
+        const game = waitingGamesResponse.data.games[0];
+        setGameStatus('WAITING');
+        setCurrentPlayers(game.currentPlayers || 0);
+        setGameData(game);
+        setRestartCountdown(0);
+      } else {
+        // No games available - might be in restart phase
+        setGameStatus('FINISHED');
+        setRestartCountdown(30); // Start 30 second countdown
+        setCurrentPlayers(0);
+      }
+    } catch (error) {
+      console.error('Error checking game status:', error);
+    }
+  };
 
   const handleNumberSelect = (number: number) => {
     setSelectedNumber(number);
@@ -221,7 +295,7 @@ export default function Home() {
           // Wait a moment for game to process, then redirect
           setTimeout(() => {
             router.push(`/game/${updatedGame._id}`);
-          }, 2000);
+          }, 1000);
         } else {
           setJoinError(joinResponse.data.success || 'Failed to join game');
         }
@@ -273,6 +347,118 @@ export default function Home() {
     }
   };
 
+  const getStatusMessage = () => {
+    switch (gameStatus) {
+      case 'WAITING':
+        return {
+          message: '🕒 Waiting for Players',
+          description: `${currentPlayers}/10 players joined - Game starts when 2+ players join`,
+          color: 'bg-blue-500/20 border-blue-500/30 text-blue-300',
+          icon: <Users className="w-5 h-5" />
+        };
+      case 'ACTIVE':
+        return {
+          message: '🎯 Game in Progress',
+          description: `${currentPlayers} players playing - Join to play or watch`,
+          color: 'bg-green-500/20 border-green-500/30 text-green-300',
+          icon: <Play className="w-5 h-5" />
+        };
+      case 'FINISHED':
+        return {
+          message: '🏁 Game Finished',
+          description: `New game starting in ${restartCountdown}s - Select your card now!`,
+          color: 'bg-purple-500/20 border-purple-500/30 text-purple-300',
+          icon: <Trophy className="w-5 h-5" />
+        };
+      case 'RESTARTING':
+        return {
+          message: '🔄 Starting New Game...',
+          description: 'Please wait while we set up a new game',
+          color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
+          icon: <Clock className="w-5 h-5" />
+        };
+      default:
+        return {
+          message: '❓ Checking Game Status...',
+          description: 'Please wait...',
+          color: 'bg-gray-500/20 border-gray-500/30 text-gray-300',
+          icon: <Clock className="w-5 h-5" />
+        };
+    }
+  };
+
+  // If game is ACTIVE and user is not in selection mode, show game view
+  if (gameStatus === 'ACTIVE' && !selectedNumber) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
+        {/* Header with Wallet */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-white font-bold text-xl">Bingo Game</h1>
+              <p className="text-white/60 text-sm">Game in Progress</p>
+            </div>
+            <div className="text-right">
+              <p className="text-white font-bold text-lg">{walletBalance} ብር</p>
+              <p className="text-white/60 text-xs">Balance</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Game Status Display */}
+        <motion.div 
+          className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-green-500/30 text-center"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+        >
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <Play className="w-8 h-8 text-green-300" />
+            <p className="text-white font-bold text-2xl">Game in Progress!</p>
+          </div>
+          <p className="text-green-200 text-lg mb-4">
+            {currentPlayers} players are currently playing
+          </p>
+          
+          <div className="grid grid-cols-2 gap-4 mt-6">
+            <motion.button
+              onClick={() => {
+                // User can still select a card to join the active game
+                setShowNumberSelection(true);
+              }}
+              className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 px-6 rounded-xl transition-colors flex items-center justify-center gap-2"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <span>🎯</span>
+              Join Game
+            </motion.button>
+            
+            <motion.button
+              onClick={handleWatchGames}
+              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-6 rounded-xl transition-colors flex items-center justify-center gap-2"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <span>👀</span>
+              Watch Game
+            </motion.button>
+          </div>
+        </motion.div>
+
+        {/* Quick Info */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+          <div className="text-center text-white/80">
+            <p className="text-sm mb-2">🎮 Game is currently running</p>
+            <p className="text-xs text-white/60">
+              You can join to play or watch the ongoing game. 
+              Late joiners can still win with the numbers already called!
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
@@ -295,6 +481,8 @@ export default function Home() {
     );
   }
 
+  const statusInfo = getStatusMessage();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
       {/* Header with Wallet */}
@@ -311,21 +499,52 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Watch Games Button */}
-      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
-        <motion.button
-          onClick={handleWatchGames}
-          className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <span>👀</span>
-          Watch Active Games
-        </motion.button>
-        <p className="text-white/60 text-xs text-center mt-2">
-          Watch ongoing games without playing
-        </p>
-      </div>
+      {/* Game Status Display */}
+      <motion.div 
+        className={`backdrop-blur-lg rounded-2xl p-4 mb-6 border ${statusInfo.color}`}
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="flex items-center justify-center gap-2 mb-2">
+          {statusInfo.icon}
+          <p className="font-bold text-lg">{statusInfo.message}</p>
+        </div>
+        <p className="text-sm text-center">{statusInfo.description}</p>
+        
+        {/* Countdown Progress Bar */}
+        {gameStatus === 'FINISHED' && restartCountdown > 0 && (
+          <div className="mt-3">
+            <div className="flex justify-between text-xs text-white/80 mb-1">
+              <span>Next game starts in:</span>
+              <span className="font-bold">{restartCountdown}s</span>
+            </div>
+            <div className="w-full bg-white/20 rounded-full h-2">
+              <div 
+                className="bg-gradient-to-r from-purple-400 to-pink-400 h-2 rounded-full transition-all duration-1000"
+                style={{ width: `${((30 - restartCountdown) / 30) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </motion.div>
+
+      {/* Watch Games Button - Only show when game is active */}
+      {gameStatus === 'ACTIVE' && (
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
+          <motion.button
+            onClick={handleWatchGames}
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <span>👀</span>
+            Watch Live Game
+          </motion.button>
+          <p className="text-white/60 text-xs text-center mt-2">
+            Watch the ongoing game without playing
+          </p>
+        </div>
+      )}
 
       {/* Selected Number Display */}
       {selectedNumber && (
@@ -359,43 +578,45 @@ export default function Home() {
         </motion.div>
       )}
 
-      {/* Number Selection Grid */}
-      <motion.div 
-        className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-      >
-        {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => (
-          <motion.button
-            key={number}
-            onClick={() => handleNumberSelect(number)}
-            disabled={joining}
-            className={`
-              aspect-square rounded-xl font-bold text-sm transition-all
-              ${selectedNumber === number
-                ? 'bg-yellow-500 text-white scale-105 shadow-lg'
-                : walletBalance >= 10
-                ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md'
-                : 'bg-white/10 text-white hover:bg-white/20 hover:scale-105'
-              }
-              border-2 ${
-                selectedNumber === number
-                  ? 'border-yellow-400'
-                  : 'border-white/20'
-              }
-              ${joining ? 'opacity-50 cursor-not-allowed' : ''}
-            `}
-            whileHover={{ scale: joining ? 1 : 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            layout
-          >
-            {number}
-          </motion.button>
-        ))}
-      </motion.div>
+      {/* Number Selection Grid - Only show when game is not active or user is selecting */}
+      {(gameStatus !== 'ACTIVE' || selectedNumber) && (
+        <motion.div 
+          className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+        >
+          {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => (
+            <motion.button
+              key={number}
+              onClick={() => handleNumberSelect(number)}
+              disabled={joining || gameStatus === 'ACTIVE'}
+              className={`
+                aspect-square rounded-xl font-bold text-sm transition-all
+                ${selectedNumber === number
+                  ? 'bg-yellow-500 text-white scale-105 shadow-lg'
+                  : walletBalance >= 10 && gameStatus !== 'ACTIVE'
+                  ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md'
+                  : 'bg-white/10 text-white hover:bg-white/20 hover:scale-105'
+                }
+                border-2 ${
+                  selectedNumber === number
+                    ? 'border-yellow-400'
+                    : 'border-white/20'
+                }
+                ${joining || gameStatus === 'ACTIVE' ? 'opacity-50 cursor-not-allowed' : ''}
+              `}
+              whileHover={{ scale: (joining || gameStatus === 'ACTIVE') ? 1 : 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              layout
+            >
+              {number}
+            </motion.button>
+          ))}
+        </motion.div>
+      )}
 
-      {/* Bingo Card Preview - Now much smaller */}
+      {/* Bingo Card Preview */}
       {selectedNumber && bingoCard && (
         <motion.div
           className="mb-6"
@@ -418,7 +639,7 @@ export default function Home() {
                 setBingoCard(null);
                 setJoinError('');
               }}
-              disabled={joining}
+              disabled={joining || gameStatus === 'ACTIVE'}
               className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -470,11 +691,24 @@ export default function Home() {
               💡 Insufficient balance to play, but you can still select a card to join and watch
             </p>
           )}
+          
+          {gameStatus === 'FINISHED' && (
+            <p className="text-yellow-300 text-sm text-center">
+              ⏳ Select your card now! Game starts in {restartCountdown} seconds
+            </p>
+          )}
+          
+          {gameStatus === 'ACTIVE' && !selectedNumber && (
+            <p className="text-green-300 text-sm text-center">
+              🎯 Game is running! You can join to play or watch the live game
+            </p>
+          )}
+          
           <p className="text-white/60 text-xs text-center">
-            Games are automatically created and managed by the system
+            Games restart automatically 30 seconds after completion
           </p>
           <p className="text-white/40 text-xs text-center">
-            Select any card number to see your bingo card
+            Minimum 2 players required to start the game
           </p>
         </div>
       </motion.div>
