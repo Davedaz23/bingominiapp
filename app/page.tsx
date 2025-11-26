@@ -84,8 +84,8 @@ export default function Home() {
       // Expand the WebApp to full height
       WebApp.expand()
       
-      // Setup Main Button
-      setButtonText('🎮 PLAY GAME - 10 ብር')
+      // Setup Main Button for game view
+      setButtonText('🔄 REFRESH GAME')
       updateButton({
         color: theme.button_color || '#3390ec',
         textColor: theme.button_text_color || '#ffffff',
@@ -222,22 +222,34 @@ export default function Home() {
       const activeGame = games[0] || null
       setMainGame(activeGame)
       
-      // Auto-join if user is already in the game
-      if (activeGame) {
-        const userId = localStorage.getItem('user_id')
+      // AUTO-JOIN LOGIC: Check if user is in any active game
+      const userId = localStorage.getItem('user_id')
+      if (activeGame && userId) {
         const isUserInGame = activeGame.players?.some(player => 
           player?.user?._id === userId || player?.userId === userId
         )
         
         if (isUserInGame) {
-          console.log('✅ User already in game, switching to game view')
+          console.log('✅ User already in active game, switching to game view')
           setCurrentGameId(activeGame._id)
           setGameView('game')
+          
+          // Immediately refresh game data to get the latest state
+          setTimeout(() => {
+            gameHook.refreshGame()
+          }, 500)
+        } else {
+          console.log('ℹ️ User not in active game, staying in lobby')
+          setGameView('lobby')
         }
+      } else {
+        console.log('ℹ️ No active game found or no user ID')
+        setGameView('lobby')
       }
     } catch (error) {
       console.error('Failed to load main game:', error)
       setMainGame(null)
+      setGameView('lobby')
     }
   }
 
@@ -563,7 +575,7 @@ export default function Home() {
     )
   }
 
-  // Lobby View Component (unchanged)
+  // Lobby View Component
   const LobbyView = () => (
     <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 relative overflow-hidden">
       {/* Animated Background Elements */}
@@ -809,7 +821,7 @@ export default function Home() {
     </div>
   )
 
-  // Deposit Modal Component (unchanged)
+  // Deposit Modal Component
   const DepositModal = () => (
     <AnimatePresence>
       {showDepositModal && (
