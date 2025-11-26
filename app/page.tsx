@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { useTelegram, useTelegramMainButton } from '../hooks/useTelegram'
 import { authAPI, gameAPI, walletAPI } from '../services/api'
 import { Game, User } from '../types'
-import { motion, AnimatePresence } from 'framer-motion'
 import {
   Trophy,
   Users,
@@ -22,19 +21,6 @@ import {
 import { BingoCard } from '../components/ui/BingoCard'
 import { NumberGrid } from '../components/ui/NumberGrid'
 import { useGame } from '../hooks/useGame'
-
-// Animation variants
-const backgroundVariants = {
-  animate: (i: number) => ({
-    y: [0, -100, 0],
-    opacity: [0.2, 0.8, 0.2],
-    transition: {
-      duration: 3 + Math.random() * 2,
-      repeat: Infinity,
-      delay: Math.random() * 2,
-    }
-  })
-}
 
 export default function Home() {
   const { user, isReady, WebApp, initData, theme } = useTelegram()
@@ -310,17 +296,13 @@ export default function Home() {
     }
   }, [theme])
 
-  // Compact Single Line Navbar Component
+  // Compact Single Line Navbar Component - NO ANIMATIONS
   const GameNavbar = () => {
     const gameData = gameView === 'game' ? gameHook.game : mainGame
     const calledNumbers = gameView === 'game' ? gameHook.gameState.calledNumbers : (mainGame?.numbersCalled || [])
     
     return (
-      <motion.div
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="bg-white/20 backdrop-blur-lg rounded-xl p-2 mb-4 border border-white/30"
-      >
+      <div className="bg-white/20 backdrop-blur-lg rounded-xl p-2 mb-4 border border-white/30">
         <div className="flex items-center justify-between text-center">
           {/* Prize Pool */}
           <div className="flex-1">
@@ -358,11 +340,11 @@ export default function Home() {
             <div className="text-white font-black text-sm">{calledNumbers.length}</div>
           </div>
         </div>
-      </motion.div>
+      </div>
     )
   }
 
-  // Current Number Display Component - No animations
+  // Current Number Display Component - NO ANIMATIONS
   const CurrentNumberDisplay = () => {
     if (!gameHook.gameState.currentNumber) return null;
 
@@ -469,12 +451,10 @@ export default function Home() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Bingo Card - Takes 2/3 width on left */}
               <div className="lg:col-span-2">
-                <div className="transform origin-top">
-                  <BingoCard
-                    calledNumbers={mainGame.numbersCalled || []}
-                    currentNumber={gameHook.gameState.currentNumber}
-                  />
-                </div>
+                <BingoCard
+                  calledNumbers={mainGame.numbersCalled || []}
+                  currentNumber={gameHook.gameState.currentNumber}
+                />
               </div>
 
               {/* Right Column - Current Number and Stats */}
@@ -483,12 +463,10 @@ export default function Home() {
                 <CurrentNumberDisplay />
 
                 {/* Number Grid */}
-                <div className="transform origin-top">
-                  <NumberGrid
-                    calledNumbers={mainGame.numbersCalled || []}
-                    currentNumber={gameHook.gameState.currentNumber}
-                  />
-                </div>
+                <NumberGrid
+                  calledNumbers={mainGame.numbersCalled || []}
+                  currentNumber={gameHook.gameState.currentNumber}
+                />
 
                 {/* Stats Footer */}
                 <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
@@ -535,46 +513,46 @@ export default function Home() {
     )
   }
 
-  // Deposit Modal Component
-  const DepositModal = () => (
-    <AnimatePresence>
-      {showDepositModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3">
-          <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 border border-white/30 shadow-2xl w-full max-w-sm">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-white font-bold text-lg">Deposit Funds</h3>
-              <button
-                onClick={() => setShowDepositModal(false)}
-                className="text-white/80 hover:text-white"
-              >
-                ✕
-              </button>
+  // Deposit Modal Component - NO ANIMATIONS
+  const DepositModal = () => {
+    if (!showDepositModal) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3">
+        <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 border border-white/30 shadow-2xl w-full max-w-sm">
+          <div className="flex justify-between items-center mb-3">
+            <h3 className="text-white font-bold text-lg">Deposit Funds</h3>
+            <button
+              onClick={() => setShowDepositModal(false)}
+              className="text-white/80 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <div className="bg-white/10 rounded-xl p-3 border border-white/20">
+              <div className="text-white/80 text-sm mb-2">Current Balance</div>
+              <div className="text-xl font-black text-white">{walletBalance.toFixed(2)} ብር</div>
             </div>
 
-            <div className="space-y-3">
-              <div className="bg-white/10 rounded-xl p-3 border border-white/20">
-                <div className="text-white/80 text-sm mb-2">Current Balance</div>
-                <div className="text-xl font-black text-white">{walletBalance.toFixed(2)} ብር</div>
-              </div>
-
-              <div className="text-white/80 text-sm">
-                You need at least <strong>10 ብር</strong> to play a game.
-              </div>
-
-              <button
-                onClick={() => {
-                  setShowDepositModal(false)
-                }}
-                className="w-full bg-green-500 text-white py-3 rounded-xl font-bold hover:bg-green-600 transition-colors"
-              >
-                Deposit Now
-              </button>
+            <div className="text-white/80 text-sm">
+              You need at least <strong>10 ብር</strong> to play a game.
             </div>
+
+            <button
+              onClick={() => {
+                setShowDepositModal(false)
+              }}
+              className="w-full bg-green-500 text-white py-3 rounded-xl font-bold hover:bg-green-600 transition-colors"
+            >
+              Deposit Now
+            </button>
           </div>
         </div>
-      )}
-    </AnimatePresence>
-  )
+      </div>
+    )
+  }
 
   if (!isReady || isLoading) {
     return (
