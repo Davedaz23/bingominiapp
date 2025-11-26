@@ -14,6 +14,7 @@ export default function Home() {
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [joining, setJoining] = useState<boolean>(false);
+  const [joinError, setJoinError] = useState<string>('');
   const router = useRouter();
 
   useEffect(() => {
@@ -52,37 +53,45 @@ export default function Home() {
   }, [isAuthenticated, router]);
 
   const handleNumberSelect = async (number: number) => {
-    if (walletBalance < 10) {
-      alert('Insufficient balance. Minimum 10 ብር required to play.');
-      return;
-    }
-
     setSelectedNumber(number);
     setJoining(true);
+    setJoinError('');
 
     try {
-      // Find or create a waiting game
+      // Find waiting games
       const waitingGamesResponse = await gameAPI.getWaitingGames();
-      let game;
-
+      
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         // Join existing waiting game
-        game = waitingGamesResponse.data.games[0];
+        const game = waitingGamesResponse.data.games[0];
         const joinResponse = await gameAPI.joinGameWithWallet(game.code, user!.id, 10);
+        
         if (joinResponse.data.success) {
-          game = joinResponse.data.game;
+          const updatedGame = joinResponse.data.game;
+          
+          // Redirect to game page after short delay
+          setTimeout(() => {
+            router.push(`/game/${updatedGame._id}`);
+          }, 3000);
+        } else {
+          setJoinError(joinResponse.data.success || 'Failed to join game');
         }
-      } 
-
-      if (game) {
-        // Redirect to game page after 30 seconds
-        setTimeout(() => {
-          router.push(`/game/${game._id}`);
-        }, 30000);
+      } else {
+        setJoinError('No available games at the moment. Please try again later.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to join game:', error);
-      alert('Failed to join game. Please try again.');
+      const errorMessage = error.response?.data?.message || 'Failed to join game. Please try again.';
+      setJoinError(errorMessage);
+      
+      // Even if join fails, keep the selection so user can see what's happening
+      // They can still observe the game
+      if (error.response?.data?.game) {
+        // If we have game data despite the error, redirect to watch mode
+        setTimeout(() => {
+          router.push(`/game/${error.response.data.game._id}?spectator=true`);
+        }, 3000);
+      }
     } finally {
       setJoining(false);
     }
@@ -128,13 +137,29 @@ export default function Home() {
 
       {/* Selected Number Display */}
       {selectedNumber && (
-        <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-yellow-500/30 text-center">
-          <p className="text-yellow-300 font-bold text-lg">
+        <div className={`backdrop-blur-lg rounded-2xl p-4 mb-6 border text-center ${
+          joinError 
+            ? 'bg-red-500/20 border-red-500/30' 
+            : 'bg-yellow-500/20 border-yellow-500/30'
+        }`}>
+          <p className="text-white font-bold text-lg">
             Selected Card: #{selectedNumber}
           </p>
-          <p className="text-yellow-400/80 text-sm">
-            {joining ? 'Joining game...' : 'Game starts in 30 seconds'}
+          <p className={`text-sm ${
+            joinError ? 'text-red-300' : 'text-yellow-300'
+          }`}>
+            {joining 
+              ? 'Joining game...' 
+              : joinError 
+                ? joinError
+                : 'Redirecting to game...'
+            }
           </p>
+          {joinError && walletBalance < 10 && (
+            <p className="text-white/80 text-sm mt-2">
+              You can still watch the game as a spectator!
+            </p>
+          )}
         </div>
       )}
 
@@ -144,20 +169,25 @@ export default function Home() {
           <button
             key={number}
             onClick={() => handleNumberSelect(number)}
-            disabled={walletBalance < 10 || selectedNumber !== null || joining}
+            disabled={selectedNumber !== null || joining}
             className={`
               aspect-square rounded-xl font-bold text-sm transition-all
               ${selectedNumber === number
-                ? 'bg-yellow-500 text-white scale-105'
+                ? joinError
+                  ? 'bg-red-500 text-white scale-105'
+                  : 'bg-yellow-500 text-white scale-105'
                 : walletBalance >= 10
                 ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105'
-                : 'bg-white/10 text-white/40 cursor-not-allowed'
+                : 'bg-white/10 text-white hover:bg-white/20 hover:scale-105'
               }
               border-2 ${
                 selectedNumber === number
-                  ? 'border-yellow-400'
+                  ? joinError
+                    ? 'border-red-400'
+                    : 'border-yellow-400'
                   : 'border-white/20'
               }
+              ${joining ? 'opacity-50 cursor-not-allowed' : ''}
             `}
           >
             {number}
@@ -177,11 +207,18 @@ export default function Home() {
             <p className="text-white/60 text-xs">Wait Time</p>
           </div>
         </div>
-        {walletBalance < 10 && (
-          <p className="text-red-300 text-sm text-center mt-3">
-            Minimum 10 ብር required to play
+        
+        {/* Informational messages */}
+        <div className="mt-3 space-y-2">
+          {walletBalance < 10 && !selectedNumber && (
+            <p className="text-yellow-300 text-sm text-center">
+              Insufficient balance to play, but you can still select a card to watch the game
+            </p>
+          )}
+          <p className="text-white/60 text-xs text-center">
+            Select any card number to join the game or watch others play
           </p>
-        )}
+        </div>
       </div>
     </div>
   );
