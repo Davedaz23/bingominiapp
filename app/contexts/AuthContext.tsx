@@ -109,56 +109,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initializeAuth();
   }, []);
 
-  const login = async (initData: string) => {
-    try {
-      setIsLoading(true);
-      console.log('Starting Telegram login...');
+ // contexts/AuthContext.tsx - Add debugging
+const login = async (initData: string) => {
+  try {
+    setIsLoading(true);
+    console.log('🔐 Starting login process...');
+    
+    // Use the correct method name from authAPI
+    const response = await authAPI.telegramLogin(initData);
+    
+    if (response.data.success) {
+      // Set the token and user data
+      setToken(response.data.token);
+      setUser(response.data.user);
+      localStorage.setItem('bingo_user', JSON.stringify(response.data.user));
       
-      // Use the correct method name from authAPI
-      const response = await authAPI.telegramLogin(initData);
-      
-      if (response.data.success) {
-        // Set the token and user data
-        setToken(response.data.token);
-        setUser(response.data.user);
-        localStorage.setItem('bingo_user', JSON.stringify(response.data.user));
-        
-        console.log('Login successful:', response.data.user);
-      } else {
-        // FIXED: Use response.data.error instead of response.data.success
-        throw new Error(response.data.success || 'Authentication failed');
-      }
-    } catch (error: any) {
-      console.error('Login failed:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data
-      });
-      
-      // Provide more specific error messages
-      let errorMessage = 'Login failed';
-      if (error.response?.data?.error) {
-        errorMessage = error.response.data.error;
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
-      } else if (error.code === 'NETWORK_ERROR') {
-        errorMessage = 'Network error - please check your connection';
-      }
-      
-      // Clear any partial auth data on login failure
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('bingo_token');
-        localStorage.removeItem('bingo_user');
-        localStorage.removeItem('user_id');
-      }
-      
-      throw new Error(errorMessage);
-    } finally {
-      setIsLoading(false);
+      console.log('✅ Login successful:', response.data.user);
+    } else {
+      console.error('❌ Login failed - response not successful');
+      throw new Error(response.data.success || 'Authentication failed');
     }
-  };
+  } catch (error: any) {
+    console.error('❌ Login error:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    
+    // Clear any partial auth data on login failure
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('bingo_token');
+      localStorage.removeItem('bingo_user');
+      localStorage.removeItem('user_id');
+    }
+    
+    throw error;
+  } finally {
+    setIsLoading(false);
+    console.log('🏁 Login process completed');
+  }
+};
 
   const logout = () => {
     console.log('Logging out user:', user?.username);

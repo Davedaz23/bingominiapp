@@ -1,74 +1,71 @@
-// app/components/TelegramInit.tsx - FIXED (with type assertion)
+// app/components/TelegramInit.tsx - FIXED (prevent multiple auth attempts)
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useAuth } from '@/app/contexts/AuthContext';
 
 export default function TelegramInit() {
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, isAuthenticated } = useAuth();
+  const hasAttemptedLogin = useRef(false);
 
   useEffect(() => {
     const initializeTelegram = async () => {
-      // Use type assertion to access the Telegram WebApp with extended methods
-      const telegramWebApp = (window as any).Telegram?.WebApp as any;
-      
-      if (telegramWebApp) {
-        // Expand the WebApp to full height
-        telegramWebApp.expand();
+      // Prevent multiple login attempts
+      if (hasAttemptedLogin.current || isAuthenticated || isLoading) {
+        return;
+      }
+
+      hasAttemptedLogin.current = true;
+      console.log('🔄 Starting Telegram initialization...');
+
+      try {
+        // Check if we're in Telegram WebApp
+        const telegram = (window as any).Telegram;
         
-        // Enable closing confirmation (using type assertion to bypass TypeScript)
-        telegramWebApp.enableClosingConfirmation?.();
-        
-        // Get init data for authentication
-        const initData = telegramWebApp.initData;
-        
-        if (initData) {
-          try {
+        if (telegram?.WebApp) {
+          const webApp = telegram.WebApp;
+          
+          console.log('📱 Telegram WebApp detected');
+          
+          // Expand the WebApp to full height
+          webApp.expand();
+          
+          // Safely call enableClosingConfirmation if it exists
+          if (typeof webApp.enableClosingConfirmation === 'function') {
+            webApp.enableClosingConfirmation();
+          }
+          
+          // Get init data for authentication
+          const initData = webApp.initData;
+          
+          if (initData) {
+            console.log('🔐 Attempting Telegram authentication...');
             await login(initData);
-            console.log('Telegram WebApp authenticated successfully');
-          } catch (error) {
-            console.error('Telegram authentication failed:', error);
-            // Fallback to development mode
-            try {
-              await login('development');
-            } catch (devError) {
-              console.error('Development auth also failed:', devError);
-            }
+            console.log('✅ Telegram WebApp authenticated successfully');
+            return; // Success, don't fall back to development mode
+          } else {
+            console.warn('⚠️ No init data available in Telegram WebApp');
           }
         } else {
-          // No init data, use development mode
-          try {
-            await login('development');
-          } catch (error) {
-            console.error('Development auth failed:', error);
-          }
+          console.log('🌐 Not in Telegram WebApp environment');
         }
+
+        // Fallback to development mode only if not in Telegram or Telegram auth failed
+        console.log('🔧 Falling back to development mode...');
+        await login('development');
+        console.log('✅ Development mode authentication successful');
         
-        // Set theme params
-        const themeParams = telegramWebApp.themeParams;
-        if (themeParams) {
-          document.documentElement.style.setProperty('--tg-theme-bg-color', themeParams.bg_color || '#ffffff');
-          document.documentElement.style.setProperty('--tg-theme-text-color', themeParams.text_color || '#000000');
-          document.documentElement.style.setProperty('--tg-theme-hint-color', themeParams.hint_color || '#999999');
-          document.documentElement.style.setProperty('--tg-theme-link-color', themeParams.link_color || '#2481cc');
-          document.documentElement.style.setProperty('--tg-theme-button-color', themeParams.button_color || '#2481cc');
-          document.documentElement.style.setProperty('--tg-theme-button-text-color', themeParams.button_text_color || '#ffffff');
-        }
-      } else {
-        // Not in Telegram, use development mode
-        console.log('Not in Telegram WebApp - using development mode');
-        try {
-          await login('development');
-        } catch (error) {
-          console.error('Development auth failed:', error);
-        }
+      } catch (error) {
+        console.error('❌ Authentication failed:', error);
+        hasAttemptedLogin.current = false; // Reset on error to allow retry
       }
     };
 
-    if (!isLoading) {
+    // Only initialize if not loading and not already authenticated
+    if (!isLoading && !isAuthenticated) {
       initializeTelegram();
     }
-  }, [login, isLoading]);
+  }, [login, isLoading, isAuthenticated]);
 
   return null;
 }
