@@ -24,6 +24,7 @@ apiClient.interceptors.request.use((config) => {
 });
 
 // Response interceptor for error handling
+// services/api.ts - Replace your response interceptor with this:
 apiClient.interceptors.response.use(
   (response) => {
     if (process.env.NODE_ENV === 'development') {
@@ -32,6 +33,18 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
+    // 🛠️ Handle empty error objects gracefully
+    if (!error || Object.keys(error).length === 0) {
+      console.error('❌ Network Error: Request failed completely (CORS, network down, or invalid URL)');
+      
+      // Create a proper error object with essential info
+      const networkError = new Error('Network request failed');
+      (networkError as any).isNetworkError = true;
+      (networkError as any).code = 'NETWORK_ERROR';
+      return Promise.reject(networkError);
+    }
+    
+    // Existing error handling for non-empty errors
     console.error('❌ API Error:', {
       url: error.config?.url,
       method: error.config?.method,
@@ -52,9 +65,30 @@ apiClient.interceptors.response.use(
 );
 
 // Helper function to get user ID
+// services/api.ts - Update getUserId function
 const getUserId = (): string | null => {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('user_id');
+  
+  // Try multiple ways to get user ID
+  const userId = localStorage.getItem('user_id');
+  if (userId) return userId;
+  
+  // If no user_id in localStorage, try to extract from token
+  const token = localStorage.getItem('bingo_token');
+  if (token) {
+    try {
+      // Simple extraction - you might want to decode JWT properly
+      const parts = token.split('.');
+      if (parts.length > 1) {
+        const payload = JSON.parse(atob(parts[1]));
+        return payload.userId || payload.sub || 'default-user';
+      }
+    } catch (error) {
+      console.warn('Failed to parse token for user ID:', error);
+    }
+  }
+  
+  return 'default-user'; // Fallback for development
 };
 
 class ApiService {
@@ -136,24 +170,54 @@ class ApiService {
   }
 
   // Wallet endpoints
-  async getWallet() {
-    try {
-      const userId = getUserId();
-      if (!userId) throw new Error('User ID not found');
-      
-      // Adjust based on your actual wallet endpoint
-      const response = await apiClient.get<{ success: boolean; balance: number }>(`/wallet/balance/${userId}`);
-      return response.data;
-    } catch (error) {
-      console.error('Wallet error:', error);
-      // Fallback for development
+// services/api.ts - Update getWallet method
+async getWallet() {
+  try {
+    const userId = getUserId();
+    if (!userId) {
+      console.warn('No user ID found, using fallback balance');
       return {
         success: true,
         balance: 100
       };
     }
+    
+    console.log(`Fetching wallet for user: ${userId}`);
+    
+    // Try the wallet endpoint
+    const response = await apiClient.get<{ success: boolean; balance: number }>(`/wallet/balance/${userId}`);
+    
+    return response.data;
+  } catch (error: any) {
+    console.error('Wallet API error:', {
+      message: error.message,
+      status: error.response?.status,
+      url: error.config?.url
+    });
+    
+    // Development fallback - check if API is reachable
+    if (error.code === 'NETWORK_ERROR' || error.message.includes('Network Error')) {
+      console.warn('API server not reachable, using development fallback');
+    }
+    
+    // Fallback for development
+    return {
+      success: true,
+      balance: 100
+    };
   }
+}
 
+// services/api.ts - Add to ApiService class
+async healthCheck(): Promise<boolean> {
+  try {
+    const response = await apiClient.get('/health');
+    return response.status === 200;
+  } catch (error) {
+    console.warn('API health check failed:', error);
+    return false;
+  }
+}
   // Helper to generate bingo cards locally
   generateBingoCard(id: string, owner: string): BingoCard {
     const numbers: number[][] = [];
