@@ -51,7 +51,7 @@ export default function Home() {
   
   // Game state
   const [currentGameId, setCurrentGameId] = useState<string | null>(null)
-  const [gameView, setGameView] = useState<'lobby' | 'game'>('lobby')
+  const [gameView, setGameView] = useState<'lobby' | 'game'>('game') // Default to game view
   
   // Wallet state
   const [walletBalance, setWalletBalance] = useState(0)
@@ -214,42 +214,84 @@ export default function Home() {
     }
   }
 
+  // Enhanced function to find user's active game
+  const findUserActiveGame = async () => {
+    try {
+      const userId = localStorage.getItem('user_id')
+      if (!userId) {
+        console.log('❌ No user ID found')
+        return null
+      }
+
+      console.log('🔍 Searching for user active games...', { userId })
+
+      // Get all active games
+      const response = await gameAPI.getActiveGames()
+      const games = response.data.games || []
+      
+      console.log('🎮 Found games:', games.length)
+
+      // Find the game where user is a player
+      const userGame = games.find(game => {
+        const isUserInGame = game.players?.some(player => {
+          const playerUserId = player?.user?._id || player?.userId
+          console.log('👤 Checking player:', { 
+            playerUserId, 
+            searchUserId: userId,
+            match: playerUserId === userId 
+          })
+          return playerUserId === userId
+        })
+        
+        if (isUserInGame) {
+          console.log('✅ Found user in game:', game._id)
+        }
+        
+        return isUserInGame
+      })
+
+      return userGame || null
+    } catch (error) {
+      console.error('Error finding user active game:', error)
+      return null
+    }
+  }
+
   const loadMainGame = async () => {
     try {
-      console.log('🎮 Loading main game...')
+      console.log('🎮 Loading main game with auto-join logic...')
+      
+      // First, try to find if user is already in any active game
+      const userActiveGame = await findUserActiveGame()
+      
+      if (userActiveGame) {
+        console.log('✅ User found in active game, switching to game view:', userActiveGame._id)
+        setMainGame(userActiveGame)
+        setCurrentGameId(userActiveGame._id)
+        setGameView('game')
+        
+        // Immediately refresh game data to get the latest state
+        setTimeout(() => {
+          gameHook.refreshGame()
+        }, 1000)
+        return
+      }
+
+      // If user is not in any game, get the main active game
+      console.log('ℹ️ User not in any active game, loading main game...')
       const response = await gameAPI.getActiveGames()
       const games = response.data.games || []
       const activeGame = games[0] || null
       setMainGame(activeGame)
       
-      // AUTO-JOIN LOGIC: Check if user is in any active game
-      const userId = localStorage.getItem('user_id')
-      if (activeGame && userId) {
-        const isUserInGame = activeGame.players?.some(player => 
-          player?.user?._id === userId || player?.userId === userId
-        )
-        
-        if (isUserInGame) {
-          console.log('✅ User already in active game, switching to game view')
-          setCurrentGameId(activeGame._id)
-          setGameView('game')
-          
-          // Immediately refresh game data to get the latest state
-          setTimeout(() => {
-            gameHook.refreshGame()
-          }, 500)
-        } else {
-          console.log('ℹ️ User not in active game, staying in lobby')
-          setGameView('lobby')
-        }
-      } else {
-        console.log('ℹ️ No active game found or no user ID')
-        setGameView('lobby')
-      }
+      // Stay in game view but show "Join Game" state
+      setGameView('game')
+      
     } catch (error) {
       console.error('Failed to load main game:', error)
       setMainGame(null)
-      setGameView('lobby')
+      // Still stay in game view but show error state
+      setGameView('game')
     }
   }
 
@@ -286,7 +328,7 @@ export default function Home() {
       const response = await gameAPI.joinGame(mainGame.code, userId)
 
       if (response.data.success) {
-        console.log('✅ Successfully joined game, switching to game view...')
+        console.log('✅ Successfully joined game, refreshing game data...')
         setCurrentGameId(mainGame._id)
         setGameView('game')
         
@@ -299,8 +341,8 @@ export default function Home() {
       console.error('Failed to join game:', error)
 
       if (error.response?.data?.error?.includes('already in this game')) {
-        // User is already in the game, just switch to game view
-        console.log('ℹ️ User already in game, switching view')
+        // User is already in the game, just refresh
+        console.log('ℹ️ User already in game, refreshing view')
         setCurrentGameId(mainGame._id)
         setGameView('game')
         gameHook.refreshGame()
@@ -322,6 +364,8 @@ export default function Home() {
     if (gameView === 'game') {
       // Only refresh game data, not the entire page
       gameHook.refreshGame()
+      // Also reload main game to check for updates
+      loadMainGame()
     } else {
       // Only refresh main game data in lobby
       loadMainGame()
@@ -396,7 +440,7 @@ export default function Home() {
     )
   }
 
-  // Current Number Display Component - Made smaller
+  // Current Number Display Component
   const CurrentNumberDisplay = () => {
     if (!gameHook.gameState.currentNumber ) return null;
 
@@ -439,8 +483,103 @@ export default function Home() {
     return '';
   };
 
-  // Game View Component - Updated layout
+  // Enhanced Game View Component that handles both playing and joining states
   const GameView = () => {
+    const userId = localStorage.getItem('user_id')
+    const isUserInGame = mainGame?.players?.some(player => 
+      player?.user?._id === userId || player?.userId === userId
+    )
+
+    // If no game is loaded or user is not in game, show join state
+    if (!mainGame || !isUserInGame) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
+          <div className="relative z-10 max-w-7xl mx-auto p-3 safe-area-padding">
+            {/* Header with Navigation */}
+            <div className="flex items-center justify-between mb-3 pt-3">
+              <button
+                onClick={handleBackToLobby}
+                className="flex items-center gap-1 px-3 py-2 bg-white/20 backdrop-blur-lg text-white rounded-xl border border-white/30 hover:bg-white/30 transition-all text-sm"
+              >
+                <Eye className="w-4 h-4" />
+                <span className="font-bold">Lobby</span>
+              </button>
+
+              <div className="text-white text-center">
+                <div className="text-xs opacity-80">Playing as</div>
+                <div className="font-bold text-sm">{userStats?.firstName || 'Player'}</div>
+              </div>
+
+              <button
+                onClick={handleRefreshGame}
+                className="flex items-center gap-1 px-3 py-2 bg-white/20 backdrop-blur-lg text-white rounded-xl border border-white/30 hover:bg-white/30 transition-all text-sm"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span className="font-bold">Refresh</span>
+              </button>
+            </div>
+
+            {/* Join Game Card */}
+            <div className="flex items-center justify-center min-h-[60vh]">
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-white/20 backdrop-blur-lg rounded-2xl p-8 border border-white/30 text-center max-w-md w-full"
+              >
+                <div className="text-6xl mb-4">🎮</div>
+                <h2 className="text-2xl font-black text-white mb-4">Join the Game</h2>
+                
+                {mainGame ? (
+                  <>
+                    <div className="bg-white/10 rounded-xl p-4 mb-6">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-white/80">Game Code:</span>
+                        <span className="text-white font-bold">{mainGame.code}</span>
+                      </div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-white/80">Players:</span>
+                        <span className="text-white font-bold">{mainGame.players?.length || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-white/80">Status:</span>
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                          mainGame.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
+                          mainGame.status === 'WAITING' ? 'bg-yellow-500/20 text-yellow-300' :
+                          'bg-red-500/20 text-red-300'
+                        }`}>
+                          {mainGame.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handlePlayGame}
+                      disabled={walletBalance < 10}
+                      className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-500 text-white py-4 rounded-xl font-bold text-lg transition-colors mb-4"
+                    >
+                      {walletBalance >= 10 ? 'JOIN GAME - 10 ብር' : 'INSUFFICIENT BALANCE'}
+                    </button>
+
+                    {walletBalance < 10 && (
+                      <div className="text-yellow-300 text-sm">
+                        You need 10 ብር to play. Current balance: {walletBalance} ብር
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-white/80">
+                    <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full mx-auto mb-4 animate-spin"></div>
+                    <p>Loading game session...</p>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // User is in game, show the actual game interface
     if (!currentGameId || !gameHook.game) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 flex items-center justify-center">
@@ -532,10 +671,10 @@ export default function Home() {
 
               {/* Right Column - Current Number and Stats */}
               <div className="space-y-3">
-                {/* Current Number Display - Made smaller */}
+                {/* Current Number Display */}
                 <CurrentNumberDisplay />
 
-                {/* Number Grid - Made more compact */}
+                {/* Number Grid */}
                 <div className="scale-90 transform origin-top">
                   <NumberGrid
                     calledNumbers={gameHook.gameState.calledNumbers}
@@ -575,253 +714,9 @@ export default function Home() {
     )
   }
 
-  // Lobby View Component
-  const LobbyView = () => (
-    <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 relative overflow-hidden">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        {[...Array(20)].map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-2 h-2 bg-white rounded-full opacity-20"
-            initial={{
-              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 100),
-              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 100),
-            }}
-            variants={backgroundVariants}
-            animate="animate"
-            custom={i}
-          />
-        ))}
-      </div>
+  // Remove LobbyView since we always want to show game view
+  // Only show deposit modal if needed
 
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="relative z-10 max-w-md mx-auto p-3 safe-area-padding"
-      >
-        {/* Header */}
-        <motion.div
-          initial={{ y: -50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="text-center mb-6 pt-6"
-        >
-          <motion.div
-            animate={{
-              rotate: [0, -10, 10, 0],
-              scale: [1, 1.1, 1]
-            }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="text-5xl mb-3"
-          >
-            🎯
-          </motion.div>
-          <h1 className="text-4xl font-black text-white mb-2 drop-shadow-lg">
-            BINGO
-          </h1>
-          <p className="text-white/80 text-base font-medium">Always Ready • Always Fun</p>
-        </motion.div>
-
-        {/* Compact Game Navigation Bar */}
-        <GameNavbar />
-
-        {/* User Stats Card */}
-        {userStats && (
-          <motion.div
-            initial={{ y: 20, opacity: 0, scale: 0.9 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
-            className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/30 shadow-2xl"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <motion.div
-                whileHover={{ scale: 1.1, rotate: 5 }}
-                className="relative"
-              >
-                <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-white text-xl font-black shadow-lg">
-                  {userStats.firstName?.[0]?.toUpperCase() || userStats.username?.[0]?.toUpperCase() || '?'}
-                </div>
-                {userStats.gamesWon > 0 && (
-                  <motion.div
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="absolute -top-1 -right-1"
-                  >
-                    <Crown className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                  </motion.div>
-                )}
-              </motion.div>
-
-              <div className="flex-1">
-                <h3 className="font-black text-lg text-white">
-                  {userStats.firstName || userStats.username}
-                </h3>
-                <p className="text-white/70 text-sm">@{userStats.username}</p>
-                <div className="grid grid-cols-3 gap-2 mt-2">
-                  <div className="text-center">
-                    <div className="text-xl font-black text-white">{userStats.gamesPlayed || 0}</div>
-                    <div className="text-white/70 text-xs font-medium">Played</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xl font-black text-white flex items-center justify-center gap-1">
-                      {userStats.gamesWon || 0}
-                      {userStats.gamesWon > 0 && <Crown className="w-3 h-3 fill-yellow-400 text-yellow-400" />}
-                    </div>
-                    <div className="text-white/70 text-xs font-medium">Wins</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xl font-black text-white">{userStats.totalScore || 0}</div>
-                    <div className="text-white/70 text-xs font-medium">Score</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Wallet Card */}
-        <motion.div
-          initial={{ y: 20, opacity: 0, scale: 0.9 }}
-          animate={{ y: 0, opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30 shadow-2xl"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Wallet className="w-10 h-10 text-green-400" />
-              <div>
-                <h3 className="font-black text-lg text-white">Wallet Balance</h3>
-                <div className="text-2xl font-black mt-1 text-green-400">
-                  {isBalanceLoading ? '...' : `${walletBalance.toFixed(2)} ብር`}
-                </div>
-                <div className="text-white/70 text-sm mt-1">
-                  {walletBalance >= 10 ? 'Ready to play! 🎮' : 'Need 10 ብር to play'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Game Status */}
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 shadow-2xl"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Gamepad2 className="w-5 h-5 text-white" />
-              <h3 className="font-black text-lg text-white">Current Session</h3>
-            </div>
-            {mainGame && (
-              <div className="flex items-center gap-1 bg-white/20 rounded-full px-2 py-1">
-                <Users className="w-3 h-3 text-white" />
-                <span className="text-white text-xs font-bold">{mainGame.players?.length || 0}</span>
-              </div>
-            )}
-          </div>
-
-          {!mainGame ? (
-            <div className="text-center py-6">
-              <div className="w-16 h-16 bg-white/10 rounded-xl flex items-center justify-center mx-auto mb-3">
-                <Clock className="text-white/50 w-6 h-6" />
-              </div>
-              <p className="text-white/80 font-medium mb-2">Game session loading</p>
-              <p className="text-white/60 text-sm">Ready in a moment...</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="bg-white/10 hover:bg-white/20 rounded-xl p-3 border border-white/10 hover:border-white/30 transition-all duration-300 backdrop-blur-sm">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h4 className="font-black text-white">Game {mainGame.code}</h4>
-                      <span className={`px-2 py-1 rounded-full text-xs font-black ${
-                        mainGame.status === 'ACTIVE'
-                          ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                          : mainGame.status === 'FINISHED'
-                            ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                            : 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-                      }`}>
-                        {mainGame.status === 'ACTIVE' ? 'LIVE' :
-                          mainGame.status === 'FINISHED' ? 'FINISHED' : 'WAITING'}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 text-xs">
-                      <div className="flex items-center gap-1 text-white/70">
-                        <Users className="w-3 h-3" />
-                        <span>{mainGame.players?.length || 0} players</span>
-                      </div>
-                      <span className="hidden sm:inline text-white/50">•</span>
-                      <div className="flex items-center gap-1 text-white/70">
-                        <Clock className="w-3 h-3" />
-                        <span>
-                          {mainGame.status === 'ACTIVE'
-                            ? `${mainGame.numbersCalled?.length || 0} numbers called`
-                            : mainGame.status === 'FINISHED'
-                              ? 'Game completed'
-                              : 'Waiting for players'
-                          }
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Status Message */}
-              {mainGame.status === 'WAITING' && (
-                <div className="p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/30">
-                  <div className="flex items-center gap-2 text-xs text-yellow-300">
-                    <Clock className="w-3 h-3" />
-                    <span>Game will start automatically when 2+ players join</span>
-                  </div>
-                </div>
-              )}
-
-              {mainGame.status === 'ACTIVE' && (
-                <div className="p-2 bg-green-500/20 rounded-lg border border-green-500/30">
-                  <div className="flex items-center gap-2 text-xs text-green-300">
-                    <Eye className="w-3 h-3" />
-                    <span>Game in progress - Click PLAY to join!</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </motion.div>
-
-        {/* Quick Stats */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.8 }}
-          className="text-center mt-4 pb-16"
-        >
-          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div>
-                <div className="text-xl font-black text-white">{mainGame ? 1 : 0}</div>
-                <div className="text-white/60 text-xs">Active Session</div>
-              </div>
-              <div>
-                <div className="text-xl font-black text-white">{mainGame?.players?.length || 0}</div>
-                <div className="text-white/60 text-xs">Players Online</div>
-              </div>
-              <div>
-                <div className="text-xl font-black text-white">{mainGame?.status === 'ACTIVE' ? 1 : 0}</div>
-                <div className="text-white/60 text-xs">Live Game</div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    </div>
-  )
-
-  // Deposit Modal Component
   const DepositModal = () => (
     <AnimatePresence>
       {showDepositModal && (
@@ -902,7 +797,7 @@ export default function Home() {
   return (
     <>
       <DepositModal />
-      {gameView === 'game' ? <GameView /> : <LobbyView />}
+      <GameView />
     </>
   )
 }
