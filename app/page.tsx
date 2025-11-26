@@ -51,23 +51,22 @@ export default function Home() {
   
   // Game state
   const [currentGameId, setCurrentGameId] = useState<string | null>(null)
-  const [gameView, setGameView] = useState<'lobby' | 'game'>('game') // Default to game view
+  const [gameView, setGameView] = useState<'lobby' | 'game'>('game')
   
   // Wallet state
   const [walletBalance, setWalletBalance] = useState(0)
   const [showDepositModal, setShowDepositModal] = useState(false)
   const [isBalanceLoading, setIsBalanceLoading] = useState(true)
 
-  // Use game hook when in game view - this should handle real-time updates
+  // Use game hook when in game view
   const gameHook = useGame(currentGameId || '')
 
   // Calculate prize pool (10 birr per player)
   const prizePool = (mainGame?.players?.length || 0) * 10
 
-  // Real-time game updates using useEffect
+  // Real-time game updates
   useEffect(() => {
     if (gameView === 'game' && currentGameId) {
-      // Set up polling for real-time updates (every 3 seconds)
       const interval = setInterval(() => {
         gameHook.refreshGame()
       }, 3000)
@@ -81,10 +80,8 @@ export default function Home() {
     if (isReady && WebApp) {
       console.log('🚀 Telegram WebApp ready, initializing...')
       
-      // Expand the WebApp to full height
       WebApp.expand()
       
-      // Setup Main Button for game view
       setButtonText('🔄 REFRESH GAME')
       updateButton({
         color: theme.button_color || '#3390ec',
@@ -93,7 +90,6 @@ export default function Home() {
         isActive: true
       })
       
-      // Setup Back Button behavior
       WebApp.BackButton.onClick(() => {
         if (gameView === 'game') {
           handleBackToLobby()
@@ -107,11 +103,9 @@ export default function Home() {
     if (!WebApp || !isReady) return
 
     if (gameView === 'game') {
-      // In game view - show Refresh button and Back button
       setButtonText('🔄 REFRESH GAME')
       WebApp.BackButton.show()
     } else {
-      // In lobby view - show Play button and hide Back button
       setButtonText('🎮 PLAY GAME - 10 ብር')
       WebApp.BackButton.hide()
     }
@@ -131,7 +125,6 @@ export default function Home() {
 
     onButtonClick(handleMainButtonClick)
 
-    // Cleanup
     return () => {
       if (WebApp) {
         WebApp.MainButton.offClick(handleMainButtonClick)
@@ -173,10 +166,7 @@ export default function Home() {
       setAuthAttempted(true)
       setIsLoading(true)
 
-      console.log('🔐 Authenticating user with Telegram...', {
-        userId: user?.id,
-        initData: initData ? 'PRESENT' : 'MISSING'
-      })
+      console.log('🔐 Authenticating user with Telegram...')
 
       const response = await authAPI.telegramLogin(initData || 'development')
       const { token, user: userData } = response.data
@@ -193,7 +183,6 @@ export default function Home() {
     } catch (error) {
       console.error('Authentication failed:', error)
       
-      // Create fallback user from Telegram data
       const fallbackUser: User = {
         _id: user?.id?.toString() || 'fallback',
         id: user?.id?.toString() || 'fallback',
@@ -214,84 +203,28 @@ export default function Home() {
     }
   }
 
-  // Enhanced function to find user's active game
-  const findUserActiveGame = async () => {
-    try {
-      const userId = localStorage.getItem('user_id')
-      if (!userId) {
-        console.log('❌ No user ID found')
-        return null
-      }
-
-      console.log('🔍 Searching for user active games...', { userId })
-
-      // Get all active games
-      const response = await gameAPI.getActiveGames()
-      const games = response.data.games || []
-      
-      console.log('🎮 Found games:', games.length)
-
-      // Find the game where user is a player
-      const userGame = games.find(game => {
-        const isUserInGame = game.players?.some(player => {
-          const playerUserId = player?.user?._id || player?.userId
-          console.log('👤 Checking player:', { 
-            playerUserId, 
-            searchUserId: userId,
-            match: playerUserId === userId 
-          })
-          return playerUserId === userId
-        })
-        
-        if (isUserInGame) {
-          console.log('✅ Found user in game:', game._id)
-        }
-        
-        return isUserInGame
-      })
-
-      return userGame || null
-    } catch (error) {
-      console.error('Error finding user active game:', error)
-      return null
-    }
-  }
-
   const loadMainGame = async () => {
     try {
-      console.log('🎮 Loading main game with auto-join logic...')
-      
-      // First, try to find if user is already in any active game
-      const userActiveGame = await findUserActiveGame()
-      
-      if (userActiveGame) {
-        console.log('✅ User found in active game, switching to game view:', userActiveGame._id)
-        setMainGame(userActiveGame)
-        setCurrentGameId(userActiveGame._id)
-        setGameView('game')
-        
-        // Immediately refresh game data to get the latest state
-        setTimeout(() => {
-          gameHook.refreshGame()
-        }, 1000)
-        return
-      }
-
-      // If user is not in any game, get the main active game
-      console.log('ℹ️ User not in any active game, loading main game...')
+      console.log('🎮 Loading main game...')
       const response = await gameAPI.getActiveGames()
       const games = response.data.games || []
       const activeGame = games[0] || null
       setMainGame(activeGame)
       
-      // Stay in game view but show "Join Game" state
-      setGameView('game')
+      // Always set current game and stay in game view
+      if (activeGame) {
+        setCurrentGameId(activeGame._id)
+        setGameView('game')
+        
+        // Refresh game data
+        setTimeout(() => {
+          gameHook.refreshGame()
+        }, 1000)
+      }
       
     } catch (error) {
       console.error('Failed to load main game:', error)
       setMainGame(null)
-      // Still stay in game view but show error state
-      setGameView('game')
     }
   }
 
@@ -308,7 +241,6 @@ export default function Home() {
     }
 
     try {
-      // Check balance first
       const entryFee = 10
 
       if (walletBalance < entryFee) {
@@ -319,12 +251,10 @@ export default function Home() {
 
       console.log(`🎮 Joining game with wallet balance: ${walletBalance} ብር`)
 
-      // Show loading state on button
       if (WebApp) {
         WebApp.MainButton.showProgress()
       }
 
-      // Join the game
       const response = await gameAPI.joinGame(mainGame.code, userId)
 
       if (response.data.success) {
@@ -332,7 +262,6 @@ export default function Home() {
         setCurrentGameId(mainGame._id)
         setGameView('game')
         
-        // Refresh game data without full page reload
         gameHook.refreshGame()
       } else {
         throw new Error('Failed to join game')
@@ -341,18 +270,14 @@ export default function Home() {
       console.error('Failed to join game:', error)
 
       if (error.response?.data?.error?.includes('already in this game')) {
-        // User is already in the game, just refresh
-        console.log('ℹ️ User already in game, refreshing view')
         setCurrentGameId(mainGame._id)
         setGameView('game')
         gameHook.refreshGame()
         return
       }
 
-      // Reload game data without full page reload
       loadMainGame()
     } finally {
-      // Hide loading state
       if (WebApp) {
         WebApp.MainButton.hideProgress()
       }
@@ -362,12 +287,9 @@ export default function Home() {
   const handleRefreshGame = () => {
     console.log('🔄 Refreshing game data...')
     if (gameView === 'game') {
-      // Only refresh game data, not the entire page
       gameHook.refreshGame()
-      // Also reload main game to check for updates
       loadMainGame()
     } else {
-      // Only refresh main game data in lobby
       loadMainGame()
     }
   }
@@ -442,7 +364,7 @@ export default function Home() {
 
   // Current Number Display Component
   const CurrentNumberDisplay = () => {
-    if (!gameHook.gameState.currentNumber ) return null;
+    if (!gameHook.gameState.currentNumber) return null;
 
     return (
       <motion.div
@@ -483,104 +405,15 @@ export default function Home() {
     return '';
   };
 
-  // Enhanced Game View Component that handles both playing and joining states
+  // Game View Component - Simplified to always show game interface
   const GameView = () => {
     const userId = localStorage.getItem('user_id')
     const isUserInGame = mainGame?.players?.some(player => 
       player?.user?._id === userId || player?.userId === userId
     )
 
-    // If no game is loaded or user is not in game, show join state
-    if (!mainGame || !isUserInGame) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 relative overflow-hidden">
-          <div className="relative z-10 max-w-7xl mx-auto p-3 safe-area-padding">
-            {/* Header with Navigation */}
-            <div className="flex items-center justify-between mb-3 pt-3">
-              <button
-                onClick={handleBackToLobby}
-                className="flex items-center gap-1 px-3 py-2 bg-white/20 backdrop-blur-lg text-white rounded-xl border border-white/30 hover:bg-white/30 transition-all text-sm"
-              >
-                <Eye className="w-4 h-4" />
-                <span className="font-bold">Lobby</span>
-              </button>
-
-              <div className="text-white text-center">
-                <div className="text-xs opacity-80">Playing as</div>
-                <div className="font-bold text-sm">{userStats?.firstName || 'Player'}</div>
-              </div>
-
-              <button
-                onClick={handleRefreshGame}
-                className="flex items-center gap-1 px-3 py-2 bg-white/20 backdrop-blur-lg text-white rounded-xl border border-white/30 hover:bg-white/30 transition-all text-sm"
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span className="font-bold">Refresh</span>
-              </button>
-            </div>
-
-            {/* Join Game Card */}
-            <div className="flex items-center justify-center min-h-[60vh]">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="bg-white/20 backdrop-blur-lg rounded-2xl p-8 border border-white/30 text-center max-w-md w-full"
-              >
-                <div className="text-6xl mb-4">🎮</div>
-                <h2 className="text-2xl font-black text-white mb-4">Join the Game</h2>
-                
-                {mainGame ? (
-                  <>
-                    <div className="bg-white/10 rounded-xl p-4 mb-6">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-white/80">Game Code:</span>
-                        <span className="text-white font-bold">{mainGame.code}</span>
-                      </div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-white/80">Players:</span>
-                        <span className="text-white font-bold">{mainGame.players?.length || 0}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-white/80">Status:</span>
-                        <span className={`px-2 py-1 rounded text-xs font-bold ${
-                          mainGame.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
-                          mainGame.status === 'WAITING' ? 'bg-yellow-500/20 text-yellow-300' :
-                          'bg-red-500/20 text-red-300'
-                        }`}>
-                          {mainGame.status}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={handlePlayGame}
-                      disabled={walletBalance < 10}
-                      className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-500 text-white py-4 rounded-xl font-bold text-lg transition-colors mb-4"
-                    >
-                      {walletBalance >= 10 ? 'JOIN GAME - 10 ብር' : 'INSUFFICIENT BALANCE'}
-                    </button>
-
-                    {walletBalance < 10 && (
-                      <div className="text-yellow-300 text-sm">
-                        You need 10 ብር to play. Current balance: {walletBalance} ብር
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-white/80">
-                    <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full mx-auto mb-4 animate-spin"></div>
-                    <p>Loading game session...</p>
-                  </div>
-                )}
-              </motion.div>
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    // User is in game, show the actual game interface
-    if (!currentGameId || !gameHook.game) {
+    // Show loading state if no game data
+    if (!currentGameId || !gameHook.game || !mainGame) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-purple-500 via-blue-500 to-cyan-500 flex items-center justify-center">
           <div className="text-center">
@@ -625,7 +458,7 @@ export default function Home() {
           {/* Compact Game Navigation Bar */}
           <GameNavbar />
 
-          {/* Main Content - Single Row Layout */}
+          {/* Main Content - Game Cards and Current Number */}
           <div className="space-y-4">
             {/* Game Header */}
             <div className="bg-white/20 backdrop-blur-lg rounded-xl p-3 border border-white/30">
@@ -654,7 +487,7 @@ export default function Home() {
 
             {/* Card and Current Number in Single Row */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Bingo Card - Takes 2/3 width */}
+              {/* Bingo Card - Takes 2/3 width on left */}
               <div className="lg:col-span-2">
                 {gameHook.bingoCard && (
                   <div className="scale-90 transform origin-top">
@@ -707,6 +540,23 @@ export default function Home() {
             </div>
           </div>
 
+          {/* Join Game Button if not in game */}
+          {!isUserInGame && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="fixed bottom-20 left-1/2 transform -translate-x-1/2 z-20"
+            >
+              <button
+                onClick={handlePlayGame}
+                disabled={walletBalance < 10}
+                className="bg-green-500 hover:bg-green-600 disabled:bg-gray-500 text-white px-6 py-3 rounded-xl font-bold text-lg shadow-2xl transition-colors"
+              >
+                {walletBalance >= 10 ? 'JOIN GAME - 10 ብር' : 'NEED 10 ብር TO PLAY'}
+              </button>
+            </motion.div>
+          )}
+
           {/* Bottom Padding for Telegram Button */}
           <div className="h-16"></div>
         </div>
@@ -714,9 +564,7 @@ export default function Home() {
     )
   }
 
-  // Remove LobbyView since we always want to show game view
-  // Only show deposit modal if needed
-
+  // Deposit Modal Component
   const DepositModal = () => (
     <AnimatePresence>
       {showDepositModal && (
