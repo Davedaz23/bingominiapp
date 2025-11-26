@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTelegram, useTelegramMainButton } from '../hooks/useTelegram'
 import { authAPI, gameAPI, walletAPI } from '../services/api'
 import { Game, User } from '../types'
@@ -44,28 +44,18 @@ export default function Home() {
   const [showDepositModal, setShowDepositModal] = useState(false)
   const [isBalanceLoading, setIsBalanceLoading] = useState(true)
 
+  // Use refs to prevent unnecessary re-renders
+  const mainGameRef = useRef<Game | null>(null)
+  const walletBalanceRef = useRef(0)
+  const gameViewRef = useRef<'lobby' | 'game'>('game')
+
   // Use game hook when in game view
   const gameHook = useGame(currentGameId || '')
 
-  // Calculate prize pool (10 birr per player)
-  const prizePool = useMemo(() => (mainGame?.players?.length || 0) * 10, [mainGame?.players?.length])
+  // Calculate prize pool (10 birr per player) - memoized
+  const prizePool = (mainGame?.players?.length || 0) * 10
 
-  // Memoize game data to prevent unnecessary re-renders
-  const gameData = useMemo(() => gameView === 'game' ? gameHook.game : mainGame, [gameView, gameHook.game, mainGame])
-  const calledNumbers = useMemo(() => gameView === 'game' ? gameHook.gameState.calledNumbers : (mainGame?.numbersCalled || []), [gameView, gameHook.gameState.calledNumbers, mainGame?.numbersCalled])
-
-  // Real-time game updates - optimized
-  useEffect(() => {
-    if (gameView === 'game' && currentGameId) {
-      const interval = setInterval(() => {
-        gameHook.refreshGame()
-      }, 3000)
-
-      return () => clearInterval(interval)
-    }
-  }, [gameView, currentGameId, gameHook.refreshGame])
-
-  // Initialize Telegram integration
+  // Initialize Telegram integration - FIXED: Only run once
   useEffect(() => {
     if (isReady && WebApp) {
       console.log('🚀 Telegram WebApp ready, initializing...')
@@ -81,14 +71,27 @@ export default function Home() {
       })
       
       WebApp.BackButton.onClick(() => {
-        if (gameView === 'game') {
+        if (gameViewRef.current === 'game') {
           handleBackToLobby()
         }
       })
     }
-  }, [isReady, WebApp, theme])
+  }, [isReady, WebApp]) // Removed theme dependency
 
-  // Update Telegram UI based on game state
+  // Update refs when state changes
+  useEffect(() => {
+    mainGameRef.current = mainGame
+  }, [mainGame])
+
+  useEffect(() => {
+    walletBalanceRef.current = walletBalance
+  }, [walletBalance])
+
+  useEffect(() => {
+    gameViewRef.current = gameView
+  }, [gameView])
+
+  // Update Telegram UI based on game state - OPTIMIZED
   useEffect(() => {
     if (!WebApp || !isReady) return
 
@@ -101,12 +104,12 @@ export default function Home() {
     }
   }, [WebApp, isReady, gameView])
 
-  // Setup Main Button click handler
+  // Setup Main Button click handler - OPTIMIZED
   useEffect(() => {
     if (!WebApp || !isReady) return
 
     const handleMainButtonClick = () => {
-      if (gameView === 'game') {
+      if (gameViewRef.current === 'game') {
         handleRefreshGame()
       } else {
         handlePlayGame()
@@ -120,9 +123,9 @@ export default function Home() {
         WebApp.MainButton.offClick(handleMainButtonClick)
       }
     }
-  }, [WebApp, isReady, gameView, mainGame, walletBalance])
+  }, [WebApp, isReady]) // Removed dependencies that cause re-renders
 
-  // Fetch wallet balance
+  // Fetch wallet balance - memoized
   const fetchWalletBalance = useCallback(async () => {
     try {
       setIsBalanceLoading(true)
@@ -144,14 +147,14 @@ export default function Home() {
     }
   }, [])
 
-  // Initialize user when Telegram is ready
+  // Initialize user when Telegram is ready - OPTIMIZED
   useEffect(() => {
     if (isReady && user && !authAttempted) {
       initializeUser()
     }
   }, [isReady, user, authAttempted])
 
-  const initializeUser = useCallback(async () => {
+  const initializeUser = async () => {
     try {
       setAuthAttempted(true)
       setIsLoading(true)
@@ -191,7 +194,7 @@ export default function Home() {
     } finally {
       setIsLoading(false)
     }
-  }, [user, initData, fetchWalletBalance])
+  }
 
   const loadMainGame = useCallback(async () => {
     try {
@@ -199,22 +202,31 @@ export default function Home() {
       const response = await gameAPI.getActiveGames()
       const games = response.data.games || []
       const activeGame = games[0] || null
-      setMainGame(activeGame)
+      
+      // Only update if game actually changed
+      if (JSON.stringify(mainGameRef.current) !== JSON.stringify(activeGame)) {
+        setMainGame(activeGame)
+      }
       
       // Always set current game and stay in game view
       if (activeGame) {
         setCurrentGameId(activeGame._id)
         setGameView('game')
+        
+        // Refresh game data
+        setTimeout(() => {
+          gameHook.refreshGame()
+        }, 1000)
       }
       
     } catch (error) {
       console.error('Failed to load main game:', error)
       setMainGame(null)
     }
-  }, [])
+  }, [gameHook])
 
   const handlePlayGame = useCallback(async () => {
-    if (!mainGame) {
+    if (!mainGameRef.current) {
       console.log('❌ No main game available')
       return
     }
@@ -228,24 +240,26 @@ export default function Home() {
     try {
       const entryFee = 10
 
-      if (walletBalance < entryFee) {
+      if (walletBalanceRef.current < entryFee) {
         console.log('💰 Insufficient balance, showing deposit modal')
         setShowDepositModal(true)
         return
       }
 
-      console.log(`🎮 Joining game with wallet balance: ${walletBalance} ብር`)
+      console.log(`🎮 Joining game with wallet balance: ${walletBalanceRef.current} ብር`)
 
       if (WebApp) {
         WebApp.MainButton.showProgress()
       }
 
-      const response = await gameAPI.joinGame(mainGame.code, userId)
+      const response = await gameAPI.joinGame(mainGameRef.current.code, userId)
 
       if (response.data.success) {
         console.log('✅ Successfully joined game, refreshing game data...')
-        setCurrentGameId(mainGame._id)
+        setCurrentGameId(mainGameRef.current._id)
         setGameView('game')
+        
+        gameHook.refreshGame()
       } else {
         throw new Error('Failed to join game')
       }
@@ -253,8 +267,9 @@ export default function Home() {
       console.error('Failed to join game:', error)
 
       if (error.response?.data?.error?.includes('already in this game')) {
-        setCurrentGameId(mainGame._id)
+        setCurrentGameId(mainGameRef.current._id)
         setGameView('game')
+        gameHook.refreshGame()
         return
       }
 
@@ -264,17 +279,17 @@ export default function Home() {
         WebApp.MainButton.hideProgress()
       }
     }
-  }, [mainGame, walletBalance, WebApp, loadMainGame])
+  }, [WebApp, gameHook, loadMainGame])
 
   const handleRefreshGame = useCallback(() => {
     console.log('🔄 Refreshing game data...')
-    if (gameView === 'game') {
+    if (gameViewRef.current === 'game') {
       gameHook.refreshGame()
       loadMainGame()
     } else {
       loadMainGame()
     }
-  }, [gameView, gameHook, loadMainGame])
+  }, [gameHook, loadMainGame])
 
   const handleBackToLobby = useCallback(() => {
     console.log('↩️ Returning to lobby')
@@ -282,7 +297,7 @@ export default function Home() {
     setCurrentGameId(null)
   }, [])
 
-  // Apply Telegram theme to document
+  // Apply Telegram theme to document - FIXED: Only run when theme changes
   useEffect(() => {
     if (theme.bg_color) {
       document.documentElement.style.setProperty('--tg-theme-bg-color', theme.bg_color)
@@ -290,7 +305,7 @@ export default function Home() {
     if (theme.text_color) {
       document.documentElement.style.setProperty('--tg-theme-text-color', theme.text_color)
     }
-  }, [theme])
+  }, [theme.bg_color, theme.text_color]) // Specific dependencies
 
   // Helper function to get BINGO column letter
   const getColumnLetter = useCallback((number: number): string => {
@@ -300,10 +315,13 @@ export default function Home() {
     if (number >= 46 && number <= 60) return 'G';
     if (number >= 61 && number <= 75) return 'O';
     return '';
-  }, [])
+  }, []);
 
-  // Compact Single Line Navbar Component - NO ANIMATIONS
-  const GameNavbar = useMemo(() => {
+  // Compact Single Line Navbar Component - OPTIMIZED with memo
+  const GameNavbar = useCallback(() => {
+    const gameData = gameView === 'game' ? gameHook.game : mainGame
+    const calledNumbers = gameView === 'game' ? gameHook.gameState.calledNumbers : (mainGame?.numbersCalled || [])
+    
     return (
       <div className="bg-white/20 backdrop-blur-lg rounded-xl p-2 mb-4 border border-white/30">
         <div className="flex items-center justify-between text-center">
@@ -345,10 +363,10 @@ export default function Home() {
         </div>
       </div>
     )
-  }, [prizePool, gameData?.players?.length, calledNumbers.length])
+  }, [gameView, gameHook.game, gameHook.gameState.calledNumbers, mainGame, prizePool])
 
-  // Current Number Display Component - NO ANIMATIONS
-  const CurrentNumberDisplay = useMemo(() => {
+  // Current Number Display Component - OPTIMIZED with memo
+  const CurrentNumberDisplay = useCallback(() => {
     if (!gameHook.gameState.currentNumber) return null;
 
     return (
@@ -362,10 +380,10 @@ export default function Home() {
         </div>
       </div>
     );
-  }, [gameHook.gameState.currentNumber, getColumnLetter])
+  }, [gameHook.gameState.currentNumber, getColumnLetter]);
 
-  // Game View Component - Always show game interface
-  const GameView = useMemo(() => {
+  // Game View Component - Always show game interface - OPTIMIZED
+  const GameView = useCallback(() => {
     const userId = localStorage.getItem('user_id')
     const isUserInGame = mainGame?.players?.some(player => 
       player?.user?._id === userId || player?.userId === userId
@@ -411,7 +429,7 @@ export default function Home() {
           </div>
 
           {/* Compact Game Navigation Bar */}
-          {GameNavbar}
+          <GameNavbar />
 
           {/* Main Content - Game Cards and Current Number */}
           <div className="space-y-4">
@@ -445,7 +463,7 @@ export default function Home() {
               {/* Bingo Card - Takes 2/3 width on left */}
               <div className="lg:col-span-2">
                 <BingoCard
-                  calledNumbers={calledNumbers}
+                  calledNumbers={mainGame.numbersCalled || []}
                   currentNumber={gameHook.gameState.currentNumber}
                 />
               </div>
@@ -453,11 +471,11 @@ export default function Home() {
               {/* Right Column - Current Number and Stats */}
               <div className="space-y-3">
                 {/* Current Number Display */}
-                {CurrentNumberDisplay}
+                <CurrentNumberDisplay />
 
                 {/* Number Grid */}
                 <NumberGrid
-                  calledNumbers={calledNumbers}
+                  calledNumbers={mainGame.numbersCalled || []}
                   currentNumber={gameHook.gameState.currentNumber}
                 />
 
@@ -465,18 +483,18 @@ export default function Home() {
                 <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
                   <div className="grid grid-cols-3 gap-3 text-center">
                     <div>
-                      <div className="text-lg font-black text-white">{calledNumbers.length}</div>
+                      <div className="text-lg font-black text-white">{mainGame.numbersCalled?.length || 0}</div>
                       <div className="text-white/60 text-xs">Called</div>
                     </div>
                     <div>
                       <div className="text-lg font-black text-white">
-                        {calledNumbers.length}
+                        {mainGame.numbersCalled?.length || 0}
                       </div>
                       <div className="text-white/60 text-xs">Marked</div>
                     </div>
                     <div>
                       <div className="text-lg font-black text-white">
-                        {Math.round((calledNumbers.length / 75) * 100)}%
+                        {Math.round(((mainGame.numbersCalled?.length || 0) / 75) * 100)}%
                       </div>
                       <div className="text-white/60 text-xs">Progress</div>
                     </div>
@@ -504,10 +522,14 @@ export default function Home() {
         </div>
       </div>
     )
-  }, [currentGameId, mainGame, GameNavbar, CurrentNumberDisplay, calledNumbers, gameHook.gameState.currentNumber, walletBalance, handleBackToLobby, handleRefreshGame, handlePlayGame, userStats])
+  }, [
+    mainGame, currentGameId, userStats, walletBalance, 
+    GameNavbar, CurrentNumberDisplay, handleBackToLobby, 
+    handleRefreshGame, handlePlayGame, gameHook.gameState.currentNumber
+  ])
 
-  // Deposit Modal Component - NO ANIMATIONS
-  const DepositModal = useMemo(() => {
+  // Deposit Modal Component - OPTIMIZED
+  const DepositModal = useCallback(() => {
     if (!showDepositModal) return null;
 
     return (
@@ -562,8 +584,8 @@ export default function Home() {
 
   return (
     <>
-      {DepositModal}
-      {GameView}
+      <DepositModal />
+      <GameView />
     </>
   )
 }
