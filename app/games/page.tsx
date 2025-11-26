@@ -381,7 +381,7 @@ export default function GamesPage() {
                       </div>
 
                       {/* Game Progress Bar */}
-                      {!isGameFinished && (
+                      {/* {!isGameFinished && (
                         <div className="mt-3">
                           <div className="flex justify-between items-center text-xs mb-1">
                             <span className="text-white/70">Session Progress</span>
@@ -402,7 +402,7 @@ export default function GamesPage() {
                             />
                           </div>
                         </div>
-                      )}
+                      )} */}
                     </motion.div>
                   );
                 })}
@@ -425,9 +425,9 @@ export default function GamesPage() {
                 <div className="text-white/60 text-xs">Total Sessions</div>
               </div>
               <div>
-                <div className="text-2xl font-black text-white">
+                {/* <div className="text-2xl font-black text-white">
                   {activeGames.reduce((sum, game) => sum + game.currentPlayers, 0)}
-                </div>
+                </div> */}
                 <div className="text-white/60 text-xs">Active Players</div>
               </div>
               <div>
