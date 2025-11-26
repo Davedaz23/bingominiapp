@@ -1,12 +1,52 @@
-// components/ui/BingoCard.tsx - SIMPLIFIED VERSION
+// components/ui/BingoCard.tsx - OPTIMIZED VERSION
 import { Check, Grid3X3 } from 'lucide-react';
+import { memo } from 'react';
 
 interface BingoCardProps {
   calledNumbers: number[];
   currentNumber?: number;
 }
 
-export const BingoCard: React.FC<BingoCardProps> = ({
+// Memoize the number item to prevent unnecessary re-renders
+const NumberItem = memo(({ 
+  number, 
+  isCalled, 
+  isCurrent 
+}: { 
+  number: number; 
+  isCalled: boolean; 
+  isCurrent: boolean; 
+}) => {
+  return (
+    <div
+      className={`
+        h-6 rounded flex items-center justify-center text-[10px] font-bold relative
+        border transition-colors duration-200
+        ${isCalled 
+          ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400' 
+          : 'bg-white/80 border-gray-200 text-gray-500'
+        }
+        ${isCurrent ? 'ring-2 ring-yellow-400' : ''}
+        cursor-default
+      `}
+    >
+      <div className="text-center leading-none font-medium">
+        {number}
+      </div>
+      
+      {/* Mark Indicator */}
+      {isCalled && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Check className="w-2 h-2 text-white drop-shadow-sm" />
+        </div>
+      )}
+    </div>
+  );
+});
+
+NumberItem.displayName = 'NumberItem';
+
+export const BingoCard: React.FC<BingoCardProps> = memo(({
   calledNumbers,
   currentNumber
 }) => {
@@ -55,37 +95,14 @@ export const BingoCard: React.FC<BingoCardProps> = ({
         <div className="grid grid-cols-5 gap-0.5 relative z-10 h-80 overflow-y-auto thin-scrollbar">
           {Object.entries(numbersByColumn).map(([letter, numbers]) => (
             <div key={letter} className="space-y-0.5">
-              {numbers.map((number) => {
-                const isCalled = calledNumbers.includes(number);
-                const isCurrent = number === currentNumber;
-
-                return (
-                  <div
-                    key={number}
-                    className={`
-                      h-6 rounded flex items-center justify-center text-[10px] font-bold relative
-                      border transition-all duration-150
-                      ${isCalled 
-                        ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400' 
-                        : 'bg-white/80 border-gray-200 text-gray-500'
-                      }
-                      ${isCurrent ? 'ring-2 ring-yellow-400' : ''}
-                      cursor-default
-                    `}
-                  >
-                    <div className="text-center leading-none font-medium">
-                      {number}
-                    </div>
-                    
-                    {/* Mark Indicator */}
-                    {isCalled && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Check className="w-2 h-2 text-white drop-shadow-sm" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {numbers.map((number) => (
+                <NumberItem
+                  key={number}
+                  number={number}
+                  isCalled={calledNumbers.includes(number)}
+                  isCurrent={number === currentNumber}
+                />
+              ))}
             </div>
           ))}
         </div>
@@ -149,4 +166,6 @@ export const BingoCard: React.FC<BingoCardProps> = ({
       `}</style>
     </div>
   );
-};
+});
+
+BingoCard.displayName = 'BingoCard';
