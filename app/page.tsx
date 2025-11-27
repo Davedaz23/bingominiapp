@@ -553,20 +553,26 @@ export default function Home() {
 
   const getStatusMessage = () => {
     switch (gameStatus) {
-      case 'WAITING':
-        return {
-          message: '🕒 Waiting for Players',
-          description: `${currentPlayers}/10 players joined - Game starts when 2+ players join`,
-          color: 'bg-blue-500/20 border-blue-500/30 text-blue-300',
-          icon: <Users className="w-5 h-5" />
-        };
-      case 'ACTIVE':
-        return {
-          message: '🎯 Game in Progress',
-          description: `${currentPlayers} players playing - Join to play or watch`,
-          color: 'bg-green-500/20 border-green-500/30 text-green-300',
-          icon: <Play className="w-5 h-5" />
-        };
+     case 'WAITING':
+      const playersNeeded = gameData?.playersNeeded || 0;
+      const currentPlayers = gameData?.activePlayers || 0;
+      const minPlayers = gameData?.minPlayersRequired || 2;
+      
+      return {
+        message: '🕒 Waiting for Players',
+        description: playersNeeded > 0 
+          ? `${currentPlayers}/${minPlayers} players - Need ${playersNeeded} more to start`
+          : `${currentPlayers}/${minPlayers} players - Ready to start!`,
+        color: 'bg-blue-500/20 border-blue-500/30 text-blue-300',
+        icon: <Users className="w-5 h-5" />
+      };
+    case 'ACTIVE':
+      return {
+        message: '🎯 Game in Progress',
+        description: `${currentPlayers} players playing - Join to play or watch`,
+        color: 'bg-green-500/20 border-green-500/30 text-green-300',
+        icon: <Play className="w-5 h-5" />
+      };
       case 'FINISHED':
         return {
           message: '🏁 Game Finished',
@@ -592,94 +598,129 @@ export default function Home() {
   };
 
   // Game View when user has selected a card and game is active
-  if (showGameView && selectedNumber && bingoCard) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-        {/* Header with Wallet */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-white font-bold text-xl">Bingo Game</h1>
-              <p className="text-white/60 text-sm">Game Started - Good Luck! 🍀</p>
-            </div>
-            <div className="text-right">
-              <p className="text-white font-bold text-lg">{walletBalance} ብር</p>
-              <p className="text-white/60 text-xs">Balance</p>
-            </div>
+ // Game View when user has selected a card and game is active
+if (showGameView && selectedNumber && bingoCard) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
+      {/* Header with Wallet */}
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-white font-bold text-xl">Bingo Game</h1>
+            <p className="text-white/60 text-sm">Game Started - Good Luck! 🍀</p>
+          </div>
+          <div className="text-right">
+            <p className="text-white font-bold text-lg">{walletBalance} ብር</p>
+            <p className="text-white/60 text-xs">Balance</p>
           </div>
         </div>
+      </div>
 
-        {/* Game Status Banner */}
-        <motion.div 
-          className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <Play className="w-5 h-5 text-green-300" />
-            <p className="text-white font-bold text-lg">Game Started!</p>
-          </div>
-          <p className="text-green-200 text-sm text-center mt-1">
-            {currentPlayers} players - Card #{selectedNumber} - {calledNumbers.length}/75 numbers called
-          </p>
-        </motion.div>
+      {/* Game Status Banner */}
+      <motion.div 
+        className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="flex items-center justify-center gap-2">
+          <Play className="w-5 h-5 text-green-300" />
+          <p className="text-white font-bold text-lg">Game Started!</p>
+        </div>
+        <p className="text-green-200 text-sm text-center mt-1">
+          {currentPlayers} players - Card #{selectedNumber} - {calledNumbers.length}/75 numbers called
+        </p>
+      </motion.div>
 
-        {/* Main Game Layout - Two Column Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Left Column: User's Bingo Card */}
-          <div className="space-y-4">
-            <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard} />
-            
-            {/* Game Controls */}
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-              <div className="grid grid-cols-2 gap-3">
-                <motion.button
-                  onClick={() => setShowGameView(false)}
-                  className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  Change Card
-                </motion.button>
-                <motion.button
-                  onClick={handleWatchGames}
-                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <span>👀</span>
-                  Watch Live
-                </motion.button>
+      {/* Main Game Layout - Two Equal Columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column: User's Bingo Card and Controls */}
+        <div className="flex flex-col space-y-6">
+          {/* Bingo Card with equal height container */}
+          <div className="flex-1 bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+            <div className="h-full flex flex-col">
+              <h2 className="text-white font-bold text-lg mb-4 flex items-center gap-2">
+                <Grid3X3 className="w-5 h-5 text-telegram-button" />
+                Your Bingo Card
+              </h2>
+              <div className="flex-1 flex items-center justify-center">
+                <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard} />
               </div>
             </div>
           </div>
-
-          {/* Right Column: All Numbers Grid */}
-          <div>
-            <AllBingoNumbersGrid calledNumbers={calledNumbers} />
+          
+          {/* Game Controls */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+              <Play className="w-5 h-5" />
+              Game Controls
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <motion.button
+                onClick={() => setShowGameView(false)}
+                className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <RotateCcw className="w-4 h-4" />
+                Change Card
+              </motion.button>
+              <motion.button
+                onClick={handleWatchGames}
+                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Users className="w-4 h-4" />
+                Watch Live
+              </motion.button>
+            </div>
           </div>
         </div>
 
-        {/* Quick Stats */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <p className="text-white font-bold text-lg">{calledNumbers.length}</p>
-              <p className="text-white/60 text-xs">Numbers Called</p>
-            </div>
-            <div>
-              <p className="text-white font-bold text-lg">{75 - calledNumbers.length}</p>
-              <p className="text-white/60 text-xs">Remaining</p>
-            </div>
-            <div>
-              <p className="text-white font-bold text-lg">{currentPlayers}</p>
-              <p className="text-white/60 text-xs">Players</p>
+        {/* Right Column: All Numbers Grid */}
+        <div className="flex flex-col">
+          <div className="flex-1 bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+            <div className="h-full flex flex-col">
+              <h2 className="text-white font-bold text-lg mb-4 flex items-center gap-2">
+                <Target className="w-5 h-5 text-yellow-400" />
+                Called Numbers
+              </h2>
+              <div className="flex-1">
+                <AllBingoNumbersGrid calledNumbers={calledNumbers} />
+              </div>
             </div>
           </div>
         </div>
       </div>
-    );
-  }
+
+      {/* Quick Stats */}
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mt-6 border border-white/20">
+        <h3 className="text-white font-bold mb-4 flex items-center justify-center gap-2">
+          <Trophy className="w-5 h-5 text-yellow-400" />
+          Game Statistics
+        </h3>
+        <div className="grid grid-cols-4 gap-4 text-center">
+          <div>
+            <p className="text-white font-bold text-xl">{calledNumbers.length}</p>
+            <p className="text-white/60 text-sm">Numbers Called</p>
+          </div>
+          <div>
+            <p className="text-white font-bold text-xl">{75 - calledNumbers.length}</p>
+            <p className="text-white/60 text-sm">Remaining</p>
+          </div>
+          <div>
+            <p className="text-white font-bold text-xl">{currentPlayers}</p>
+            <p className="text-white/60 text-sm">Active Players</p>
+          </div>
+          <div>
+            <p className="text-white font-bold text-xl">#{selectedNumber}</p>
+            <p className="text-white/60 text-sm">Your Card</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
   // Rest of the original code remains the same for the selection view...
   // [The rest of your original component code for the selection view goes here]
@@ -751,7 +792,13 @@ export default function Home() {
               />
             </div>
           </div>
+          
         )}
+        {gameStatus === 'WAITING' && (
+  <p className="text-yellow-300 text-sm text-center">
+    ⏳ Need at least 2 players to start the game. Currently: {currentPlayers}/2
+  </p>
+)}
       </motion.div>
 
       {/* Watch Games Button - Only show when game is active */}
