@@ -180,6 +180,17 @@ export const gameAPI = {
   // Health check
   healthCheck: () =>
     api.get<{ status: string; timestamp: string; database: string }>('/health'),
+   selectCard: (gameId: string, userId: string, cardNumber: number) => 
+    axios.post(`${API_BASE_URL}/games/cards/select`, { gameId, userId, cardNumber }),
+  
+  getAvailableCards: (gameId: string) => 
+    axios.get(`${API_BASE_URL}/games/cards/${gameId}/available-cards`),
+  
+  releaseCard: (gameId: string, userId: string) => 
+    axios.post(`${API_BASE_URL}/games/cards/release`, { gameId, userId }),
+  
+  getCardSelectionStatus: (gameId: string) => 
+    axios.get(`${API_BASE_URL}/games/cards/${gameId}/status`)
 };
 
 export const walletAPI = {

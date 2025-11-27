@@ -231,6 +231,20 @@ export default function Home() {
   const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
   const [showGameView, setShowGameView] = useState<boolean>(false);
   const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
+// Add to your existing state in app/page.tsx
+const [availableCards, setAvailableCards] = useState<number[]>([]);
+const [takenCards, setTakenCards] = useState<{cardNumber: number, userId: string}[]>([]);
+const [cardSelectionStatus, setCardSelectionStatus] = useState<{
+  isSelectionActive: boolean;
+  selectionEndTime: Date | null;
+  timeRemaining: number;
+}>({
+  isSelectionActive: false,
+  selectionEndTime: null,
+  timeRemaining: 0
+});
+const [cardSelectionError, setCardSelectionError] = useState<string>('');
+
   const router = useRouter();
 
   const getWalletUserId = (): string | null => {
@@ -267,6 +281,41 @@ export default function Home() {
     }
     return false;
   };
+  // Add these useEffect hooks to your component
+
+// Fetch available cards when game data changes
+useEffect(() => {
+  if (gameData?._id) {
+    fetchAvailableCards();
+  }
+}, [gameData]);
+
+// Check card selection status periodically
+useEffect(() => {
+  if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
+
+  const interval = setInterval(() => {
+    checkCardSelectionStatus();
+  }, 1000);
+
+  return () => clearInterval(interval);
+}, [gameData, cardSelectionStatus.isSelectionActive]);
+
+// Auto-select card when selection period is about to end
+useEffect(() => {
+  if (cardSelectionStatus.isSelectionActive && 
+      cardSelectionStatus.timeRemaining < 5000 && 
+      !selectedNumber && 
+      availableCards.length > 0) {
+    
+    const timer = setTimeout(async () => {
+      const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+      await handleCardSelect(randomCard);
+    }, 2000);
+    
+    return () => clearTimeout(timer);
+  }
+}, [cardSelectionStatus, selectedNumber, availableCards]);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -367,6 +416,100 @@ export default function Home() {
       if (countdownInterval) clearInterval(countdownInterval);
     };
   }, [gameStatus, restartCountdown]);
+  
+  //Card save
+// Add these functions to your Home component
+
+const fetchAvailableCards = async () => {
+  try {
+    if (!gameData?._id) return;
+    
+    const response = await gameAPI.getAvailableCards(gameData._id);
+    if (response.data.success) {
+      setAvailableCards(response.data.availableCards);
+      setTakenCards(response.data.takenCards);
+      setCardSelectionStatus({
+        isSelectionActive: response.data.isSelectionActive,
+        selectionEndTime: new Date(response.data.selectionEndTime),
+        timeRemaining: response.data.timeRemaining
+      });
+    }
+  } catch (error) {
+    console.error('Error fetching available cards:', error);
+  }
+};
+
+const handleCardSelect = async (cardNumber: number) => {
+  if (!user || !gameData?._id) return;
+  
+  try {
+    setCardSelectionError('');
+    
+    const response = await gameAPI.selectCard(gameData._id, user.id, cardNumber);
+    
+    if (response.data.success) {
+      setSelectedNumber(cardNumber);
+      setBingoCard(generateBingoCard(cardNumber));
+      setJoinError('');
+      setShowGameView(false);
+      setAutoRedirected(false);
+      
+      // Refresh available cards
+      await fetchAvailableCards();
+      
+      console.log(`✅ Card #${cardNumber} selected successfully`);
+    }
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.error || 'Failed to select card';
+    setCardSelectionError(errorMessage);
+    console.error('Card selection error:', error);
+  }
+};
+
+const handleCardRelease = async () => {
+  if (!user || !gameData?._id) return;
+  
+  try {
+    const response = await gameAPI.releaseCard(gameData._id, user.id);
+    
+    if (response.data.success) {
+      setSelectedNumber(null);
+      setBingoCard(null);
+      setJoinError('');
+      
+      // Refresh available cards
+      await fetchAvailableCards();
+      
+      console.log('🔄 Card released successfully');
+    }
+  } catch (error: any) {
+    console.error('Card release error:', error);
+  }
+};
+
+const checkCardSelectionStatus = async () => {
+  if (!gameData?._id) return;
+  
+  try {
+    const response = await gameAPI.getCardSelectionStatus(gameData._id);
+    if (response.data.success) {
+      setCardSelectionStatus({
+        isSelectionActive: response.data.isSelectionActive,
+        selectionEndTime: new Date(response.data.selectionEndTime),
+        timeRemaining: response.data.timeRemaining
+      });
+      
+      // If selection period ended and user hasn't selected a card, auto-select one
+      if (!response.data.isSelectionActive && !selectedNumber && availableCards.length > 0) {
+        const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+        await handleCardSelect(randomCard);
+      }
+    }
+  } catch (error) {
+    console.error('Error checking card selection status:', error);
+  }
+};
+  //card
 
   const checkGameStatus = async () => {
     try {
@@ -686,7 +829,43 @@ export default function Home() {
           </p>
         )}
       </motion.div>
-
+// Add this component after your status message display
+{cardSelectionStatus.isSelectionActive && (
+  <motion.div 
+    className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+    initial={{ opacity: 0, y: -10 }}
+    animate={{ opacity: 1, y: 0 }}
+  >
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <Clock className="w-4 h-4 text-blue-300" />
+        <p className="text-blue-300 font-bold text-sm">Card Selection</p>
+      </div>
+      <p className="text-blue-200 text-sm">
+        {Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining
+      </p>
+    </div>
+    <div className="mt-2">
+      <div className="flex justify-between text-xs text-blue-200 mb-1">
+        <span>Select your card number</span>
+        <span>{takenCards.length}/400 cards taken</span>
+      </div>
+      <div className="w-full bg-blue-400/20 rounded-full h-2">
+        <div 
+          className="bg-gradient-to-r from-blue-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
+          style={{ 
+            width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
+          }}
+        />
+      </div>
+    </div>
+    {cardSelectionError && (
+      <p className="text-red-300 text-xs mt-2 text-center">
+        {cardSelectionError}
+      </p>
+    )}
+  </motion.div>
+)}
       {/* Only show watch button for users with insufficient balance */}
       {gameStatus === 'ACTIVE' && !selectedNumber && walletBalance < 10 && (
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
@@ -736,7 +915,6 @@ export default function Home() {
         </motion.div>
       )}
 
-    // In your return JSX, replace this section:
 {(gameStatus !== 'ACTIVE' || selectedNumber) && (
   <motion.div 
     className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
@@ -748,7 +926,6 @@ export default function Home() {
   </motion.div>
 )}
 
-// With this conditional logic:
 {!selectedNumber && (
   <motion.div 
     className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
@@ -756,37 +933,55 @@ export default function Home() {
     animate={{ opacity: 1 }}
     transition={{ delay: 0.2 }}
   >
-    {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => (
-      <motion.button
-        key={number}
-        onClick={() => handleNumberSelect(number)}
-        disabled={joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)}
-        className={`
-          aspect-square rounded-xl font-bold text-sm transition-all
-          ${selectedNumber === number
-            ? 'bg-yellow-500 text-white scale-105 shadow-lg'
-            : walletBalance >= 10
-            ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md'
-            : 'bg-white/10 text-white hover:bg-white/20 hover:scale-105'
-          }
-          border-2 ${
-            selectedNumber === number
-              ? 'border-yellow-400'
-              : 'border-white/20'
-          }
-          ${joining || (gameStatus === 'ACTIVE' && walletBalance >= 10) ? 'opacity-50 cursor-not-allowed' : ''}
-        `}
-        whileHover={{ scale: (joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)) ? 1 : 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        layout
-      >
-        {number}
-      </motion.button>
-    ))}
+    {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
+      const isTaken = takenCards.some(card => card.cardNumber === number);
+      const isAvailable = availableCards.includes(number);
+      const isSelectable = cardSelectionStatus.isSelectionActive && isAvailable && !isTaken;
+      
+      return (
+        <motion.button
+          key={number}
+          onClick={() => isSelectable && handleCardSelect(number)}
+          disabled={!isSelectable || joining}
+          className={`
+            aspect-square rounded-xl font-bold text-sm transition-all relative
+            ${selectedNumber === number
+              ? 'bg-yellow-500 text-white scale-105 shadow-lg'
+              : isTaken
+              ? 'bg-red-500/50 text-white/50 cursor-not-allowed'
+              : isSelectable
+              ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md cursor-pointer'
+              : 'bg-white/10 text-white/30 cursor-not-allowed'
+            }
+            border-2 ${
+              selectedNumber === number
+                ? 'border-yellow-400'
+                : isTaken
+                ? 'border-red-400/50'
+                : 'border-white/20'
+            }
+            ${!isSelectable ? 'opacity-50' : ''}
+          `}
+          whileHover={isSelectable ? { scale: 1.05 } : {}}
+          whileTap={isSelectable ? { scale: 0.95 } : {}}
+          layout
+        >
+          {number}
+          {isTaken && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-4 h-4 text-red-300">
+                <svg fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </div>
+          )}
+        </motion.button>
+      );
+    })}
   </motion.div>
 )}
 
-// And also update the Bingo Card Preview section to only show when a card is selected:
 {selectedNumber && bingoCard && (
   <motion.div
     className="mb-6"
