@@ -551,51 +551,57 @@ export default function Home() {
     }
   };
 
-  const getStatusMessage = () => {
-    switch (gameStatus) {
-     case 'WAITING':
-      const playersNeeded = gameData?.playersNeeded || 0;
-      const currentPlayers = gameData?.activePlayers || 0;
-      const minPlayers = gameData?.minPlayersRequired || 2;
+const getStatusMessage = () => {
+  // Use the state variable directly, don't redeclare it
+  const players = currentPlayers || 0;
+  const minPlayers = 2; // Default minimum players
+  
+  switch (gameStatus) {
+    case 'WAITING':
+      const playersNeeded = Math.max(0, minPlayers - players);
       
       return {
         message: '🕒 Waiting for Players',
         description: playersNeeded > 0 
-          ? `${currentPlayers}/${minPlayers} players - Need ${playersNeeded} more to start`
-          : `${currentPlayers}/${minPlayers} players - Ready to start!`,
+          ? `${players}/${minPlayers} players - Need ${playersNeeded} more to start`
+          : `${players}/${minPlayers} players - Ready to start!`,
         color: 'bg-blue-500/20 border-blue-500/30 text-blue-300',
         icon: <Users className="w-5 h-5" />
       };
+    
     case 'ACTIVE':
       return {
         message: '🎯 Game in Progress',
-        description: `${currentPlayers} players playing - Join to play or watch`,
+        description: `${players} players playing - Join to play or watch`,
         color: 'bg-green-500/20 border-green-500/30 text-green-300',
         icon: <Play className="w-5 h-5" />
       };
-      case 'FINISHED':
-        return {
-          message: '🏁 Game Finished',
-          description: `New game starting in ${restartCountdown}s - Select your card now!`,
-          color: 'bg-purple-500/20 border-purple-500/30 text-purple-300',
-          icon: <Trophy className="w-5 h-5" />
-        };
-      case 'RESTARTING':
-        return {
-          message: '🔄 Starting New Game...',
-          description: 'Please wait while we set up a new game',
-          color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
-          icon: <Clock className="w-5 h-5" />
-        };
-      default:
-        return {
-          message: '❓ Checking Game Status...',
-          description: 'Please wait...',
-          color: 'bg-gray-500/20 border-gray-500/30 text-gray-300',
-          icon: <Clock className="w-5 h-5" />
-        };
-    }
-  };
+    
+    case 'FINISHED':
+      return {
+        message: '🏁 Game Finished',
+        description: `New game starting in ${restartCountdown}s - Select your card now!`,
+        color: 'bg-purple-500/20 border-purple-500/30 text-purple-300',
+        icon: <Trophy className="w-5 h-5" />
+      };
+    
+    case 'RESTARTING':
+      return {
+        message: '🔄 Starting New Game...',
+        description: 'Please wait while we set up a new game',
+        color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
+        icon: <Clock className="w-5 h-5" />
+      };
+    
+    default:
+      return {
+        message: '❓ Checking Game Status...',
+        description: 'Please wait...',
+        color: 'bg-gray-500/20 border-gray-500/30 text-gray-300',
+        icon: <Clock className="w-5 h-5" />
+      };
+  }
+};
 
   // Game View when user has selected a card and game is active
  // Game View when user has selected a card and game is active
