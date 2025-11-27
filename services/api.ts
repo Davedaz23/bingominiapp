@@ -76,7 +76,9 @@ export const authAPI = {
   // Telegram WebApp authentication
   telegramLogin: (initData: string) => 
     axios.post('/api/auth/telegram', { initData }),
-
+  // Quick authentication
+  quickAuth: (telegramId: string) =>
+    api.post('/auth/quick-auth', { telegramId }),
   // Get user profile by ID (accepts both MongoDB ID and Telegram ID)
   getProfile: (userId: string) => 
     axios.get(`/api/auth/profile/${userId}`),

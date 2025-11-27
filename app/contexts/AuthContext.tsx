@@ -1,4 +1,4 @@
-// contexts/AuthContext.tsx - UPDATED VERSION
+// contexts/AuthContext.tsx - FIXED VERSION
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -26,13 +26,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.setItem('bingo_token', token);
       localStorage.setItem('bingo_user', JSON.stringify(userData));
-      localStorage.setItem('user_id', userData._id);
-      localStorage.setItem('telegram_user_id', userData.telegramId);
+      
+      // Safely set IDs with fallbacks
+      if (userData._id) {
+        localStorage.setItem('user_id', userData._id);
+      }
+      if (userData.telegramId) {
+        localStorage.setItem('telegram_user_id', userData.telegramId);
+      }
       
       console.log('🔐 Auth data stored:', {
-        userId: userData._id,
-        telegramId: userData.telegramId,
-        username: userData.username
+        userId: userData._id || 'unknown',
+        telegramId: userData.telegramId || 'unknown',
+        username: userData.username || 'unknown'
       });
     }
   };
@@ -44,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('bingo_user');
       localStorage.removeItem('user_id');
       localStorage.removeItem('telegram_user_id');
+      localStorage.removeItem('telegram_user_data');
     }
   };
 
@@ -189,7 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('✅ Telegram authentication successful:', response.data.user);
       } else {
         console.error('❌ Telegram authentication failed - response not successful');
-        throw new Error(response.data.success || 'Telegram authentication failed');
+        throw new Error(response.data.error || 'Telegram authentication failed');
       }
     } catch (error: any) {
       console.error('❌ Telegram authentication error:', {
@@ -207,13 +214,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (profileResponse.data.success) {
           setUser(profileResponse.data.user);
           localStorage.setItem('bingo_user', JSON.stringify(profileResponse.data.user));
-          localStorage.setItem('user_id', profileResponse.data.user._id);
-          localStorage.setItem('telegram_user_id', telegramId);
+          
+          // Safely set IDs
+          if (profileResponse.data.user._id) {
+            localStorage.setItem('user_id', profileResponse.data.user._id);
+          }
+          if (profileResponse.data.user.telegramId) {
+            localStorage.setItem('telegram_user_id', profileResponse.data.user.telegramId);
+          }
+          
           console.log('✅ User profile loaded via fallback');
         }
       } catch (fallbackError) {
         console.error('❌ Fallback authentication also failed:', fallbackError);
       }
+    }
+  };
+
+  // Quick auth function that uses the new /play endpoint
+  const quickAuth = async (telegramId: string) => {
+    try {
+      console.log('⚡ Starting quick auth for Telegram ID:', telegramId);
+      
+      const response = await authAPI.quickAuth(telegramId);
+      
+      if (response.data.success) {
+        setAuthData(response.data.token, response.data.user);
+        setUser(response.data.user);
+        console.log('✅ Quick auth successful:', response.data.user);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('❌ Quick auth failed:', error);
+      return false;
     }
   };
 
@@ -238,9 +272,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Verify the token is still valid by refreshing user data
           await refreshUser();
         } else if (telegramId) {
-          // No token but have Telegram ID - try to get user profile
-          console.log('🔄 No token found, but Telegram ID exists - refreshing user');
-          await refreshUser();
+          // No token but have Telegram ID - try quick auth
+          console.log('🔄 No token found, but Telegram ID exists - trying quick auth');
+          const success = await quickAuth(telegramId);
+          if (!success) {
+            // If quick auth fails, try regular refresh
+            await refreshUser();
+          }
         } else {
           console.log('ℹ️ No saved auth data found');
           
