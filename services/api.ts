@@ -73,24 +73,42 @@ const getUserId = (): string | null => {
 
 // services/api.ts - UPDATE authAPI methods
 export const authAPI = {
-  // Telegram WebApp authentication
+  // Telegram authentication
   telegramLogin: (initData: string) => 
-    axios.post('/api/auth/telegram', { initData }),
+    api.post('/auth/telegram', { initData }),
+
   // Quick authentication
   quickAuth: (telegramId: string) =>
     api.post('/auth/quick-auth', { telegramId }),
-  // Get user profile by ID (accepts both MongoDB ID and Telegram ID)
-  getProfile: (userId: string) => 
-    axios.get(`/api/auth/profile/${userId}`),
 
-  // Verify endpoint for manual verification
-  verify: (initData: string) =>
-    axios.post('/api/auth/verify', { initData }),
+  // Play endpoint
+  play: (telegramId: string, initData?: string) =>
+    api.post('/auth/play', { telegramId, initData }),
+
+  // Get user profile
+  getProfile: (userId: string) =>
+    api.get(`/auth/profile/${userId}`),
+
+  // Get user by Telegram ID
+  getProfileByTelegramId: (telegramId: string) =>
+    api.get(`/auth/profile/telegram/${telegramId}`),
 
   // Get user stats
   getStats: (userId: string) =>
-    axios.get(`/api/auth/stats/${userId}`),
+    api.get(`/auth/stats/${userId}`),
+
+  // Verify endpoint
+  verify: (initData: string) =>
+    api.post('/auth/verify', { initData }),
 };
+
+// export const walletAPI = {
+//   getBalance: (userId: string) =>
+//     api.get(`/wallet/balance?userId=${userId}`),
+
+//   updateBalance: (userId: string, amount: number) =>
+//     api.post('/wallet/update', { userId, amount }),
+// };
 
 export const gameAPI = {
   // Game management
