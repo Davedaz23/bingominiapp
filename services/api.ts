@@ -35,6 +35,7 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    console.log("Direct API Error",error);
     console.error('❌ API Error:', {
       url: error.config?.url,
       method: error.config?.method,
