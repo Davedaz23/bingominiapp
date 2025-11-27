@@ -735,42 +735,104 @@ export default function Home() {
         </motion.div>
       )}
 
-      {(gameStatus !== 'ACTIVE' || selectedNumber) && (
-        <motion.div 
-          className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-        >
-          {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => (
-            <motion.button
-              key={number}
-              onClick={() => handleNumberSelect(number)}
-              disabled={joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)}
-              className={`
-                aspect-square rounded-xl font-bold text-sm transition-all
-                ${selectedNumber === number
-                  ? 'bg-yellow-500 text-white scale-105 shadow-lg'
-                  : walletBalance >= 10 && gameStatus !== 'ACTIVE'
-                  ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md'
-                  : 'bg-white/10 text-white hover:bg-white/20 hover:scale-105'
-                }
-                border-2 ${
-                  selectedNumber === number
-                    ? 'border-yellow-400'
-                    : 'border-white/20'
-                }
-                ${joining || (gameStatus === 'ACTIVE' && walletBalance >= 10) ? 'opacity-50 cursor-not-allowed' : ''}
-              `}
-              whileHover={{ scale: (joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)) ? 1 : 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              layout
-            >
-              {number}
-            </motion.button>
-          ))}
-        </motion.div>
-      )}
+    // In your return JSX, replace this section:
+{(gameStatus !== 'ACTIVE' || selectedNumber) && (
+  <motion.div 
+    className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ delay: 0.2 }}
+  >
+    {/* Number grid */}
+  </motion.div>
+)}
+
+// With this conditional logic:
+{!selectedNumber && (
+  <motion.div 
+    className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ delay: 0.2 }}
+  >
+    {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => (
+      <motion.button
+        key={number}
+        onClick={() => handleNumberSelect(number)}
+        disabled={joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)}
+        className={`
+          aspect-square rounded-xl font-bold text-sm transition-all
+          ${selectedNumber === number
+            ? 'bg-yellow-500 text-white scale-105 shadow-lg'
+            : walletBalance >= 10
+            ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md'
+            : 'bg-white/10 text-white hover:bg-white/20 hover:scale-105'
+          }
+          border-2 ${
+            selectedNumber === number
+              ? 'border-yellow-400'
+              : 'border-white/20'
+          }
+          ${joining || (gameStatus === 'ACTIVE' && walletBalance >= 10) ? 'opacity-50 cursor-not-allowed' : ''}
+        `}
+        whileHover={{ scale: (joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)) ? 1 : 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        layout
+      >
+        {number}
+      </motion.button>
+    ))}
+  </motion.div>
+)}
+
+// And also update the Bingo Card Preview section to only show when a card is selected:
+{selectedNumber && bingoCard && (
+  <motion.div
+    className="mb-6"
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: 0.3 }}
+  >
+    <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard} />
+    
+    <motion.div 
+      className="grid grid-cols-2 gap-3 mt-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: 0.5 }}
+    >
+      <motion.button
+        onClick={() => {
+          setSelectedNumber(null);
+          setBingoCard(null);
+          setJoinError('');
+        }}
+        disabled={joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)}
+        className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+      >
+        Change Card
+      </motion.button>
+      <motion.button
+        onClick={handleJoinGame}
+        disabled={joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)}
+        className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+      >
+        {joining ? (
+          <>
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            Joining...
+          </>
+        ) : (
+          'Join Game'
+        )}
+      </motion.button>
+    </motion.div>
+  </motion.div>
+)}
 
       {selectedNumber && bingoCard && (
         <motion.div
@@ -837,38 +899,50 @@ export default function Home() {
           </div>
         </div>
         
-        <div className="space-y-2">
-          {walletBalance < 10 && !selectedNumber && (
-            <p className="text-yellow-300 text-sm text-center">
-              💡 Insufficient balance to play, but you can still select a card to join and watch
-            </p>
-          )}
-          
-          {gameStatus === 'FINISHED' && (
-            <p className="text-yellow-300 text-sm text-center">
-              ⏳ Select your card now! Game starts in {restartCountdown} seconds
-            </p>
-          )}
-          
-          {gameStatus === 'ACTIVE' && !selectedNumber && walletBalance >= 10 && (
-            <p className="text-green-300 text-sm text-center">
-              🎯 Game is running! Select a card to join automatically
-            </p>
-          )}
-          
-          {gameStatus === 'ACTIVE' && selectedNumber && walletBalance >= 10 && (
-            <p className="text-green-300 text-sm text-center">
-              🚀 Game started! Auto-joining with card #{selectedNumber}...
-            </p>
-          )}
-          
-          <p className="text-white/60 text-xs text-center">
-            Games restart automatically 30 seconds after completion
-          </p>
-          <p className="text-white/40 text-xs text-center">
-            Minimum 2 players required to start the game
-          </p>
-        </div>
+<div className="space-y-2">
+  {!selectedNumber && walletBalance < 10 && (
+    <p className="text-yellow-300 text-sm text-center">
+      💡 Select a card number to join the game (spectator mode)
+    </p>
+  )}
+  
+  {!selectedNumber && walletBalance >= 10 && (
+    <p className="text-green-300 text-sm text-center">
+      🎯 Select a card number to join the game automatically when it starts
+    </p>
+  )}
+  
+  {selectedNumber && walletBalance >= 10 && gameStatus === 'WAITING' && (
+    <p className="text-blue-300 text-sm text-center">
+      ⏳ Game will start automatically when enough players join
+    </p>
+  )}
+  
+  {selectedNumber && walletBalance >= 10 && gameStatus === 'ACTIVE' && (
+    <p className="text-green-300 text-sm text-center">
+      🚀 Game started! Auto-joining with card #{selectedNumber}...
+    </p>
+  )}
+  
+  {selectedNumber && walletBalance < 10 && (
+    <p className="text-yellow-300 text-sm text-center">
+      👀 You'll join as spectator with card #{selectedNumber}
+    </p>
+  )}
+  
+  {gameStatus === 'FINISHED' && (
+    <p className="text-yellow-300 text-sm text-center">
+      ⏳ New game starting in {restartCountdown} seconds
+    </p>
+  )}
+  
+  <p className="text-white/60 text-xs text-center">
+    Games restart automatically 30 seconds after completion
+  </p>
+  <p className="text-white/40 text-xs text-center">
+    Minimum 2 players required to start the game
+  </p>
+</div>
       </motion.div>
     </div>
   );
