@@ -11,6 +11,9 @@ interface TelegramUser {
 }
 
 interface TelegramWebApp {
+  setHeaderColor(arg0: string): unknown;
+  setBackgroundColor(arg0: string): unknown;
+  enableClosingConfirmation(): unknown;
   // Core methods
   ready: () => void;
   expand: () => void;

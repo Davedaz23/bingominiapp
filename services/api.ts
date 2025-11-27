@@ -71,15 +71,23 @@ const getUserId = (): string | null => {
   return localStorage.getItem('user_id');
 };
 
+// services/api.ts - UPDATE authAPI methods
 export const authAPI = {
+  // Telegram WebApp authentication
   telegramLogin: (initData: string) => 
-    api.post<{ success: boolean; token: string; user: User }>('/auth/telegram', { initData }),
-  
-  getProfile: (userId: string) =>
-    api.get<{ success: boolean; user: User }>(`/auth/profile/${userId}`),
-  
+    axios.post('/api/auth/telegram', { initData }),
+
+  // Get user profile by ID (accepts both MongoDB ID and Telegram ID)
+  getProfile: (userId: string) => 
+    axios.get(`/api/auth/profile/${userId}`),
+
+  // Verify endpoint for manual verification
+  verify: (initData: string) =>
+    axios.post('/api/auth/verify', { initData }),
+
+  // Get user stats
   getStats: (userId: string) =>
-    api.get<{ success: boolean; stats: any }>(`/auth/stats/${userId}`),
+    axios.get(`/api/auth/stats/${userId}`),
 };
 
 export const gameAPI = {
