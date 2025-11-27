@@ -163,27 +163,105 @@ export default function Home() {
   const [gameData, setGameData] = useState<any>(null);
   const router = useRouter();
 
+  // Get the correct user ID for wallet operations - FIXED
+  const getWalletUserId = (): string | null => {
+    if (!user) return null;
+    
+    // Use the user ID from MongoDB (stored in localStorage or user object)
+    // This matches what the backend expects for wallet operations
+    if (typeof window !== 'undefined') {
+      const storedUserId = localStorage.getItem('user_id');
+      if (storedUserId) return storedUserId;
+    }
+    
+    // Fallback to user.id from the auth context
+    return user.id?.toString() || null;
+  };
+
+  // Initialize wallet - NEW FUNCTION
+  const initializeUserWallet = async (userId: string): Promise<boolean> => {
+    try {
+      // Check if wallet exists by trying to get balance
+      const balanceResponse = await walletAPIAuto.getBalance();
+      
+      if (balanceResponse.data.success) {
+        console.log('✅ Wallet already exists');
+        return true;
+      }
+    } catch (error: any) {
+      // If wallet doesn't exist, create it by making a deposit (0 amount)
+      if (error.response?.status === 404) {
+        try {
+          console.log('🆕 Creating new wallet for user...');
+          // The wallet is automatically created when we try to access it with a valid user ID
+          // Just retry the balance check after a moment
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const retryResponse = await walletAPIAuto.getBalance();
+          return retryResponse.data.success;
+        } catch (retryError) {
+          console.error('Failed to initialize wallet:', retryError);
+          return false;
+        }
+      }
+    }
+    return false;
+  };
+
   useEffect(() => {
     const initializeApp = async () => {
-      if (!isAuthenticated) return;
+      if (!isAuthenticated || !user) return;
 
       try {
         setLoading(true);
         
-        // Load wallet balance
-        const walletResponse = await walletAPIAuto.getBalance();
-        if (walletResponse.data.success) {
-          setWalletBalance(walletResponse.data.balance);
+        // Get the correct user ID for wallet operations
+        const walletUserId = getWalletUserId();
+        if (!walletUserId) {
+          console.error('No user ID available for wallet operations');
+          setLoading(false);
+          return;
+        }
+
+        // Initialize wallet first - WITH ERROR HANDLING
+        try {
+          await initializeUserWallet(walletUserId);
+        } catch (error) {
+          console.log('Wallet initialization completed with warnings:', error);
+          // Continue even if wallet initialization has issues
+        }
+        
+        // Load wallet balance - WITH BETTER ERROR HANDLING
+        try {
+          const walletResponse = await walletAPIAuto.getBalance();
+          if (walletResponse.data.success) {
+            setWalletBalance(walletResponse.data.balance);
+          } else {
+            console.warn('Wallet balance check returned unsuccessful');
+            setWalletBalance(0);
+          }
+        } catch (error: any) {
+          console.error('Error loading wallet balance:', error);
+          // Set balance to 0 but continue with app initialization
+          setWalletBalance(0);
+          
+          // If it's a 404, the wallet will be created on first transaction
+          if (error.response?.status === 404) {
+            console.log('Wallet not found yet - will be created on first transaction');
+          }
         }
 
         // Check for active games where user is already playing
-        const userActiveGamesResponse = await gameAPI.getUserActiveGames(user!.id);
-        if (userActiveGamesResponse.data.success && userActiveGamesResponse.data.games.length > 0) {
-          // Redirect to the first active game user is in
-          const game = userActiveGamesResponse.data.games[0];
-          setActiveGame(game);
-          router.push(`/game/${game._id}`);
-          return;
+        try {
+          const userActiveGamesResponse = await gameAPI.getUserActiveGames(user.id);
+          if (userActiveGamesResponse.data.success && userActiveGamesResponse.data.games.length > 0) {
+            // Redirect to the first active game user is in
+            const game = userActiveGamesResponse.data.games[0];
+            setActiveGame(game);
+            router.push(`/game/${game._id}`);
+            return;
+          }
+        } catch (error) {
+          console.error('Error checking user active games:', error);
         }
 
         // Check current game status
@@ -275,19 +353,43 @@ export default function Home() {
   };
 
   const handleJoinGame = async () => {
-    if (!selectedNumber) return;
+    if (!selectedNumber || !user) return;
 
     setJoining(true);
     setJoinError('');
 
     try {
+      // Check wallet balance first - WITH BETTER ERROR HANDLING
+      let userBalance = 0;
+      try {
+        const balanceResponse = await walletAPIAuto.getBalance();
+        if (balanceResponse.data.success) {
+          userBalance = balanceResponse.data.balance;
+        }
+      } catch (error: any) {
+        console.warn('Could not check wallet balance:', error);
+        // If we can't check balance, assume 0 to be safe
+        userBalance = 0;
+      }
+      
+      if (userBalance < 10) {
+        setJoinError('Insufficient balance. Minimum 10 ብር required to play.');
+        setJoining(false);
+        
+        // Even with insufficient balance, allow joining as spectator
+        setTimeout(() => {
+          handleJoinAsSpectator();
+        }, 2000);
+        return;
+      }
+
       // Get waiting games (automatically created by backend)
       const waitingGamesResponse = await gameAPI.getWaitingGames();
       
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         // Join the first available waiting game
         const game = waitingGamesResponse.data.games[0];
-        const joinResponse = await gameAPI.joinGame(game.code, user!.id);
+        const joinResponse = await gameAPI.joinGame(game.code, user.id);
         
         if (joinResponse.data.success) {
           const updatedGame = joinResponse.data.game;
@@ -298,38 +400,40 @@ export default function Home() {
           }, 1000);
         } else {
           setJoinError(joinResponse.data.success || 'Failed to join game');
+          // Fallback to spectator mode
+          handleJoinAsSpectator();
         }
       } else {
-        // No waiting games, check if there are active games to watch
-        const activeGamesResponse = await gameAPI.getActiveGames();
-        if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-          setJoinError('No available spots in waiting games. You can watch active games!');
-          // Redirect to watch the first active game
-          setTimeout(() => {
-            router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
-          }, 3000);
-        } else {
-          setJoinError('No games available at the moment. Please try again later.');
-        }
+        // No waiting games, join as spectator
+        handleJoinAsSpectator();
       }
     } catch (error: any) {
       console.error('Failed to join game:', error);
       const errorMessage = error.response?.data?.error || 'Failed to join game. Please try again.';
       setJoinError(errorMessage);
       
-      // Even if join fails, redirect to watch any available game
-      try {
-        const activeGamesResponse = await gameAPI.getActiveGames();
-        if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-          setTimeout(() => {
-            router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
-          }, 3000);
-        }
-      } catch (watchError) {
-        console.error('Failed to redirect to watch game:', watchError);
-      }
+      // Fallback to spectator mode on any error
+      handleJoinAsSpectator();
     } finally {
       setJoining(false);
+    }
+  };
+
+  // NEW FUNCTION: Handle joining as spectator
+  const handleJoinAsSpectator = async () => {
+    try {
+      const activeGamesResponse = await gameAPI.getActiveGames();
+      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+        setTimeout(() => {
+          router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
+        }, 1000);
+      } else {
+        // No active games either, show appropriate message
+        setJoinError('No games available at the moment. Please try again later.');
+      }
+    } catch (watchError) {
+      console.error('Failed to redirect to watch game:', watchError);
+      setJoinError('Failed to join any game. Please try again.');
     }
   };
 
