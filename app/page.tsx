@@ -535,18 +535,19 @@ export default function Home() {
           icon: <Users className="w-5 h-5" />
         };
       
-      case 'ACTIVE':
-        const autoJoinMessage = selectedNumber && walletBalance >= 10 
-          ? `${players} players playing - Auto-joining game...` 
-          : `${players} players playing - Select a card to join`;
-        
-        return {
-          message: selectedNumber && walletBalance >= 10 ? '🚀 Game Starting!' : '🎯 Game in Progress',
-          description: autoJoinMessage,
-          color: 'bg-green-500/20 border-green-500/30 text-green-300',
-          icon: <Play className="w-5 h-5" />
-        };
-      
+    case 'ACTIVE':
+  const activeMessage = !selectedNumber 
+    ? `${players} players playing - Select a card to join`
+    : walletBalance >= 10 
+      ? `${players} players playing - Auto-joining with card #${selectedNumber}...`
+      : `${players} players playing - Joining as spectator...`;
+  
+  return {
+    message: selectedNumber && walletBalance >= 10 ? '🚀 Joining Game!' : '🎯 Game in Progress',
+    description: activeMessage,
+    color: 'bg-green-500/20 border-green-500/30 text-green-300',
+    icon: <Play className="w-5 h-5" />
+  };
       case 'FINISHED':
         return {
           message: '🏁 Game Finished',
