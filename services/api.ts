@@ -1,15 +1,16 @@
-// services/api.ts - UPDATED WITH FIXED WALLET ENDPOINTS
+// services/api.ts - FIXED VERSION
 import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+// Use your Render backend URL directly
+const API_BASE_URL = 'https://telegram-bingo-bot-lwrl.onrender.com/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 second timeout
+  timeout: 15000, // 15 second timeout for better reliability
 });
 
 // Add auth token to requests
@@ -48,6 +49,7 @@ api.interceptors.response.use(
       if (typeof window !== 'undefined') {
         localStorage.removeItem('bingo_token');
         localStorage.removeItem('user_id');
+        localStorage.removeItem('telegram_user_id');
       }
     }
     
@@ -71,44 +73,46 @@ const getUserId = (): string | null => {
   return localStorage.getItem('user_id');
 };
 
-// services/api.ts - UPDATE authAPI methods
+// Helper function to get Telegram ID
+const getTelegramId = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('telegram_user_id');
+};
+
+// FIXED: All endpoints now use the same api instance with consistent base URL
 export const authAPI = {
-  // Telegram authentication
+  // Telegram WebApp authentication - FIXED: use api instance
   telegramLogin: (initData: string) => 
     api.post('/auth/telegram', { initData }),
 
-  // Quick authentication
+  // Quick authentication - FIXED: use api instance
   quickAuth: (telegramId: string) =>
     api.post('/auth/quick-auth', { telegramId }),
 
-  // Play endpoint
+  // Play endpoint - NEW: for auto user creation
   play: (telegramId: string, initData?: string) =>
     api.post('/auth/play', { telegramId, initData }),
 
-  // Get user profile
-  getProfile: (userId: string) =>
+  // Get user profile by ID (accepts both MongoDB ID and Telegram ID) - FIXED: use api instance
+  getProfile: (userId: string) => 
     api.get(`/auth/profile/${userId}`),
 
-  // Get user by Telegram ID
+  // Get user profile by Telegram ID specifically - NEW
   getProfileByTelegramId: (telegramId: string) =>
     api.get(`/auth/profile/telegram/${telegramId}`),
 
-  // Get user stats
+  // Verify endpoint for manual verification - FIXED: use api instance
+  verify: (initData: string) =>
+    api.post('/auth/verify', { initData }),
+
+  // Get user stats - FIXED: use api instance
   getStats: (userId: string) =>
     api.get(`/auth/stats/${userId}`),
 
-  // Verify endpoint
-  verify: (initData: string) =>
-    api.post('/auth/verify', { initData }),
+  // Create default user - NEW: for testing
+  createDefaultUser: () =>
+    api.get('/auth/create-default-user'),
 };
-
-// export const walletAPI = {
-//   getBalance: (userId: string) =>
-//     api.get(`/wallet/balance?userId=${userId}`),
-
-//   updateBalance: (userId: string, amount: number) =>
-//     api.post('/wallet/update', { userId, amount }),
-// };
 
 export const gameAPI = {
   // Game management
@@ -178,11 +182,15 @@ export const gameAPI = {
 };
 
 export const walletAPI = {
-  // Balance - include userId in query params instead of headers
+  // Balance - include userId in query params
   getBalance: (userId: string) =>
-    api.get<{ success: boolean; balance: number }>(`/wallet/balance`, {
+    api.get<{ success: boolean; balance: number; user?: any }>(`/wallet/balance`, {
       params: { userId }
     }),
+  
+  // Update balance - NEW: for adding/removing funds
+  updateBalance: (userId: string, amount: number) =>
+    api.post<{ success: boolean; balance: number }>(`/wallet/update`, { userId, amount }),
   
   // Transactions - include userId in query params
   getTransactions: (userId: string, limit?: number, page?: number) =>
@@ -207,12 +215,35 @@ export const walletAPI = {
     api.post<{ success: boolean; wallet: any; transaction: any }>(`/wallet/admin/approve-deposit/${transactionId}`, {
       userId
     }),
+
+  // Health check
+  healthCheck: () =>
+    api.get<{ status: string; timestamp: string }>('/wallet/health'),
 };
 
-// Convenience methods that automatically get userId from localStorage
+// Enhanced convenience methods with better fallbacks
 export const walletAPIAuto = {
-  getBalance: () => {
-    const userId = getUserId();
+  getBalance: async () => {
+    // Try multiple ways to get user ID
+    let userId = getUserId();
+    const telegramId = getTelegramId();
+
+    if (!userId && telegramId) {
+      // If we have telegramId but no userId, try to get profile first
+      try {
+        const profileResponse = await authAPI.getProfileByTelegramId(telegramId);
+        if (profileResponse.data.success && profileResponse.data.user._id) {
+          userId = profileResponse.data.user._id;
+          // FIXED: Add null check before setting localStorage
+          if (userId) {
+            localStorage.setItem('user_id', userId);
+          }
+        }
+      } catch (error) {
+        console.warn('Could not get user profile for balance check');
+      }
+    }
+
     if (!userId) throw new Error('User ID not found');
     return walletAPI.getBalance(userId);
   },
@@ -228,6 +259,29 @@ export const walletAPIAuto = {
     if (!userId) throw new Error('User ID not found');
     return walletAPI.createDeposit(userId, data);
   },
+
+  updateBalance: (amount: number) => {
+    const userId = getUserId();
+    if (!userId) throw new Error('User ID not found');
+    return walletAPI.updateBalance(userId, amount);
+  },
 };
+
+// Test connection function
+export const testAPIConnection = async (): Promise<boolean> => {
+  try {
+    const response = await api.get('/auth/health');
+    console.log('✅ API Connection successful:', response.data);
+    return true;
+  } catch (error) {
+    console.error('❌ API Connection failed:', error);
+    return false;
+  }
+};
+
+// Initialize API connection on import
+if (typeof window !== 'undefined') {
+  testAPIConnection();
+}
 
 export default api;
