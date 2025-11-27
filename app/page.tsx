@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
-import { walletAPIAuto, gameAPI } from '../services/api';
+import { walletAPIAuto, gameAPI, authAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
 import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy, Target } from 'lucide-react';
 import { motion } from 'framer-motion';
