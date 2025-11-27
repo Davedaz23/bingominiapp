@@ -222,48 +222,74 @@ export const walletAPI = {
 };
 
 // Enhanced convenience methods with better fallbacks
+// services/api.ts - FIXED WALLET METHODS
+// Enhanced convenience methods with proper ID handling
 export const walletAPIAuto = {
   getBalance: async () => {
-    // Try multiple ways to get user ID
-    let userId = getUserId();
+    // Try to get the correct user ID
     const telegramId = getTelegramId();
+    const userId = getUserId();
 
-    if (!userId && telegramId) {
-      // If we have telegramId but no userId, try to get profile first
-      try {
-        const profileResponse = await authAPI.getProfileByTelegramId(telegramId);
-        if (profileResponse.data.success && profileResponse.data.user._id) {
-          userId = profileResponse.data.user._id;
-          // FIXED: Add null check before setting localStorage
-          if (userId) {
-            localStorage.setItem('user_id', userId);
-          }
-        }
-      } catch (error) {
-        console.warn('Could not get user profile for balance check');
-      }
+    console.log('💰 Wallet balance request:', { telegramId, userId });
+
+    // Prefer Telegram ID for wallet requests since backend expects it
+    if (telegramId && telegramId.match(/^\d+$/)) {
+      console.log('💰 Using Telegram ID for balance:', telegramId);
+      return walletAPI.getBalance(telegramId);
     }
 
-    if (!userId) throw new Error('User ID not found');
-    return walletAPI.getBalance(userId);
+    // Fallback to user ID if it's a valid MongoDB ID
+    if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
+      console.log('💰 Using MongoDB ID for balance:', userId);
+      return walletAPI.getBalance(userId);
+    }
+
+    throw new Error('No valid user ID found for wallet balance');
   },
   
-  getTransactions: (limit?: number, page?: number) => {
+  getTransactions: async (limit?: number, page?: number) => {
+    const telegramId = getTelegramId();
     const userId = getUserId();
-    if (!userId) throw new Error('User ID not found');
-    return walletAPI.getTransactions(userId, limit, page);
+
+    if (telegramId && telegramId.match(/^\d+$/)) {
+      return walletAPI.getTransactions(telegramId, limit, page);
+    }
+
+    if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return walletAPI.getTransactions(userId, limit, page);
+    }
+
+    throw new Error('No valid user ID found for transactions');
   },
   
-  createDeposit: (data: { amount: number; receiptImage: string; reference: string; description?: string }) => {
+  createDeposit: async (data: { amount: number; receiptImage: string; reference: string; description?: string }) => {
+    const telegramId = getTelegramId();
     const userId = getUserId();
-    if (!userId) throw new Error('User ID not found');
-    return walletAPI.createDeposit(userId, data);
+
+    if (telegramId && telegramId.match(/^\d+$/)) {
+      return walletAPI.createDeposit(telegramId, data);
+    }
+
+    if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return walletAPI.createDeposit(userId, data);
+    }
+
+    throw new Error('No valid user ID found for deposit');
   },
 
-  updateBalance: (amount: number) => {
+  updateBalance: async (amount: number) => {
+    const telegramId = getTelegramId();
     const userId = getUserId();
-    if (!userId) throw new Error('User ID not found');
-    return walletAPI.updateBalance(userId, amount);
+
+    if (telegramId && telegramId.match(/^\d+$/)) {
+      return walletAPI.updateBalance(telegramId, amount);
+    }
+
+    if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return walletAPI.updateBalance(userId, amount);
+    }
+
+    throw new Error('No valid user ID found for balance update');
   },
 };
 
