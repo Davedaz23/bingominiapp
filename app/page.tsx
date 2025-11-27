@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { walletAPIAuto, gameAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
-import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy } from 'lucide-react';
+import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy, Target } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 // Memoized Bingo Card Component matching your design system
@@ -100,6 +100,91 @@ const BingoCardPreview = ({ cardNumber, numbers }: { cardNumber: number; numbers
   );
 };
 
+// All Numbers Grid Component - Shows all 75 bingo numbers in compact layout
+const AllBingoNumbersGrid = ({ calledNumbers = [] }: { calledNumbers?: number[] }) => {
+  const bingoRanges = [
+    { letter: 'B', min: 1, max: 15 },
+    { letter: 'I', min: 16, max: 30 },
+    { letter: 'N', min: 31, max: 45 },
+    { letter: 'G', min: 46, max: 60 },
+    { letter: 'O', min: 61, max: 75 }
+  ];
+
+  return (
+    <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-lg p-4 border border-gray-700">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-black text-white flex items-center gap-1">
+          <Target className="w-3 h-3 text-yellow-400" />
+          All Numbers
+        </h3>
+        <div className="text-xs text-gray-400 font-medium">
+          {calledNumbers.length}/75 Called
+        </div>
+      </div>
+
+      {/* BINGO Header */}
+      <div className="grid grid-cols-5 gap-1 mb-2">
+        {bingoRanges.map((range) => (
+          <div
+            key={range.letter}
+            className="text-center font-black text-xs text-yellow-400 bg-yellow-400/10 py-1 rounded-md"
+          >
+            {range.letter}
+          </div>
+        ))}
+      </div>
+
+      {/* Numbers Grid - Compact 3x5 layout for each column */}
+      <div className="grid grid-cols-5 gap-1">
+        {bingoRanges.map((range, colIndex) => (
+          <div key={range.letter} className="space-y-0.5">
+            {Array.from({ length: 15 }, (_, i) => range.min + i).map((number, index) => {
+              const isCalled = calledNumbers.includes(number);
+              const row = Math.floor(index / 3);
+              const col = index % 3;
+              
+              return (
+                <motion.div
+                  key={number}
+                  className={`
+                    aspect-square rounded-md flex items-center justify-center font-bold text-[10px]
+                    border transition-all duration-200 cursor-default
+                    ${isCalled 
+                      ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white border-green-500 shadow-sm' 
+                      : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                    }
+                  `}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  {number}
+                </motion.div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* Footer Info */}
+      <div className="mt-3 flex justify-between items-center text-[10px] text-gray-400 border-t border-gray-600 pt-2">
+        <div className="text-center">
+          <div className="font-black text-green-400">{calledNumbers.length}</div>
+          <div>Called</div>
+        </div>
+        <div className="text-center">
+          <div className="font-black text-gray-300">75</div>
+          <div>Total</div>
+        </div>
+        <div className="text-center">
+          <div className="font-black text-yellow-400">{75 - calledNumbers.length}</div>
+          <div>Remaining</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Function to generate bingo card numbers based on selected card number
 const generateBingoCard = (cardNumber: number) => {
   // Use the card number as a seed for consistent card generation
@@ -161,6 +246,8 @@ export default function Home() {
   const [restartCountdown, setRestartCountdown] = useState<number>(30);
   const [currentPlayers, setCurrentPlayers] = useState<number>(0);
   const [gameData, setGameData] = useState<any>(null);
+  const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
+  const [showGameView, setShowGameView] = useState<boolean>(false);
   const router = useRouter();
 
   // Get the correct user ID for wallet operations - FIXED
@@ -313,6 +400,15 @@ export default function Home() {
     };
   }, [gameStatus, restartCountdown]);
 
+  // Simulate called numbers for demo (replace with actual game data)
+  useEffect(() => {
+    if (gameStatus === 'ACTIVE' && selectedNumber) {
+      // Simulate some called numbers
+      const simulatedCalledNumbers = [7, 23, 45, 61, 12, 34, 56, 72, 8, 19];
+      setCalledNumbers(simulatedCalledNumbers);
+    }
+  }, [gameStatus, selectedNumber]);
+
   const checkGameStatus = async () => {
     try {
       const waitingGamesResponse = await gameAPI.getWaitingGames();
@@ -325,9 +421,9 @@ export default function Home() {
         setGameData(game);
         setRestartCountdown(0);
         
-        // If user already selected a card and game is active, auto-join
+        // If user already selected a card and game is active, show game view
         if (selectedNumber && !joining) {
-          handleJoinGame();
+          setShowGameView(true);
         }
       } else if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game = waitingGamesResponse.data.games[0];
@@ -350,6 +446,7 @@ export default function Home() {
     setSelectedNumber(number);
     setBingoCard(generateBingoCard(number));
     setJoinError('');
+    setShowGameView(false);
   };
 
   const handleJoinGame = async () => {
@@ -393,6 +490,7 @@ export default function Home() {
         
         if (joinResponse.data.success) {
           const updatedGame = joinResponse.data.game;
+          setShowGameView(true);
           
           // Wait a moment for game to process, then redirect
           setTimeout(() => {
@@ -424,6 +522,7 @@ export default function Home() {
     try {
       const activeGamesResponse = await gameAPI.getActiveGames();
       if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+        setShowGameView(true);
         setTimeout(() => {
           router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
         }, 1000);
@@ -441,6 +540,7 @@ export default function Home() {
     try {
       const activeGamesResponse = await gameAPI.getActiveGames();
       if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+        setShowGameView(true);
         router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
       } else {
         alert('No active games to watch at the moment.');
@@ -491,16 +591,16 @@ export default function Home() {
     }
   };
 
-  // If game is ACTIVE and user is not in selection mode, show game view
-  if (gameStatus === 'ACTIVE' && !selectedNumber) {
+  // Game View when user has selected a card and game is active
+  if (showGameView && selectedNumber && bingoCard) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
         {/* Header with Wallet */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-white font-bold text-xl">Bingo Game</h1>
-              <p className="text-white/60 text-sm">Game in Progress</p>
+              <p className="text-white/60 text-sm">Game Started - Good Luck! 🍀</p>
             </div>
             <div className="text-right">
               <p className="text-white font-bold text-lg">{walletBalance} ብር</p>
@@ -509,59 +609,81 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Game Status Display */}
+        {/* Game Status Banner */}
         <motion.div 
-          className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-green-500/30 text-center"
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
+          className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
         >
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <Play className="w-8 h-8 text-green-300" />
-            <p className="text-white font-bold text-2xl">Game in Progress!</p>
+          <div className="flex items-center justify-center gap-2">
+            <Play className="w-5 h-5 text-green-300" />
+            <p className="text-white font-bold text-lg">Game Started!</p>
           </div>
-          <p className="text-green-200 text-lg mb-4">
-            {currentPlayers} players are currently playing
+          <p className="text-green-200 text-sm text-center mt-1">
+            {currentPlayers} players - Card #{selectedNumber} - {calledNumbers.length}/75 numbers called
           </p>
-          
-          <div className="grid grid-cols-2 gap-4 mt-6">
-            <motion.button
-              onClick={() => {
-                // User can still select a card to join the active game
-                setShowNumberSelection(true);
-              }}
-              className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 px-6 rounded-xl transition-colors flex items-center justify-center gap-2"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <span>🎯</span>
-              Join Game
-            </motion.button>
-            
-            <motion.button
-              onClick={handleWatchGames}
-              className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-6 rounded-xl transition-colors flex items-center justify-center gap-2"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <span>👀</span>
-              Watch Game
-            </motion.button>
-          </div>
         </motion.div>
 
-        {/* Quick Info */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-          <div className="text-center text-white/80">
-            <p className="text-sm mb-2">🎮 Game is currently running</p>
-            <p className="text-xs text-white/60">
-              You can join to play or watch the ongoing game. 
-              Late joiners can still win with the numbers already called!
-            </p>
+        {/* Main Game Layout - Two Column Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Left Column: User's Bingo Card */}
+          <div className="space-y-4">
+            <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard} />
+            
+            {/* Game Controls */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+              <div className="grid grid-cols-2 gap-3">
+                <motion.button
+                  onClick={() => setShowGameView(false)}
+                  className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Change Card
+                </motion.button>
+                <motion.button
+                  onClick={handleWatchGames}
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <span>👀</span>
+                  Watch Live
+                </motion.button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: All Numbers Grid */}
+          <div>
+            <AllBingoNumbersGrid calledNumbers={calledNumbers} />
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20">
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <p className="text-white font-bold text-lg">{calledNumbers.length}</p>
+              <p className="text-white/60 text-xs">Numbers Called</p>
+            </div>
+            <div>
+              <p className="text-white font-bold text-lg">{75 - calledNumbers.length}</p>
+              <p className="text-white/60 text-xs">Remaining</p>
+            </div>
+            <div>
+              <p className="text-white font-bold text-lg">{currentPlayers}</p>
+              <p className="text-white/60 text-xs">Players</p>
+            </div>
           </div>
         </div>
       </div>
     );
   }
+
+  // Rest of the original code remains the same for the selection view...
+  // [The rest of your original component code for the selection view goes here]
+  // This includes the number selection grid, status displays, etc.
 
   if (isLoading) {
     return (
