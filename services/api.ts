@@ -1,4 +1,4 @@
-// services/api.ts - FIXED VERSION
+// services/api.ts - COMPLETE FIXED VERSION
 import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
@@ -35,7 +35,6 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    console.log("Direct API Error",error);
     console.error('❌ API Error:', {
       url: error.config?.url,
       method: error.config?.method,
@@ -80,43 +79,74 @@ const getTelegramId = (): string | null => {
   return localStorage.getItem('telegram_user_id');
 };
 
+// Types for card selection
+export interface CardSelectionResponse {
+  success: boolean;
+  cardNumber: number;
+  gameId: string;
+  userId: string;
+  selectionEndTime: string;
+}
+
+export interface AvailableCardsResponse {
+  success: boolean;
+  availableCards: number[];
+  takenCards: { cardNumber: number; userId: string }[];
+  isSelectionActive: boolean;
+  selectionEndTime: string;
+  timeRemaining: number;
+}
+
+export interface CardSelectionStatusResponse {
+  success: boolean;
+  isSelectionActive: boolean;
+  selectionEndTime: string;
+  timeRemaining: number;
+  totalCardsSelected: number;
+}
+
+export interface CardReleaseResponse {
+  success: boolean;
+  released: boolean;
+}
+
 // FIXED: All endpoints now use the same api instance with consistent base URL
 export const authAPI = {
-  // Telegram WebApp authentication - FIXED: use api instance
+  // Telegram WebApp authentication
   telegramLogin: (initData: string) => 
     api.post('/auth/telegram', { initData }),
 
-  // Quick authentication - FIXED: use api instance
+  // Quick authentication
   quickAuth: (telegramId: string) =>
     api.post('/auth/quick-auth', { telegramId }),
 
-  // Play endpoint - NEW: for auto user creation
+  // Play endpoint - for auto user creation
   play: (telegramId: string, initData?: string) =>
     api.post('/auth/play', { telegramId, initData }),
 
-  // Get user profile by ID (accepts both MongoDB ID and Telegram ID) - FIXED: use api instance
+  // Get user profile by ID (accepts both MongoDB ID and Telegram ID)
   getProfile: (userId: string) => 
     api.get(`/auth/profile/${userId}`),
 
-  // Get user profile by Telegram ID specifically - NEW
+  // Get user profile by Telegram ID specifically
   getProfileByTelegramId: (telegramId: string) =>
     api.get(`/auth/profile/telegram/${telegramId}`),
 
-  // Verify endpoint for manual verification - FIXED: use api instance
+  // Verify endpoint for manual verification
   verify: (initData: string) =>
     api.post('/auth/verify', { initData }),
 
-  // Get user stats - FIXED: use api instance
+  // Get user stats
   getStats: (userId: string) =>
     api.get(`/auth/stats/${userId}`),
 
-  // Create default user - NEW: for testing
+  // Create default user - for testing
   createDefaultUser: () =>
     api.get('/auth/create-default-user'),
 };
 
 export const gameAPI = {
-  // Game management
+  // ==================== GAME MANAGEMENT ====================
   joinGame: (code: string, userId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${code}/join`, { userId }),
   
@@ -132,7 +162,7 @@ export const gameAPI = {
   markNumber: (gameId: string, userId: string, number: number) =>
     api.post<{ success: boolean; bingoCard: BingoCard; isWinner: boolean; isSpectator?: boolean }>(`/games/${gameId}/mark-number`, { userId, number }),
   
-  // Game queries
+  // ==================== GAME QUERIES ====================
   getActiveGames: () =>
     api.get<{ success: boolean; games: Game[] }>('/games/active'),
   
@@ -148,7 +178,7 @@ export const gameAPI = {
   getUserBingoCard: (gameId: string, userId: string) =>
     api.get<{ success: boolean; bingoCard: BingoCard }>(`/games/${gameId}/card/${userId}`),
   
-  // Game actions
+  // ==================== GAME ACTIONS ====================
   leaveGame: (gameId: string, userId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${gameId}/leave`, { userId }),
   
@@ -158,14 +188,14 @@ export const gameAPI = {
   checkForWin: (gameId: string, userId: string) =>
     api.post<{ success: boolean; isWinner: boolean; bingoCard: BingoCard; winningPattern?: string }>(`/games/${gameId}/check-win`, { userId }),
   
-  // Game info
+  // ==================== GAME INFO ====================
   getWinnerInfo: (gameId: string) =>
     api.get<{ success: boolean; winnerInfo: WinnerInfo }>(`/games/${gameId}/winner`),
   
   getGameStats: (gameId: string) =>
     api.get<{ success: boolean; stats: GameStats }>(`/games/${gameId}/stats`),
   
-  // User games
+  // ==================== USER GAMES ====================
   getUserActiveGames: (userId: string) =>
     api.get<{ success: boolean; games: Game[] }>(`/games/user/${userId}/active`),
   
@@ -177,44 +207,37 @@ export const gameAPI = {
   getUserGameRole: (gameId: string, userId: string) =>
     api.get<{ success: boolean; role: any }>(`/games/user/${userId}/role/${gameId}`),
   
-  // Health check
-  healthCheck: () =>
-    api.get<{ status: string; timestamp: string; database: string }>('/health'),
-//card  card related
-
-    selectCard: (gameId: string, userId: string, cardNumber: number) => 
-    api.post<{ success: boolean; cardNumber: number; gameId: string; userId: string; selectionEndTime: string }>(
+  // ==================== CARD SELECTION ====================
+  selectCard: (gameId: string, userId: string, cardNumber: number) => 
+    api.post<CardSelectionResponse>(
       `/games/${gameId}/select-card`, 
       { userId, cardNumber }
     ),
   
   getAvailableCards: (gameId: string) => 
-    api.get<{ 
-      success: boolean; 
-      availableCards: number[]; 
-      takenCards: {cardNumber: number, userId: string}[]; 
-      isSelectionActive: boolean; 
-      selectionEndTime: string;
-      timeRemaining: number;
-    }>(`/games/${gameId}/available-cards`),
+    api.get<AvailableCardsResponse>(
+      `/games/${gameId}/available-cards`
+    ),
   
   releaseCard: (gameId: string, userId: string) => 
-    api.post<{ success: boolean; released: boolean }>(
+    api.post<CardReleaseResponse>(
       `/games/${gameId}/release-card`, 
       { userId }
     ),
   
   getCardSelectionStatus: (gameId: string) => 
-    api.get<{ 
-      success: boolean; 
-      isSelectionActive: boolean; 
-      selectionEndTime: string;
-      timeRemaining: number;
-      totalCardsSelected: number;
-    }>(`/games/${gameId}/card-selection-status`)
-};
+    api.get<CardSelectionStatusResponse>(
+      `/games/${gameId}/card-selection-status`
+    ),
 
-//card
+  // ==================== HEALTH CHECK ====================
+  healthCheck: () =>
+    api.get<{ status: string; timestamp: string; database: string }>('/health'),
+
+  // ==================== GAMES HEALTH CHECK ====================
+  gamesHealthCheck: () =>
+    api.get<{ success: boolean; status: string; activeGames: number; waitingGames: number; timestamp: string }>('/games/health/status')
+};
 
 export const walletAPI = {
   // Balance - include userId in query params
@@ -223,7 +246,7 @@ export const walletAPI = {
       params: { userId }
     }),
   
-  // Update balance - NEW: for adding/removing funds
+  // Update balance - for adding/removing funds
   updateBalance: (userId: string, amount: number) =>
     api.post<{ success: boolean; balance: number }>(`/wallet/update`, { userId, amount }),
   
@@ -256,8 +279,6 @@ export const walletAPI = {
     api.get<{ status: string; timestamp: string }>('/wallet/health'),
 };
 
-// Enhanced convenience methods with better fallbacks
-// services/api.ts - FIXED WALLET METHODS
 // Enhanced convenience methods with proper ID handling
 export const walletAPIAuto = {
   getBalance: async () => {
@@ -328,21 +349,78 @@ export const walletAPIAuto = {
   },
 };
 
-// Test connection function
-export const testAPIConnection = async (): Promise<boolean> => {
+// Enhanced API connection test with detailed diagnostics
+export const testAPIConnection = async (): Promise<{
+  success: boolean;
+  message: string;
+  details?: any;
+}> => {
   try {
-    const response = await api.get('/auth/health');
+    const response = await api.get('/health');
     console.log('✅ API Connection successful:', response.data);
-    return true;
-  } catch (error) {
+    return {
+      success: true,
+      message: 'API connection successful',
+      details: response.data
+    };
+  } catch (error: any) {
     console.error('❌ API Connection failed:', error);
-    return false;
+    return {
+      success: false,
+      message: error.message || 'API connection failed',
+      details: {
+        status: error.response?.status,
+        data: error.response?.data
+      }
+    };
+  }
+};
+
+// Test card selection endpoints specifically
+export const testCardSelectionAPI = async (gameId: string): Promise<{
+  success: boolean;
+  message: string;
+  details?: any;
+}> => {
+  try {
+    const response = await gameAPI.getCardSelectionStatus(gameId);
+    console.log('✅ Card Selection API test successful:', response.data);
+    return {
+      success: true,
+      message: 'Card selection API working',
+      details: response.data
+    };
+  } catch (error: any) {
+    console.error('❌ Card Selection API test failed:', error);
+    return {
+      success: false,
+      message: error.message || 'Card selection API failed',
+      details: {
+        status: error.response?.status,
+        data: error.response?.data
+      }
+    };
   }
 };
 
 // Initialize API connection on import
 if (typeof window !== 'undefined') {
-  testAPIConnection();
+  // Test connection but don't block the app
+  setTimeout(() => {
+    testAPIConnection().then(result => {
+      if (!result.success) {
+        console.warn('⚠️ API connection test failed on startup');
+      }
+    });
+  }, 1000);
 }
+
+// Export utility functions for external use
+export const apiUtils = {
+  getUserId,
+  getTelegramId,
+  testAPIConnection,
+  testCardSelectionAPI
+};
 
 export default api;
