@@ -456,24 +456,60 @@ useEffect(() => {
   }, [gameStatus, restartCountdown]);
   
   //Card save
-// Add these functions to your Home component
-// Determine when cards should be selectable
+
+// COMPREHENSIVE CARD SELECTION LOGIC
 const shouldEnableCardSelection = () => {
-  // If game is WAITING and user has sufficient balance, enable selection
-  if (gameStatus === 'WAITING' && walletBalance >= 10) {
+  console.log('🎯 Card Selection Check:', {
+    gameStatus,
+    walletBalance,
+    selectedNumber,
+    isSelectionActive: cardSelectionStatus.isSelectionActive,
+    hasGameData: !!gameData?._id
+  });
+
+  // If user already selected a card, they can't select another one
+  if (selectedNumber) {
+    console.log('🎯 User already has card #', selectedNumber);
+    return false;
+  }
+
+  // If no game data, can't select cards
+  if (!gameData?._id) {
+    console.log('🎯 No game data available');
+    return false;
+  }
+
+  // SCENARIO 1: User has sufficient balance AND card selection is active
+  if (walletBalance >= 10 && cardSelectionStatus.isSelectionActive) {
+    console.log('🎯 Scenario 1: Sufficient balance + Active selection');
     return true;
   }
-  
-  // If game is FINISHED and countdown is running, enable selection for next game
-  if (gameStatus === 'FINISHED' && restartCountdown > 0 && walletBalance >= 10) {
+
+  // SCENARIO 2: User has sufficient balance AND game is WAITING
+  if (walletBalance >= 10 && gameStatus === 'WAITING') {
+    console.log('🎯 Scenario 2: Sufficient balance + Game waiting');
     return true;
   }
-  
-  // If game is RESTARTING, enable selection
-  if (gameStatus === 'RESTARTING' && walletBalance >= 10) {
+
+  // SCENARIO 3: User has sufficient balance AND game is FINISHED (next game preparation)
+  if (walletBalance >= 10 && gameStatus === 'FINISHED' && restartCountdown > 0) {
+    console.log('🎯 Scenario 3: Sufficient balance + Game finished (next game soon)');
     return true;
   }
-  
+
+  // SCENARIO 4: User has sufficient balance AND game is RESTARTING
+  if (walletBalance >= 10 && gameStatus === 'RESTARTING') {
+    console.log('🎯 Scenario 4: Sufficient balance + Game restarting');
+    return true;
+  }
+
+  // SCENARIO 5: Game is ACTIVE but user has balance - allow late entry if cards available
+  if (walletBalance >= 10 && gameStatus === 'ACTIVE' && availableCards.length > 0) {
+    console.log('🎯 Scenario 5: Sufficient balance + Game active (late entry)');
+    return true;
+  }
+
+  console.log('🎯 Card selection disabled - conditions not met');
   return false;
 };
 const fetchAvailableCards = async () => {
