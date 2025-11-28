@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
-import { walletAPIAuto, gameAPI, authAPI } from '../services/api';
+import { walletAPIAuto, gameAPI, authAPI, walletAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
 import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy, Target } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -247,40 +247,70 @@ const [cardSelectionError, setCardSelectionError] = useState<string>('');
 
   const router = useRouter();
 
-  const getWalletUserId = (): string | null => {
-    if (!user) return null;
-    
-    if (typeof window !== 'undefined') {
-      const storedUserId = localStorage.getItem('user_id');
-      if (storedUserId) return storedUserId;
+const getWalletUserId = (): string | null => {
+  if (!user) return null;
+  
+  // Prefer Telegram ID for wallet operations
+  if (user.telegramId) {
+    console.log('💰 Using Telegram ID from user object:', user.telegramId);
+    return user.telegramId;
+  }
+  
+  // Fallback to localStorage
+  if (typeof window !== 'undefined') {
+    const telegramId = localStorage.getItem('telegram_user_id');
+    if (telegramId) {
+      console.log('💰 Using Telegram ID from localStorage:', telegramId);
+      return telegramId;
     }
     
-    return user.id?.toString() || null;
-  };
-
-  const initializeUserWallet = async (userId: string): Promise<boolean> => {
-    try {
-      const balanceResponse = await walletAPIAuto.getBalance();
-      
-      if (balanceResponse.data.success) {
-        console.log('✅ Wallet already exists');
-        return true;
-      }
-    } catch (error: any) {
-      if (error.response?.status === 404) {
-        try {
-          console.log('🆕 Creating new wallet for user...');
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          const retryResponse = await walletAPIAuto.getBalance();
-          return retryResponse.data.success;
-        } catch (retryError) {
-          console.error('Failed to initialize wallet:', retryError);
-          return false;
+    const storedUserId = localStorage.getItem('user_id');
+    if (storedUserId) {
+      console.log('💰 Using MongoDB ID from localStorage:', storedUserId);
+      return storedUserId;
+    }
+  }
+  
+  // Last resort - use user ID from auth context
+  console.log('💰 Using user ID from auth context:', user.id);
+  return user.id?.toString() || null;
+};
+ const initializeUserWallet = async (userId: string): Promise<boolean> => {
+  try {
+    console.log('💰 Initializing wallet for user:', userId);
+    
+    // First, try to get balance directly
+    const balanceResponse = await walletAPIAuto.getBalance();
+    
+    if (balanceResponse.data.success) {
+      console.log('✅ Wallet exists with balance:', balanceResponse.data.balance);
+      setWalletBalance(balanceResponse.data.balance);
+      return true;
+    }
+  } catch (error: any) {
+    console.log('🔄 Wallet initialization attempt:', error.message);
+    
+    // If wallet doesn't exist, try to initialize it
+    if (error.response?.status === 404 || error.message?.includes('not found')) {
+      try {
+        console.log('🆕 Creating new wallet for user...');
+        
+        // Use the direct API call to initialize wallet
+        const initResponse = await walletAPI.updateBalance(userId, 0);
+        
+        if (initResponse.data.success) {
+          console.log('✅ Wallet initialized successfully');
+          setWalletBalance(0);
+          return true;
         }
+      } catch (initError) {
+        console.error('❌ Failed to initialize wallet:', initError);
       }
     }
-    return false;
-  };
+  }
+  return false;
+};
+
   // Add these useEffect hooks to your component
 
 // Fetch available cards when game data changes
@@ -318,62 +348,69 @@ useEffect(() => {
   }
 }, [cardSelectionStatus, selectedNumber, availableCards]);
 
-  useEffect(() => {
-    const initializeApp = async () => {
-      if (!isAuthenticated || !user) return;
+ useEffect(() => {
+  const initializeApp = async () => {
+    if (!isAuthenticated || !user) return;
 
-      try {
-        setLoading(true);
-        
-        const walletUserId = getWalletUserId();
-        if (!walletUserId) {
-          console.error('No user ID available for wallet operations');
-          setLoading(false);
-          return;
-        }
+    try {
+      setLoading(true);
+      
+      const walletUserId = getWalletUserId();
+      if (!walletUserId) {
+        console.error('No user ID available for wallet operations');
+        setLoading(false);
+        return;
+      }
 
-        try {
-          await initializeUserWallet(walletUserId);
-        } catch (error) {
-          console.log('Wallet initialization completed with warnings:', error);
-        }
-        
+      console.log('💰 Starting wallet initialization for:', walletUserId);
+      
+      // Initialize wallet first
+      await initializeUserWallet(walletUserId);
+      
+      // Then load balance with retry logic
+      let retries = 3;
+      while (retries > 0) {
         try {
           const walletResponse = await walletAPIAuto.getBalance();
           if (walletResponse.data.success) {
+            console.log('💰 Balance loaded successfully:', walletResponse.data.balance);
             setWalletBalance(walletResponse.data.balance);
-          } else {
+            break;
+          }
+        } catch (balanceError: any) {
+          console.warn(`💰 Balance load attempt ${4 - retries} failed:`, balanceError.message);
+          retries--;
+          
+          if (retries === 0) {
+            console.error('💰 All balance load attempts failed');
             setWalletBalance(0);
+          } else {
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
-        } catch (error: any) {
-          console.error('Error loading wallet balance:', error);
-          setWalletBalance(0);
         }
-
-        try {
-          const userActiveGamesResponse = await gameAPI.getUserActiveGames(user.id);
-          if (userActiveGamesResponse.data.success && userActiveGamesResponse.data.games.length > 0) {
-            const game = userActiveGamesResponse.data.games[0];
-            setActiveGame(game);
-            router.push(`/game/${game._id}`);
-            return;
-          }
-        } catch (error) {
-          console.error('Error checking user active games:', error);
-        }
-
-        await checkGameStatus();
-        setShowNumberSelection(true);
-      } catch (error) {
-        console.error('Initialization error:', error);
-        setShowNumberSelection(true);
-      } finally {
-        setLoading(false);
       }
-    };
 
-    initializeApp();
-  }, [isAuthenticated, router, user]);
+      // Rest of your initialization code...
+      await checkGameStatus();
+      setShowNumberSelection(true);
+      
+    } catch (error) {
+      console.error('Initialization error:', error);
+      setShowNumberSelection(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  initializeApp();
+}, [isAuthenticated, user]);
+useEffect(() => {
+  console.log('💰 Wallet balance state updated:', walletBalance);
+}, [walletBalance]);
+
+// Add this debug function to test wallet API directly:
+
 
   // Auto-redirect when game starts and user has selected a card with balance
   useEffect(() => {
