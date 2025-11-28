@@ -285,10 +285,11 @@ const [cardSelectionError, setCardSelectionError] = useState<string>('');
 
 // Fetch available cards when game data changes
 useEffect(() => {
-  if (gameData?._id) {
+  if (gameData?._id && shouldEnableCardSelection()) {
     fetchAvailableCards();
   }
-}, [gameData]);
+}, [gameData, gameStatus, walletBalance]);
+
 
 // Check card selection status periodically
 useEffect(() => {
@@ -419,7 +420,25 @@ useEffect(() => {
   
   //Card save
 // Add these functions to your Home component
-
+// Determine when cards should be selectable
+const shouldEnableCardSelection = () => {
+  // If game is WAITING and user has sufficient balance, enable selection
+  if (gameStatus === 'WAITING' && walletBalance >= 10) {
+    return true;
+  }
+  
+  // If game is FINISHED and countdown is running, enable selection for next game
+  if (gameStatus === 'FINISHED' && restartCountdown > 0 && walletBalance >= 10) {
+    return true;
+  }
+  
+  // If game is RESTARTING, enable selection
+  if (gameStatus === 'RESTARTING' && walletBalance >= 10) {
+    return true;
+  }
+  
+  return false;
+};
 const fetchAvailableCards = async () => {
   try {
     if (!gameData?._id) return;
@@ -499,10 +518,13 @@ const checkCardSelectionStatus = async () => {
         timeRemaining: response.data.timeRemaining
       });
       
-      // If selection period ended and user hasn't selected a card, auto-select one
-      if (!response.data.isSelectionActive && !selectedNumber && availableCards.length > 0) {
-        const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
-        await handleCardSelect(randomCard);
+      // Auto-select only if selection is active and user hasn't selected
+      if (response.data.isSelectionActive && !selectedNumber && availableCards.length > 0) {
+        // Only auto-select in the last 5 seconds
+        if (response.data.timeRemaining < 5000) {
+          const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+          await handleCardSelect(randomCard);
+        }
       }
     }
   } catch (error) {
@@ -661,61 +683,74 @@ const checkCardSelectionStatus = async () => {
     }
   }, [showGameView, selectedNumber, walletBalance]);
 
-  const getStatusMessage = () => {
-    const players = currentPlayers || 0;
-    const minPlayers = 2;
-    
-    switch (gameStatus) {
-      case 'WAITING':
-        const playersNeeded = Math.max(0, minPlayers - players);
-        
-        return {
-          message: '🕒 Waiting for Players',
-          description: playersNeeded > 0 
+//  getStatusMessage function:
+const getStatusMessage = () => {
+  const players = currentPlayers || 0;
+  const minPlayers = 2;
+  
+  // Check if user can select cards
+  const canSelectCards = shouldEnableCardSelection();
+  
+  switch (gameStatus) {
+    case 'WAITING':
+      const playersNeeded = Math.max(0, minPlayers - players);
+      
+      return {
+        message: canSelectCards ? '🎯 Select Your Card!' : '🕒 Waiting for Players',
+        description: canSelectCards 
+          ? `${players}/${minPlayers} players - Choose your card number to join`
+          : playersNeeded > 0 
             ? `${players}/${minPlayers} players - Need ${playersNeeded} more to start`
             : `${players}/${minPlayers} players - Ready to start!`,
-          color: 'bg-blue-500/20 border-blue-500/30 text-blue-300',
-          icon: <Users className="w-5 h-5" />
-        };
-      
+        color: canSelectCards 
+          ? 'bg-green-500/20 border-green-500/30 text-green-300'
+          : 'bg-blue-500/20 border-blue-500/30 text-blue-300',
+        icon: canSelectCards ? <Target className="w-5 h-5" /> : <Users className="w-5 h-5" />
+      };
+    
     case 'ACTIVE':
-  const activeMessage = !selectedNumber 
-    ? `${players} players playing - Select a card to join`
-    : walletBalance >= 10 
-      ? `${players} players playing - Auto-joining with card #${selectedNumber}...`
-      : `${players} players playing - Joining as spectator...`;
-  
-  return {
-    message: selectedNumber && walletBalance >= 10 ? '🚀 Joining Game!' : '🎯 Game in Progress',
-    description: activeMessage,
-    color: 'bg-green-500/20 border-green-500/30 text-green-300',
-    icon: <Play className="w-5 h-5" />
-  };
-      case 'FINISHED':
-        return {
-          message: '🏁 Game Finished',
-          description: `New game starting in ${restartCountdown}s - Select your card now!`,
-          color: 'bg-purple-500/20 border-purple-500/30 text-purple-300',
-          icon: <Trophy className="w-5 h-5" />
-        };
+      const activeMessage = !selectedNumber 
+        ? `${players} players playing - ${walletBalance >= 10 ? 'Game in progress' : 'Watch live game'}`
+        : walletBalance >= 10 
+          ? `${players} players playing - Auto-joining with card #${selectedNumber}...`
+          : `${players} players playing - Joining as spectator...`;
       
-      case 'RESTARTING':
-        return {
-          message: '🔄 Starting New Game...',
-          description: 'Please wait while we set up a new game',
-          color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
-          icon: <Clock className="w-5 h-5" />
-        };
-      
-      default:
-        return {
-          message: '❓ Checking Game Status...',
-          description: 'Please wait...',
-          color: 'bg-gray-500/20 border-gray-500/30 text-gray-300',
-          icon: <Clock className="w-5 h-5" />
-        };
-    }
-  };
+      return {
+        message: selectedNumber && walletBalance >= 10 ? '🚀 Joining Game!' : '🎯 Game in Progress',
+        description: activeMessage,
+        color: 'bg-green-500/20 border-green-500/30 text-green-300',
+        icon: <Play className="w-5 h-5" />
+      };
+    
+    case 'FINISHED':
+      return {
+        message: canSelectCards ? '🔄 Next Game Starting Soon!' : '🏁 Game Finished',
+        description: canSelectCards 
+          ? `Select your card for the next game (${restartCountdown}s)`
+          : `New game starting in ${restartCountdown}s`,
+        color: canSelectCards 
+          ? 'bg-orange-500/20 border-orange-500/30 text-orange-300'
+          : 'bg-purple-500/20 border-purple-500/30 text-purple-300',
+        icon: canSelectCards ? <Clock className="w-5 h-5" /> : <Trophy className="w-5 h-5" />
+      };
+    
+    case 'RESTARTING':
+      return {
+        message: '🔄 Starting New Game...',
+        description: 'Please wait while we set up a new game',
+        color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
+        icon: <Clock className="w-5 h-5" />
+      };
+    
+    default:
+      return {
+        message: '❓ Checking Game Status...',
+        description: 'Please wait...',
+        color: 'bg-gray-500/20 border-gray-500/30 text-gray-300',
+        icon: <Clock className="w-5 h-5" />
+      };
+  }
+};
 
   // Auto-join loading screen
   if (showGameView && selectedNumber && walletBalance >= 10) {
@@ -829,30 +864,30 @@ const checkCardSelectionStatus = async () => {
           </p>
         )}
       </motion.div>
-// Add this component after your status message display
-{cardSelectionStatus.isSelectionActive && (
+
+{shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
   <motion.div 
-    className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+    className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30"
     initial={{ opacity: 0, y: -10 }}
     animate={{ opacity: 1, y: 0 }}
   >
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
-        <Clock className="w-4 h-4 text-blue-300" />
-        <p className="text-blue-300 font-bold text-sm">Card Selection</p>
+        <Clock className="w-4 h-4 text-green-300" />
+        <p className="text-green-300 font-bold text-sm">Card Selection Active</p>
       </div>
-      <p className="text-blue-200 text-sm">
+      <p className="text-green-200 text-sm">
         {Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining
       </p>
     </div>
     <div className="mt-2">
-      <div className="flex justify-between text-xs text-blue-200 mb-1">
-        <span>Select your card number</span>
+      <div className="flex justify-between text-xs text-green-200 mb-1">
+        <span>Choose your card number to join the game</span>
         <span>{takenCards.length}/400 cards taken</span>
       </div>
-      <div className="w-full bg-blue-400/20 rounded-full h-2">
+      <div className="w-full bg-green-400/20 rounded-full h-2">
         <div 
-          className="bg-gradient-to-r from-blue-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
+          className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
           style={{ 
             width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
           }}
@@ -864,6 +899,22 @@ const checkCardSelectionStatus = async () => {
         {cardSelectionError}
       </p>
     )}
+  </motion.div>
+)}
+
+{shouldEnableCardSelection() && !cardSelectionStatus.isSelectionActive && (
+  <motion.div 
+    className="bg-orange-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-orange-500/30"
+    initial={{ opacity: 0, y: -10 }}
+    animate={{ opacity: 1, y: 0 }}
+  >
+    <div className="flex items-center justify-center gap-2">
+      <Clock className="w-4 h-4 text-orange-300" />
+      <p className="text-orange-300 font-bold text-sm">Card Selection Starting Soon</p>
+    </div>
+    <p className="text-orange-200 text-xs text-center mt-1">
+      Card selection will begin when the game is ready
+    </p>
   </motion.div>
 )}
       {/* Only show watch button for users with insufficient balance */}
@@ -926,6 +977,7 @@ const checkCardSelectionStatus = async () => {
   </motion.div>
 )}
 
+
 {!selectedNumber && (
   <motion.div 
     className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
@@ -936,7 +988,8 @@ const checkCardSelectionStatus = async () => {
     {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
       const isTaken = takenCards.some(card => card.cardNumber === number);
       const isAvailable = availableCards.includes(number);
-      const isSelectable = cardSelectionStatus.isSelectionActive && isAvailable && !isTaken;
+      const canSelect = shouldEnableCardSelection();
+      const isSelectable = canSelect && isAvailable && !isTaken;
       
       return (
         <motion.button
@@ -948,18 +1001,12 @@ const checkCardSelectionStatus = async () => {
             ${selectedNumber === number
               ? 'bg-yellow-500 text-white scale-105 shadow-lg'
               : isTaken
-              ? 'bg-red-500/50 text-white/50 cursor-not-allowed'
+              ? 'bg-red-500/50 text-white/50 cursor-not-allowed border-red-400/50'
               : isSelectable
-              ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md cursor-pointer'
-              : 'bg-white/10 text-white/30 cursor-not-allowed'
+              ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md cursor-pointer border-white/20'
+              : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
             }
-            border-2 ${
-              selectedNumber === number
-                ? 'border-yellow-400'
-                : isTaken
-                ? 'border-red-400/50'
-                : 'border-white/20'
-            }
+            border-2
             ${!isSelectable ? 'opacity-50' : ''}
           `}
           whileHover={isSelectable ? { scale: 1.05 } : {}}
@@ -972,6 +1019,15 @@ const checkCardSelectionStatus = async () => {
               <div className="w-4 h-4 text-red-300">
                 <svg fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </div>
+            </div>
+          )}
+          {!isTaken && !isSelectable && (
+            <div className="absolute inset-0 flex items-center justify-center opacity-40">
+              <div className="w-3 h-3 text-white/50">
+                <svg fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 9a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clipRule="evenodd" />
                 </svg>
               </div>
             </div>
