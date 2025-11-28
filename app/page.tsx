@@ -505,7 +505,36 @@ useEffect(() => {
   }, [gameStatus, restartCountdown]);
   
   //Card save
+// Add this to your game component
+const handleStartGame = async () => {
+  try {
+    if (!gameData?._id) return;
+    
+    const response = await gameAPI.startGame(gameData._id);
+    
+    if (response.data.success) {
+      console.log('✅ Game started manually');
+      // Refresh game status
+      await checkGameStatus();
+    }
+  } catch (error) {
+    console.error('❌ Failed to start game:', error);
+    setJoinError('Failed to start game');
+  }
+};
 
+// Add start game button for admin/host
+{gameStatus === 'WAITING' && (
+  <motion.button
+    onClick={handleStartGame}
+    className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+    whileHover={{ scale: 1.02 }}
+    whileTap={{ scale: 0.98 }}
+  >
+    <Play className="w-4 h-4" />
+    Start Game Manually
+  </motion.button>
+)}
 // COMPREHENSIVE CARD SELECTION LOGIC
 const shouldEnableCardSelection = () => {
   console.log('🎯 CARD SELECTION DEBUG:', {
