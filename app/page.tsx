@@ -413,8 +413,10 @@ useEffect(() => {
 
 
   // Auto-redirect when game starts and user has selected a card with balance
-// Auto-join when game starts and user has selected a card with balance
 useEffect(() => {
+  // Add null check for user
+  if (!user) return;
+  
   if (gameStatus === 'ACTIVE' && selectedNumber && walletBalance >= 10 && !autoRedirected) {
     console.log('🚀 Auto-redirecting to game - user has card and sufficient balance');
     setAutoRedirected(true);
@@ -437,7 +439,6 @@ useEffect(() => {
         
         if (targetGame) {
           const joinResponse = await gameAPI.joinGame(targetGame.code, user.id);
-          
           
           if (joinResponse.data.success) {
             console.log('✅ Auto-joined game successfully');
