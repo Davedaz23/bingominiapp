@@ -180,18 +180,41 @@ export const gameAPI = {
   // Health check
   healthCheck: () =>
     api.get<{ status: string; timestamp: string; database: string }>('/health'),
-   selectCard: (gameId: string, userId: string, cardNumber: number) => 
-    axios.post(`${API_BASE_URL}/games/cards/select`, { gameId, userId, cardNumber }),
+//card  card related
+
+    selectCard: (gameId: string, userId: string, cardNumber: number) => 
+    api.post<{ success: boolean; cardNumber: number; gameId: string; userId: string; selectionEndTime: string }>(
+      `/games/${gameId}/select-card`, 
+      { userId, cardNumber }
+    ),
   
   getAvailableCards: (gameId: string) => 
-    axios.get(`${API_BASE_URL}/games/cards/${gameId}/available-cards`),
+    api.get<{ 
+      success: boolean; 
+      availableCards: number[]; 
+      takenCards: {cardNumber: number, userId: string}[]; 
+      isSelectionActive: boolean; 
+      selectionEndTime: string;
+      timeRemaining: number;
+    }>(`/games/${gameId}/available-cards`),
   
   releaseCard: (gameId: string, userId: string) => 
-    axios.post(`${API_BASE_URL}/games/cards/release`, { gameId, userId }),
+    api.post<{ success: boolean; released: boolean }>(
+      `/games/${gameId}/release-card`, 
+      { userId }
+    ),
   
   getCardSelectionStatus: (gameId: string) => 
-    axios.get(`${API_BASE_URL}/games/cards/${gameId}/status`)
+    api.get<{ 
+      success: boolean; 
+      isSelectionActive: boolean; 
+      selectionEndTime: string;
+      timeRemaining: number;
+      totalCardsSelected: number;
+    }>(`/games/${gameId}/card-selection-status`)
 };
+
+//card
 
 export const walletAPI = {
   // Balance - include userId in query params
