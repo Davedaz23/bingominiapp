@@ -1151,16 +1151,23 @@ const getStatusMessage = () => {
           </div>
         </div>
         
+
 <div className="space-y-2">
-  {!selectedNumber && walletBalance < 10 && (
-    <p className="text-yellow-300 text-sm text-center">
-      💡 Select a card number to join the game (spectator mode)
+  {!selectedNumber && shouldEnableCardSelection() && (
+    <p className="text-green-300 text-sm text-center">
+      🎯 Select a card number to join the next game automatically
     </p>
   )}
   
-  {!selectedNumber && walletBalance >= 10 && (
-    <p className="text-green-300 text-sm text-center">
-      🎯 Select a card number to join the game automatically when it starts
+  {!selectedNumber && !shouldEnableCardSelection() && walletBalance >= 10 && (
+    <p className="text-blue-300 text-sm text-center">
+      ⏳ Card selection will be available when the next game starts
+    </p>
+  )}
+  
+  {!selectedNumber && walletBalance < 10 && (
+    <p className="text-yellow-300 text-sm text-center">
+      💡 Add balance to play - Watch mode available
     </p>
   )}
   
@@ -1182,7 +1189,7 @@ const getStatusMessage = () => {
     </p>
   )}
   
-  {gameStatus === 'FINISHED' && (
+  {gameStatus === 'FINISHED' && !shouldEnableCardSelection() && (
     <p className="text-yellow-300 text-sm text-center">
       ⏳ New game starting in {restartCountdown} seconds
     </p>
