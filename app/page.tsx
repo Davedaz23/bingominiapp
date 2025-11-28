@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { walletAPIAuto, gameAPI, authAPI, walletAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
-import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy, Target } from 'lucide-react';
+import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy, Target, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 // Memoized Bingo Card Component matching your design system
@@ -214,6 +214,35 @@ const generateBingoCard = (cardNumber: number) => {
   return card;
 };
 
+// User Info Display Component for Navbar
+const UserInfoDisplay = ({ user, balance }: { user: any; balance: number }) => {
+  const getUserDisplayName = () => {
+    if (!user) return 'Guest';
+    
+    // Priority: firstName > username > telegram username > user ID
+    if (user.firstName) return user.firstName;
+    if (user.username) return user.username;
+    if (user.telegramUsername) return user.telegramUsername;
+    return `User${user.id?.toString().slice(-4)}` || 'Player';
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      {/* Balance Display */}
+      <div className="text-right">
+        <p className="text-white font-bold text-lg">{balance} ብር</p>
+        <p className="text-white/60 text-xs">Balance</p>
+      </div>
+      
+      {/* User Name Display */}
+      <div className="flex items-center gap-2 bg-white/20 backdrop-blur-lg rounded-xl px-3 py-2 border border-white/30">
+        <User className="w-4 h-4 text-white" />
+        <p className="text-white font-medium text-sm">{getUserDisplayName()}</p>
+      </div>
+    </div>
+  );
+};
+
 export default function Home() {
   const { user, isAuthenticated, isLoading } = useAuth();
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -231,244 +260,244 @@ export default function Home() {
   const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
   const [showGameView, setShowGameView] = useState<boolean>(false);
   const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
-// Add to your existing state in app/page.tsx
-const [availableCards, setAvailableCards] = useState<number[]>([]);
-const [takenCards, setTakenCards] = useState<{cardNumber: number, userId: string}[]>([]);
-const [cardSelectionStatus, setCardSelectionStatus] = useState<{
-  isSelectionActive: boolean;
-  selectionEndTime: Date | null;
-  timeRemaining: number;
-}>({
-  isSelectionActive: false,
-  selectionEndTime: null,
-  timeRemaining: 0
-});
-const [cardSelectionError, setCardSelectionError] = useState<string>('');
+  const [availableCards, setAvailableCards] = useState<number[]>([]);
+  const [takenCards, setTakenCards] = useState<{cardNumber: number, userId: string}[]>([]);
+  const [cardSelectionStatus, setCardSelectionStatus] = useState<{
+    isSelectionActive: boolean;
+    selectionEndTime: Date | null;
+    timeRemaining: number;
+  }>({
+    isSelectionActive: false,
+    selectionEndTime: null,
+    timeRemaining: 0
+  });
+  const [cardSelectionError, setCardSelectionError] = useState<string>('');
 
   const router = useRouter();
 
-const getWalletUserId = (): string | null => {
-  if (!user) return null;
-  
-  // Prefer Telegram ID for wallet operations
-  if (user.telegramId) {
-    console.log('💰 Using Telegram ID from user object:', user.telegramId);
-    return user.telegramId;
-  }
-  
-  // Fallback to localStorage
-  if (typeof window !== 'undefined') {
-    const telegramId = localStorage.getItem('telegram_user_id');
-    if (telegramId) {
-      console.log('💰 Using Telegram ID from localStorage:', telegramId);
-      return telegramId;
+  // FIXED: Proper user ID detection for wallet operations
+  const getCurrentUserId = (): string | null => {
+    if (!user) return null;
+    
+    console.log('🔍 Current user object:', user);
+    
+    // Use the authenticated user's ID from context (most reliable)
+    if (user.id) {
+      console.log('✅ Using authenticated user ID:', user.id);
+      return user.id.toString();
     }
     
-    const storedUserId = localStorage.getItem('user_id');
-    if (storedUserId) {
-      console.log('💰 Using MongoDB ID from localStorage:', storedUserId);
-      return storedUserId;
-    }
-  }
-  
-  // Last resort - use user ID from auth context
-  console.log('💰 Using user ID from auth context:', user.id);
-  return user.id?.toString() || null;
-};
- const initializeUserWallet = async (userId: string): Promise<boolean> => {
-  try {
-    console.log('💰 Initializing wallet for user:', userId);
-    
-    // First, try to get balance directly
-    const balanceResponse = await walletAPIAuto.getBalance();
-    
-    if (balanceResponse.data.success) {
-      console.log('✅ Wallet exists with balance:', balanceResponse.data.balance);
-      setWalletBalance(balanceResponse.data.balance);
-      return true;
-    }
-  } catch (error: any) {
-    console.log('🔄 Wallet initialization attempt:', error.message);
-    
-    // If wallet doesn't exist, try to initialize it
-    if (error.response?.status === 404 || error.message?.includes('not found')) {
-      try {
-        console.log('🆕 Creating new wallet for user...');
-        
-        // Use the direct API call to initialize wallet
-        const initResponse = await walletAPI.updateBalance(userId, 0);
-        
-        if (initResponse.data.success) {
-          console.log('✅ Wallet initialized successfully');
-          setWalletBalance(0);
-          return true;
-        }
-      } catch (initError) {
-        console.error('❌ Failed to initialize wallet:', initError);
+    // Fallback to localStorage with proper validation
+    if (typeof window !== 'undefined') {
+      const storedUserId = localStorage.getItem('user_id');
+      if (storedUserId && storedUserId !== 'undefined' && storedUserId !== 'null') {
+        console.log('📱 Using user ID from localStorage:', storedUserId);
+        return storedUserId;
       }
     }
-  }
-  return false;
-};
-
-  // Add these useEffect hooks to your component
-
-// Fetch available cards when game data changes
-useEffect(() => {
-  if (gameData?._id && shouldEnableCardSelection()) {
-    fetchAvailableCards();
-  }
-}, [gameData, gameStatus, walletBalance]);
-
-
-// Check card selection status periodically
-useEffect(() => {
-  if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
-
-  const interval = setInterval(() => {
-    checkCardSelectionStatus();
-  }, 1000);
-
-  return () => clearInterval(interval);
-}, [gameData, cardSelectionStatus.isSelectionActive]);
-
-// Auto-select card when selection period is about to end
-useEffect(() => {
-  if (cardSelectionStatus.isSelectionActive && 
-      cardSelectionStatus.timeRemaining < 5000 && 
-      !selectedNumber && 
-      availableCards.length > 0) {
     
-    const timer = setTimeout(async () => {
-      const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
-      await handleCardSelect(randomCard);
-    }, 2000);
-    
-    return () => clearTimeout(timer);
-  }
-}, [cardSelectionStatus, selectedNumber, availableCards]);
-
- useEffect(() => {
-  const initializeApp = async () => {
-    if (!isAuthenticated || !user) return;
-
-    try {
-      setLoading(true);
-      
-      const walletUserId = getWalletUserId();
-      if (!walletUserId) {
-        console.error('No user ID available for wallet operations');
-        setLoading(false);
-        return;
-      }
-
-      console.log('💰 Starting wallet initialization for:', walletUserId);
-      
-      // Initialize wallet first
-      await initializeUserWallet(walletUserId);
-      
-      // Then load balance with retry logic
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          const walletResponse = await walletAPIAuto.getBalance();
-          if (walletResponse.data.success) {
-            console.log('💰 Balance loaded successfully:', walletResponse.data.balance);
-            setWalletBalance(walletResponse.data.balance);
-            break;
-          }
-        } catch (balanceError: any) {
-          console.warn(`💰 Balance load attempt ${4 - retries} failed:`, balanceError.message);
-          retries--;
-          
-          if (retries === 0) {
-            console.error('💰 All balance load attempts failed');
-            setWalletBalance(0);
-          } else {
-            // Wait before retry
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }
-
-      // Rest of your initialization code...
-      await checkGameStatus();
-      setShowNumberSelection(true);
-      
-    } catch (error) {
-      console.error('Initialization error:', error);
-      setShowNumberSelection(true);
-    } finally {
-      setLoading(false);
-    }
+    console.warn('❌ No valid user ID found');
+    return null;
   };
 
-  initializeApp();
-}, [isAuthenticated, user]);
-useEffect(() => {
-  console.log('💰 Wallet balance state updated:', walletBalance);
-}, [walletBalance]);
-
-// Add this debug function to test wallet API directly:
-
-
-  // Auto-redirect when game starts and user has selected a card with balance
-useEffect(() => {
-  // Add null check for user
-  if (!user) return;
-  
-  if (gameStatus === 'ACTIVE' && selectedNumber && walletBalance >= 10 && !autoRedirected) {
-    console.log('🚀 Auto-redirecting to game - user has card and sufficient balance');
-    setAutoRedirected(true);
-    
-    // Use a more reliable auto-join with retry
-    const joinGameWithRetry = async (retries = 3) => {
-      try {
-        console.log('🤖 Auto-joining game...');
-        
-        const waitingGamesResponse = await gameAPI.getWaitingGames();
-        const activeGamesResponse = await gameAPI.getActiveGames();
-        
-        let targetGame = null;
-        
-        if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
-          targetGame = waitingGamesResponse.data.games[0];
-        } else if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-          targetGame = activeGamesResponse.data.games[0];
-        }
-        
-        if (targetGame) {
-          const joinResponse = await gameAPI.joinGame(targetGame.code, user.id);
+  // FIXED: Wallet initialization with proper user ID
+  const initializeUserWallet = async (userId: string): Promise<boolean> => {
+    try {
+      console.log('💰 Initializing wallet for current user:', userId);
+      
+      // First, try to get balance directly using the authenticated user's ID
+      const balanceResponse = await walletAPIAuto.getBalance();
+      
+      if (balanceResponse.data.success) {
+        console.log('✅ Wallet exists with balance:', balanceResponse.data.balance);
+        setWalletBalance(balanceResponse.data.balance);
+        return true;
+      }
+    } catch (error: any) {
+      console.log('🔄 Wallet initialization attempt:', error.message);
+      
+      // If wallet doesn't exist, try to initialize it
+      if (error.response?.status === 404 || error.message?.includes('not found')) {
+        try {
+          console.log('🆕 Creating new wallet for current user...');
           
-          if (joinResponse.data.success) {
-            console.log('✅ Auto-joined game successfully');
-            router.push(`/game/${targetGame._id}`);
-          } else {
-            throw new Error('Join game API call failed');
+          // Use the direct API call to initialize wallet with current user ID
+          const initResponse = await walletAPI.updateBalance(userId, 0);
+          
+          if (initResponse.data.success) {
+            console.log('✅ Wallet initialized successfully for current user');
+            setWalletBalance(0);
+            return true;
           }
-        } else {
-          throw new Error('No games available');
-        }
-      } catch (error) {
-        console.error('Auto-join attempt failed:', error);
-        
-        if (retries > 0) {
-          console.log(`🔄 Retrying auto-join... (${retries} attempts left)`);
-          setTimeout(() => joinGameWithRetry(retries - 1), 2000);
-        } else {
-          console.error('❌ All auto-join attempts failed');
-          // Fallback: redirect to watch mode
-          const activeGamesResponse = await gameAPI.getActiveGames();
-          if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-            router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
-          }
+        } catch (initError) {
+          console.error('❌ Failed to initialize wallet for current user:', initError);
         }
       }
+    }
+    return false;
+  };
+
+  // Fetch available cards when game data changes
+  useEffect(() => {
+    if (gameData?._id && shouldEnableCardSelection()) {
+      fetchAvailableCards();
+    }
+  }, [gameData, gameStatus, walletBalance]);
+
+  // Check card selection status periodically
+  useEffect(() => {
+    if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
+
+    const interval = setInterval(() => {
+      checkCardSelectionStatus();
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [gameData, cardSelectionStatus.isSelectionActive]);
+
+  // Auto-select card when selection period is about to end
+  useEffect(() => {
+    if (cardSelectionStatus.isSelectionActive && 
+        cardSelectionStatus.timeRemaining < 5000 && 
+        !selectedNumber && 
+        availableCards.length > 0) {
+      
+      const timer = setTimeout(async () => {
+        const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+        await handleCardSelect(randomCard);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [cardSelectionStatus, selectedNumber, availableCards]);
+
+  // FIXED: Main initialization with proper user context
+  useEffect(() => {
+    const initializeApp = async () => {
+      if (!isAuthenticated || !user) return;
+
+      try {
+        setLoading(true);
+        
+        const currentUserId = getCurrentUserId();
+        if (!currentUserId) {
+          console.error('No valid user ID available for current user');
+          setLoading(false);
+          return;
+        }
+
+        console.log('👤 Initializing app for user:', {
+          id: currentUserId,
+          name: user.firstName || user.username,
+          telegramId: user.telegramId
+        });
+        
+        // Initialize wallet for current user
+        await initializeUserWallet(currentUserId);
+        
+        // Then load balance with retry logic
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            const walletResponse = await walletAPIAuto.getBalance();
+            if (walletResponse.data.success) {
+              console.log('💰 Balance loaded successfully for current user:', walletResponse.data.balance);
+              setWalletBalance(walletResponse.data.balance);
+              break;
+            }
+          } catch (balanceError: any) {
+            console.warn(`💰 Balance load attempt ${4 - retries} failed:`, balanceError.message);
+            retries--;
+            
+            if (retries === 0) {
+              console.error('💰 All balance load attempts failed for current user');
+              setWalletBalance(0);
+            } else {
+              // Wait before retry
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+        }
+
+        // Rest of initialization...
+        await checkGameStatus();
+        setShowNumberSelection(true);
+        
+      } catch (error) {
+        console.error('Initialization error for current user:', error);
+        setShowNumberSelection(true);
+      } finally {
+        setLoading(false);
+      }
     };
+
+    initializeApp();
+  }, [isAuthenticated, user]);
+
+  useEffect(() => {
+    console.log('💰 Wallet balance state updated for current user:', walletBalance);
+  }, [walletBalance]);
+
+  // Auto-redirect when game starts and user has selected a card with balance
+  useEffect(() => {
+    if (!user) return;
     
-    joinGameWithRetry();
-  }
-}, [gameStatus, selectedNumber, autoRedirected, walletBalance, user, router]);
+    if (gameStatus === 'ACTIVE' && selectedNumber && walletBalance >= 10 && !autoRedirected) {
+      console.log('🚀 Auto-redirecting current user to game');
+      setAutoRedirected(true);
+      
+      const joinGameWithRetry = async (retries = 3) => {
+        try {
+          console.log('🤖 Auto-joining game for current user...');
+          
+          const waitingGamesResponse = await gameAPI.getWaitingGames();
+          const activeGamesResponse = await gameAPI.getActiveGames();
+          
+          let targetGame = null;
+          
+          if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
+            targetGame = waitingGamesResponse.data.games[0];
+          } else if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+            targetGame = activeGamesResponse.data.games[0];
+          }
+          
+          if (targetGame) {
+            const currentUserId = getCurrentUserId();
+            if (!currentUserId) {
+              throw new Error('No user ID available for current user');
+            }
+            
+            const joinResponse = await gameAPI.joinGame(targetGame.code, currentUserId);
+            
+            if (joinResponse.data.success) {
+              console.log('✅ Current user auto-joined game successfully');
+              router.push(`/game/${targetGame._id}`);
+            } else {
+              throw new Error('Join game API call failed for current user');
+            }
+          } else {
+            throw new Error('No games available for current user');
+          }
+        } catch (error) {
+          console.error('Auto-join attempt failed for current user:', error);
+          
+          if (retries > 0) {
+            console.log(`🔄 Retrying auto-join for current user... (${retries} attempts left)`);
+            setTimeout(() => joinGameWithRetry(retries - 1), 2000);
+          } else {
+            console.error('❌ All auto-join attempts failed for current user');
+            // Fallback: redirect to watch mode
+            const activeGamesResponse = await gameAPI.getActiveGames();
+            if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+              router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
+            }
+          }
+        }
+      };
+      
+      joinGameWithRetry();
+    }
+  }, [gameStatus, selectedNumber, autoRedirected, walletBalance, user, router]);
 
   // Check game status periodically
   useEffect(() => {
@@ -504,203 +533,180 @@ useEffect(() => {
     };
   }, [gameStatus, restartCountdown]);
   
-  //Card save
-// Add this to your game component
-const handleStartGame = async () => {
-  try {
-    if (!gameData?._id) return;
-    
-    const response = await gameAPI.startGame(gameData._id);
-    
-    if (response.data.success) {
-      console.log('✅ Game started manually');
-      // Refresh game status
-      await checkGameStatus();
-    }
-  } catch (error) {
-    console.error('❌ Failed to start game:', error);
-    setJoinError('Failed to start game');
-  }
-};
-
-// Add start game button for admin/host
-{gameStatus === 'WAITING' && (
-  <motion.button
-    onClick={handleStartGame}
-    className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
-    whileHover={{ scale: 1.02 }}
-    whileTap={{ scale: 0.98 }}
-  >
-    <Play className="w-4 h-4" />
-    Start Game Manually
-  </motion.button>
-)}
-// COMPREHENSIVE CARD SELECTION LOGIC
-const shouldEnableCardSelection = () => {
-  console.log('🎯 CARD SELECTION DEBUG:', {
-    gameStatus,
-    walletBalance,
-    selectedNumber,
-    hasGameData: !!gameData?._id,
-    availableCardsCount: availableCards.length,
-    isSelectionActive: cardSelectionStatus.isSelectionActive
-  });
-
-  // If user already selected a card, disable selection
-  if (selectedNumber) {
-    console.log('🎯 User already has card #', selectedNumber);
-    return false;
-  }
-
-  // If no game data, can't select cards
-  if (!gameData?._id) {
-    console.log('🎯 No game data available');
-    return false;
-  }
-
-  // ALWAYS allow card selection if user has sufficient balance, regardless of game state
-  if (walletBalance >= 10) {
-    console.log('🎯 User has sufficient balance, enabling card selection');
-    return true;
-  }
-
-  console.log('🎯 Card selection disabled - insufficient balance');
-  return false;
-};
-const fetchAvailableCards = async () => {
-  try {
-    if (!gameData?._id) return;
-    
-    const response = await gameAPI.getAvailableCards(gameData._id);
-    if (response.data.success) {
-      setAvailableCards(response.data.availableCards);
-      setTakenCards(response.data.takenCards);
-      setCardSelectionStatus({
-        isSelectionActive: response.data.isSelectionActive,
-        selectionEndTime: new Date(response.data.selectionEndTime),
-        timeRemaining: response.data.timeRemaining
-      });
-    }
-  } catch (error) {
-    console.error('Error fetching available cards:', error);
-  }
-};
-const handleLateEntryJoin = async (cardNumber: number) => {
-  if (!user || !gameData?._id) return;
-
-  try {
-    setJoining(true);
-    setCardSelectionError('');
-
-    // Select the card first
-    const cardResponse = await gameAPI.selectCard(gameData._id, user.id, cardNumber);
-    
-    if (cardResponse.data.success) {
-      setSelectedNumber(cardNumber);
-      setBingoCard(generateBingoCard(cardNumber));
+  const handleStartGame = async () => {
+    try {
+      if (!gameData?._id) return;
       
-      // Then join the game
-      const joinResponse = await gameAPI.joinGame(gameData.code, user.id);
+      const response = await gameAPI.startGame(gameData._id);
       
-      if (joinResponse.data.success) {
-        console.log('✅ Late entry successful with card #', cardNumber);
-        router.push(`/game/${gameData._id}`);
-      } else {
-        setJoinError('Failed to join active game');
+      if (response.data.success) {
+        console.log('✅ Game started manually by current user');
+        await checkGameStatus();
       }
+    } catch (error) {
+      console.error('❌ Failed to start game by current user:', error);
+      setJoinError('Failed to start game');
     }
-  } catch (error: any) {
-    const errorMessage = error.response?.data?.error || 'Failed to join game';
-    setCardSelectionError(errorMessage);
-    console.error('Late entry error:', error);
-  } finally {
-    setJoining(false);
-  }
-};
+  };
 
+  const shouldEnableCardSelection = () => {
+    console.log('🎯 CARD SELECTION DEBUG for current user:', {
+      gameStatus,
+      walletBalance,
+      selectedNumber,
+      hasGameData: !!gameData?._id,
+      availableCardsCount: availableCards.length,
+      isSelectionActive: cardSelectionStatus.isSelectionActive
+    });
 
-const handleCardSelect = async (cardNumber: number) => {
-  if (!user || !gameData?._id) return;
-  
-  try {
-    setCardSelectionError('');
-    
-    const response = await gameAPI.selectCard(gameData._id, user.id, cardNumber);
-    
-    if (response.data.success) {
-      setSelectedNumber(cardNumber);
-      setBingoCard(generateBingoCard(cardNumber));
-      setJoinError('');
-      setShowGameView(false);
-      setAutoRedirected(false);
+    if (selectedNumber) {
+      console.log('🎯 Current user already has card #', selectedNumber);
+      return false;
+    }
+
+    if (!gameData?._id) {
+      console.log('🎯 No game data available for current user');
+      return false;
+    }
+
+    if (walletBalance >= 10) {
+      console.log('🎯 Current user has sufficient balance, enabling card selection');
+      return true;
+    }
+
+    console.log('🎯 Card selection disabled for current user - insufficient balance');
+    return false;
+  };
+
+  const fetchAvailableCards = async () => {
+    try {
+      if (!gameData?._id) return;
       
-      // Refresh available cards
-      await fetchAvailableCards();
-      
-      console.log(`✅ Card #${cardNumber} selected successfully`);
-      
-      // If game is ACTIVE, auto-join immediately
-      if (gameStatus === 'ACTIVE') {
-        console.log('🚀 Auto-joining active game with late entry...');
-        setTimeout(() => {
-          handleAutoJoinGame();
-        }, 1000);
+      const response = await gameAPI.getAvailableCards(gameData._id);
+      if (response.data.success) {
+        setAvailableCards(response.data.availableCards);
+        setTakenCards(response.data.takenCards);
+        setCardSelectionStatus({
+          isSelectionActive: response.data.isSelectionActive,
+          selectionEndTime: new Date(response.data.selectionEndTime),
+          timeRemaining: response.data.timeRemaining
+        });
       }
+    } catch (error) {
+      console.error('Error fetching available cards for current user:', error);
     }
-  } catch (error: any) {
-    const errorMessage = error.response?.data?.error || 'Failed to select card';
-    setCardSelectionError(errorMessage);
-    console.error('Card selection error:', error);
-  }
-};
+  };
 
-const handleCardRelease = async () => {
-  if (!user || !gameData?._id) return;
-  
-  try {
-    const response = await gameAPI.releaseCard(gameData._id, user.id);
-    
-    if (response.data.success) {
-      setSelectedNumber(null);
-      setBingoCard(null);
-      setJoinError('');
-      
-      // Refresh available cards
-      await fetchAvailableCards();
-      
-      console.log('🔄 Card released successfully');
-    }
-  } catch (error: any) {
-    console.error('Card release error:', error);
-  }
-};
+  const handleLateEntryJoin = async (cardNumber: number) => {
+    const currentUserId = getCurrentUserId();
+    if (!currentUserId || !gameData?._id) return;
 
-const checkCardSelectionStatus = async () => {
-  if (!gameData?._id) return;
-  
-  try {
-    const response = await gameAPI.getCardSelectionStatus(gameData._id);
-    if (response.data.success) {
-      setCardSelectionStatus({
-        isSelectionActive: response.data.isSelectionActive,
-        selectionEndTime: new Date(response.data.selectionEndTime),
-        timeRemaining: response.data.timeRemaining
-      });
+    try {
+      setJoining(true);
+      setCardSelectionError('');
+
+      const cardResponse = await gameAPI.selectCard(gameData._id, currentUserId, cardNumber);
       
-      // Auto-select only if selection is active and user hasn't selected
-      if (response.data.isSelectionActive && !selectedNumber && availableCards.length > 0) {
-        // Only auto-select in the last 5 seconds
-        if (response.data.timeRemaining < 5000) {
-          const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
-          await handleCardSelect(randomCard);
+      if (cardResponse.data.success) {
+        setSelectedNumber(cardNumber);
+        setBingoCard(generateBingoCard(cardNumber));
+        
+        const joinResponse = await gameAPI.joinGame(gameData.code, currentUserId);
+        
+        if (joinResponse.data.success) {
+          console.log('✅ Late entry successful for current user with card #', cardNumber);
+          router.push(`/game/${gameData._id}`);
+        } else {
+          setJoinError('Failed to join active game for current user');
         }
       }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || 'Failed to join game for current user';
+      setCardSelectionError(errorMessage);
+      console.error('Late entry error for current user:', error);
+    } finally {
+      setJoining(false);
     }
-  } catch (error) {
-    console.error('Error checking card selection status:', error);
-  }
-};
-  //card
+  };
+
+  const handleCardSelect = async (cardNumber: number) => {
+    const currentUserId = getCurrentUserId();
+    if (!currentUserId || !gameData?._id) return;
+    
+    try {
+      setCardSelectionError('');
+      
+      const response = await gameAPI.selectCard(gameData._id, currentUserId, cardNumber);
+      
+      if (response.data.success) {
+        setSelectedNumber(cardNumber);
+        setBingoCard(generateBingoCard(cardNumber));
+        setJoinError('');
+        setShowGameView(false);
+        setAutoRedirected(false);
+        
+        await fetchAvailableCards();
+        
+        console.log(`✅ Card #${cardNumber} selected successfully for current user`);
+        
+        if (gameStatus === 'ACTIVE') {
+          console.log('🚀 Auto-joining active game for current user with late entry...');
+          setTimeout(() => {
+            handleAutoJoinGame();
+          }, 1000);
+        }
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || 'Failed to select card for current user';
+      setCardSelectionError(errorMessage);
+      console.error('Card selection error for current user:', error);
+    }
+  };
+
+  const handleCardRelease = async () => {
+    const currentUserId = getCurrentUserId();
+    if (!currentUserId || !gameData?._id) return;
+    
+    try {
+      const response = await gameAPI.releaseCard(gameData._id, currentUserId);
+      
+      if (response.data.success) {
+        setSelectedNumber(null);
+        setBingoCard(null);
+        setJoinError('');
+        
+        await fetchAvailableCards();
+        
+        console.log('🔄 Card released successfully for current user');
+      }
+    } catch (error: any) {
+      console.error('Card release error for current user:', error);
+    }
+  };
+
+  const checkCardSelectionStatus = async () => {
+    if (!gameData?._id) return;
+    
+    try {
+      const response = await gameAPI.getCardSelectionStatus(gameData._id);
+      if (response.data.success) {
+        setCardSelectionStatus({
+          isSelectionActive: response.data.isSelectionActive,
+          selectionEndTime: new Date(response.data.selectionEndTime),
+          timeRemaining: response.data.timeRemaining
+        });
+        
+        if (response.data.isSelectionActive && !selectedNumber && availableCards.length > 0) {
+          if (response.data.timeRemaining < 5000) {
+            const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+            await handleCardSelect(randomCard);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking card selection status for current user:', error);
+    }
+  };
 
   const checkGameStatus = async () => {
     try {
@@ -742,7 +748,8 @@ const checkCardSelectionStatus = async () => {
   };
 
   const handleJoinGame = async () => {
-    if (!selectedNumber || !user) return;
+    const currentUserId = getCurrentUserId();
+    if (!selectedNumber || !currentUserId) return;
 
     setJoining(true);
     setJoinError('');
@@ -771,7 +778,7 @@ const checkCardSelectionStatus = async () => {
       
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game = waitingGamesResponse.data.games[0];
-        const joinResponse = await gameAPI.joinGame(game.code, user.id);
+        const joinResponse = await gameAPI.joinGame(game.code, currentUserId);
         
         if (joinResponse.data.success) {
           const updatedGame = joinResponse.data.game;
@@ -807,23 +814,24 @@ const checkCardSelectionStatus = async () => {
   };
 
   const handleAutoJoinGame = async () => {
-    if (!selectedNumber || !user) return;
+    const currentUserId = getCurrentUserId();
+    if (!selectedNumber || !currentUserId) return;
 
     try {
-      console.log('🤖 Auto-joining game...');
+      console.log('🤖 Auto-joining game for current user...');
       
       const waitingGamesResponse = await gameAPI.getWaitingGames();
       
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game = waitingGamesResponse.data.games[0];
-        const joinResponse = await gameAPI.joinGame(game.code, user.id);
+        const joinResponse = await gameAPI.joinGame(game.code, currentUserId);
         
         if (joinResponse.data.success) {
           const updatedGame = joinResponse.data.game;
-          console.log('✅ Auto-joined game successfully');
+          console.log('✅ Current user auto-joined game successfully');
           router.push(`/game/${updatedGame._id}`);
         } else {
-          console.log('⚠️ Auto-join failed, redirecting to watch');
+          console.log('⚠️ Auto-join failed for current user, redirecting to watch');
           router.push(`/game/${game._id}?spectator=true`);
         }
       } else {
@@ -833,7 +841,7 @@ const checkCardSelectionStatus = async () => {
         }
       }
     } catch (error: any) {
-      console.error('Auto-join failed:', error);
+      console.error('Auto-join failed for current user:', error);
       const activeGamesResponse = await gameAPI.getActiveGames();
       if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
         router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
@@ -852,74 +860,72 @@ const checkCardSelectionStatus = async () => {
     }
   }, [showGameView, selectedNumber, walletBalance]);
 
-//  getStatusMessage function:
-const getStatusMessage = () => {
-  const players = currentPlayers || 0;
-  const minPlayers = 2;
-  
-  // Check if user can select cards
-  const canSelectCards = shouldEnableCardSelection();
-  
-  switch (gameStatus) {
-    case 'WAITING':
-      const playersNeeded = Math.max(0, minPlayers - players);
+  const getStatusMessage = () => {
+    const players = currentPlayers || 0;
+    const minPlayers = 2;
+    
+    const canSelectCards = shouldEnableCardSelection();
+    
+    switch (gameStatus) {
+      case 'WAITING':
+        const playersNeeded = Math.max(0, minPlayers - players);
+        
+        return {
+          message: canSelectCards ? '🎯 Select Your Card!' : '🕒 Waiting for Players',
+          description: canSelectCards 
+            ? `${players}/${minPlayers} players - Choose your card number to join`
+            : playersNeeded > 0 
+              ? `${players}/${minPlayers} players - Need ${playersNeeded} more to start`
+              : `${players}/${minPlayers} players - Ready to start!`,
+          color: canSelectCards 
+            ? 'bg-green-500/20 border-green-500/30 text-green-300'
+            : 'bg-blue-500/20 border-blue-500/30 text-blue-300',
+          icon: canSelectCards ? <Target className="w-5 h-5" /> : <Users className="w-5 h-5" />
+        };
       
-      return {
-        message: canSelectCards ? '🎯 Select Your Card!' : '🕒 Waiting for Players',
-        description: canSelectCards 
-          ? `${players}/${minPlayers} players - Choose your card number to join`
-          : playersNeeded > 0 
-            ? `${players}/${minPlayers} players - Need ${playersNeeded} more to start`
-            : `${players}/${minPlayers} players - Ready to start!`,
-        color: canSelectCards 
-          ? 'bg-green-500/20 border-green-500/30 text-green-300'
-          : 'bg-blue-500/20 border-blue-500/30 text-blue-300',
-        icon: canSelectCards ? <Target className="w-5 h-5" /> : <Users className="w-5 h-5" />
-      };
-    
-    case 'ACTIVE':
-      const activeMessage = !selectedNumber 
-        ? `${players} players playing - ${walletBalance >= 10 ? 'Game in progress' : 'Watch live game'}`
-        : walletBalance >= 10 
-          ? `${players} players playing - Auto-joining with card #${selectedNumber}...`
-          : `${players} players playing - Joining as spectator...`;
+      case 'ACTIVE':
+        const activeMessage = !selectedNumber 
+          ? `${players} players playing - ${walletBalance >= 10 ? 'Game in progress' : 'Watch live game'}`
+          : walletBalance >= 10 
+            ? `${players} players playing - Auto-joining with card #${selectedNumber}...`
+            : `${players} players playing - Joining as spectator...`;
+        
+        return {
+          message: selectedNumber && walletBalance >= 10 ? '🚀 Joining Game!' : '🎯 Game in Progress',
+          description: activeMessage,
+          color: 'bg-green-500/20 border-green-500/30 text-green-300',
+          icon: <Play className="w-5 h-5" />
+        };
       
-      return {
-        message: selectedNumber && walletBalance >= 10 ? '🚀 Joining Game!' : '🎯 Game in Progress',
-        description: activeMessage,
-        color: 'bg-green-500/20 border-green-500/30 text-green-300',
-        icon: <Play className="w-5 h-5" />
-      };
-    
-    case 'FINISHED':
-      return {
-        message: canSelectCards ? '🔄 Next Game Starting Soon!' : '🏁 Game Finished',
-        description: canSelectCards 
-          ? `Select your card for the next game (${restartCountdown}s)`
-          : `New game starting in ${restartCountdown}s`,
-        color: canSelectCards 
-          ? 'bg-orange-500/20 border-orange-500/30 text-orange-300'
-          : 'bg-purple-500/20 border-purple-500/30 text-purple-300',
-        icon: canSelectCards ? <Clock className="w-5 h-5" /> : <Trophy className="w-5 h-5" />
-      };
-    
-    case 'RESTARTING':
-      return {
-        message: '🔄 Starting New Game...',
-        description: 'Please wait while we set up a new game',
-        color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
-        icon: <Clock className="w-5 h-5" />
-      };
-    
-    default:
-      return {
-        message: '❓ Checking Game Status...',
-        description: 'Please wait...',
-        color: 'bg-gray-500/20 border-gray-500/30 text-gray-300',
-        icon: <Clock className="w-5 h-5" />
-      };
-  }
-};
+      case 'FINISHED':
+        return {
+          message: canSelectCards ? '🔄 Next Game Starting Soon!' : '🏁 Game Finished',
+          description: canSelectCards 
+            ? `Select your card for the next game (${restartCountdown}s)`
+            : `New game starting in ${restartCountdown}s`,
+          color: canSelectCards 
+            ? 'bg-orange-500/20 border-orange-500/30 text-orange-300'
+            : 'bg-purple-500/20 border-purple-500/30 text-purple-300',
+          icon: canSelectCards ? <Clock className="w-5 h-5" /> : <Trophy className="w-5 h-5" />
+        };
+      
+      case 'RESTARTING':
+        return {
+          message: '🔄 Starting New Game...',
+          description: 'Please wait while we set up a new game',
+          color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
+          icon: <Clock className="w-5 h-5" />
+        };
+      
+      default:
+        return {
+          message: '❓ Checking Game Status...',
+          description: 'Please wait...',
+          color: 'bg-gray-500/20 border-gray-500/30 text-gray-300',
+          icon: <Clock className="w-5 h-5" />
+        };
+    }
+  };
 
   // Auto-join loading screen
   if (showGameView && selectedNumber && walletBalance >= 10) {
@@ -931,10 +937,7 @@ const getStatusMessage = () => {
               <h1 className="text-white font-bold text-xl">Bingo Game</h1>
               <p className="text-white/60 text-sm">Joining Game Automatically</p>
             </div>
-            <div className="text-right">
-              <p className="text-white font-bold text-lg">{walletBalance} ብር</p>
-              <p className="text-white/60 text-xs">Balance</p>
-            </div>
+            <UserInfoDisplay user={user} balance={walletBalance} />
           </div>
         </div>
 
@@ -988,16 +991,16 @@ const getStatusMessage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
+      {/* FIXED: Navbar with User Info in the middle */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-white font-bold text-xl">Bingo Game</h1>
             <p className="text-white/60 text-sm">Select your card number</p>
           </div>
-          <div className="text-right">
-            <p className="text-white font-bold text-lg">{walletBalance} ብር</p>
-            <p className="text-white/60 text-xs">Balance</p>
-          </div>
+          
+          {/* User Info Display in the middle */}
+          <UserInfoDisplay user={user} balance={walletBalance} />
         </div>
       </div>
 
@@ -1034,128 +1037,126 @@ const getStatusMessage = () => {
         )}
       </motion.div>
 
-{shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
-  <motion.div 
-    className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30"
-    initial={{ opacity: 0, y: -10 }}
-    animate={{ opacity: 1, y: 0 }}
-  >
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <Clock className="w-4 h-4 text-green-300" />
-        <p className="text-green-300 font-bold text-sm">Card Selection Active</p>
-      </div>
-      <p className="text-green-200 text-sm">
-        {Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining
-      </p>
-    </div>
-    <div className="mt-2">
-      <div className="flex justify-between text-xs text-green-200 mb-1">
-        <span>Choose your card number to join the game</span>
-        <span>{takenCards.length}/400 cards taken</span>
-      </div>
-      <div className="w-full bg-green-400/20 rounded-full h-2">
-        <div 
-          className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
-          style={{ 
-            width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
-          }}
-        />
-      </div>
-    </div>
-    {cardSelectionError && (
-      <p className="text-red-300 text-xs mt-2 text-center">
-        {cardSelectionError}
-      </p>
-    )}
-  </motion.div>
-)}
+      {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
+        <motion.div 
+          className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-green-300" />
+              <p className="text-green-300 font-bold text-sm">Card Selection Active</p>
+            </div>
+            <p className="text-green-200 text-sm">
+              {Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining
+            </p>
+          </div>
+          <div className="mt-2">
+            <div className="flex justify-between text-xs text-green-200 mb-1">
+              <span>Choose your card number to join the game</span>
+              <span>{takenCards.length}/400 cards taken</span>
+            </div>
+            <div className="w-full bg-green-400/20 rounded-full h-2">
+              <div 
+                className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
+                style={{ 
+                  width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
+                }}
+              />
+            </div>
+          </div>
+          {cardSelectionError && (
+            <p className="text-red-300 text-xs mt-2 text-center">
+              {cardSelectionError}
+            </p>
+          )}
+        </motion.div>
+      )}
 
-{shouldEnableCardSelection() && !cardSelectionStatus.isSelectionActive && (
-  <motion.div 
-    className="bg-orange-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-orange-500/30"
-    initial={{ opacity: 0, y: -10 }}
-    animate={{ opacity: 1, y: 0 }}
-  >
-    <div className="flex items-center justify-center gap-2">
-      <Clock className="w-4 h-4 text-orange-300" />
-      <p className="text-orange-300 font-bold text-sm">Card Selection Starting Soon</p>
-    </div>
-    <p className="text-orange-200 text-xs text-center mt-1">
-      Card selection will begin when the game is ready
-    </p>
-  </motion.div>
-)}
-      {/* Only show watch button for users with insufficient balance */}
-    {/* CARD SELECTION STATUS */}
-{walletBalance >= 10 && (
-  <motion.div 
-    className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
-    initial={{ opacity: 0, y: -10 }}
-    animate={{ opacity: 1, y: 0 }}
-  >
-    <div className="flex items-center justify-between mb-2">
-      <div className="flex items-center gap-2">
-        <Target className="w-4 h-4 text-blue-300" />
-        <p className="text-blue-300 font-bold text-sm">Ready to Play!</p>
-      </div>
-      <p className="text-blue-200 text-sm font-bold">
-        Balance: {walletBalance} ብር
-      </p>
-    </div>
+      {shouldEnableCardSelection() && !cardSelectionStatus.isSelectionActive && (
+        <motion.div 
+          className="bg-orange-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-orange-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center justify-center gap-2">
+            <Clock className="w-4 h-4 text-orange-300" />
+            <p className="text-orange-300 font-bold text-sm">Card Selection Starting Soon</p>
+          </div>
+          <p className="text-orange-200 text-xs text-center mt-1">
+            Card selection will begin when the game is ready
+          </p>
+        </motion.div>
+      )}
 
-    {/* Different messages based on game status */}
-    {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
-      <div>
-        <div className="flex justify-between text-xs text-blue-200 mb-1">
-          <span>Choose your card number to join the game</span>
-          <span>{takenCards.length}/400 cards taken</span>
-        </div>
-        <div className="w-full bg-blue-400/20 rounded-full h-2">
-          <div 
-            className="bg-gradient-to-r from-blue-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
-            style={{ 
-              width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
-            }}
-          />
-        </div>
-        <p className="text-blue-200 text-xs mt-2 text-center">
-          {Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining to select
-        </p>
-      </div>
-    )}
+      {walletBalance >= 10 && (
+        <motion.div 
+          className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Target className="w-4 h-4 text-blue-300" />
+              <p className="text-blue-300 font-bold text-sm">Ready to Play!</p>
+            </div>
+            <p className="text-blue-200 text-sm font-bold">
+              Balance: {walletBalance} ብር
+            </p>
+          </div>
 
-    {shouldEnableCardSelection() && !cardSelectionStatus.isSelectionActive && gameStatus === 'WAITING' && (
-      <p className="text-blue-200 text-xs text-center">
-        🎯 Select a card number to join the waiting game
-      </p>
-    )}
+          {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
+            <div>
+              <div className="flex justify-between text-xs text-blue-200 mb-1">
+                <span>Choose your card number to join the game</span>
+                <span>{takenCards.length}/400 cards taken</span>
+              </div>
+              <div className="w-full bg-blue-400/20 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-blue-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
+                  style={{ 
+                    width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
+                  }}
+                />
+              </div>
+              <p className="text-blue-200 text-xs mt-2 text-center">
+                {Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining to select
+              </p>
+            </div>
+          )}
 
-    {shouldEnableCardSelection() && !cardSelectionStatus.isSelectionActive && gameStatus === 'ACTIVE' && (
-      <p className="text-green-200 text-xs text-center">
-        🚀 Game in progress - Select a card for late entry!
-      </p>
-    )}
+          {shouldEnableCardSelection() && !cardSelectionStatus.isSelectionActive && gameStatus === 'WAITING' && (
+            <p className="text-blue-200 text-xs text-center">
+              🎯 Select a card number to join the waiting game
+            </p>
+          )}
 
-    {shouldEnableCardSelection() && gameStatus === 'FINISHED' && (
-      <p className="text-orange-200 text-xs text-center">
-        🔄 Select a card for the next game (starting in {restartCountdown}s)
-      </p>
-    )}
+          {shouldEnableCardSelection() && !cardSelectionStatus.isSelectionActive && gameStatus === 'ACTIVE' && (
+            <p className="text-green-200 text-xs text-center">
+              🚀 Game in progress - Select a card for late entry!
+            </p>
+          )}
 
-    {!shouldEnableCardSelection() && walletBalance >= 10 && (
-      <p className="text-yellow-200 text-xs text-center">
-        ⏳ Waiting for card selection to become available...
-      </p>
-    )}
+          {shouldEnableCardSelection() && gameStatus === 'FINISHED' && (
+            <p className="text-orange-200 text-xs text-center">
+              🔄 Select a card for the next game (starting in {restartCountdown}s)
+            </p>
+          )}
 
-    {cardSelectionError && (
-      <p className="text-red-300 text-xs mt-2 text-center">
-        {cardSelectionError}
-      </p>
-    )}
-  </motion.div>
-)}
+          {!shouldEnableCardSelection() && walletBalance >= 10 && (
+            <p className="text-yellow-200 text-xs text-center">
+              ⏳ Waiting for card selection to become available...
+            </p>
+          )}
+
+          {cardSelectionError && (
+            <p className="text-red-300 text-xs mt-2 text-center">
+              {cardSelectionError}
+            </p>
+          )}
+        </motion.div>
+      )}
 
       {selectedNumber && (
         <motion.div 
@@ -1188,134 +1189,71 @@ const getStatusMessage = () => {
         </motion.div>
       )}
 
-{(gameStatus !== 'ACTIVE' || selectedNumber) && (
-  <motion.div 
-    className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    transition={{ delay: 0.2 }}
-  >
-    {/* Number grid */}
-  </motion.div>
-)}
-
-
-{!selectedNumber && (
-  <motion.div 
-    className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    transition={{ delay: 0.2 }}
-  >
-    {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
-      const isTaken = takenCards.some(card => card.cardNumber === number);
-      const isAvailable = availableCards.includes(number);
-      const canSelect = walletBalance >= 10; // SIMPLIFIED: Only check balance
-      const isSelectable = canSelect && isAvailable && !isTaken;
-
-      return (
-        <motion.button
-          key={number}
-          onClick={() => isSelectable && handleCardSelect(number)}
-          disabled={!isSelectable}
-          className={`
-            aspect-square rounded-xl font-bold text-sm transition-all relative
-            ${isTaken
-              ? 'bg-red-500/50 text-white/50 cursor-not-allowed border-red-400/50'
-              : isSelectable
-              ? gameStatus === 'ACTIVE' 
-                ? 'bg-green-500/60 text-white hover:bg-green-600/70 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/60'
-                : 'bg-white/30 text-white hover:bg-white/40 hover:scale-105 hover:shadow-md cursor-pointer border-white/30'
-              : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
-            }
-            border-2
-            ${!isSelectable ? 'opacity-50' : ''}
-          `}
-          whileHover={isSelectable ? { scale: 1.05 } : {}}
-          whileTap={isSelectable ? { scale: 0.95 } : {}}
-          layout
+      {!selectedNumber && (
+        <motion.div 
+          className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
         >
-          {number}
-          
-          {/* Taken indicator */}
-          {isTaken && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-4 h-4 text-red-300">
-                <svg fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </div>
-            </div>
-          )}
-          
-          {/* Late entry indicator for active games */}
-          {!isTaken && isSelectable && gameStatus === 'ACTIVE' && (
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
-          )}
-          
-          {/* Available but insufficient balance */}
-          {!isTaken && !isSelectable && walletBalance < 10 && (
-            <div className="absolute inset-0 flex items-center justify-center opacity-60">
-              <div className="w-3 h-3 text-yellow-400">
-                <svg fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 9a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clipRule="evenodd" />
-                </svg>
-              </div>
-            </div>
-          )}
-        </motion.button>
-      );
-    })}
-  </motion.div>
-)}
+          {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
+            const isTaken = takenCards.some(card => card.cardNumber === number);
+            const isAvailable = availableCards.includes(number);
+            const canSelect = walletBalance >= 10;
+            const isSelectable = canSelect && isAvailable && !isTaken;
 
-{selectedNumber && bingoCard && (
-  <motion.div
-    className="mb-6"
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: 0.3 }}
-  >
-    <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard} />
-    
-    <motion.div 
-      className="grid grid-cols-2 gap-3 mt-4"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ delay: 0.5 }}
-    >
-      <motion.button
-        onClick={() => {
-          setSelectedNumber(null);
-          setBingoCard(null);
-          setJoinError('');
-        }}
-        disabled={joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)}
-        className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-      >
-        Change Card
-      </motion.button>
-      <motion.button
-        onClick={handleJoinGame}
-        disabled={joining || (gameStatus === 'ACTIVE' && walletBalance >= 10)}
-        className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-      >
-        {joining ? (
-          <>
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            Joining...
-          </>
-        ) : (
-          'Join Game'
-        )}
-      </motion.button>
-    </motion.div>
-  </motion.div>
-)}
+            return (
+              <motion.button
+                key={number}
+                onClick={() => isSelectable && handleCardSelect(number)}
+                disabled={!isSelectable}
+                className={`
+                  aspect-square rounded-xl font-bold text-sm transition-all relative
+                  ${isTaken
+                    ? 'bg-red-500/50 text-white/50 cursor-not-allowed border-red-400/50'
+                    : isSelectable
+                    ? gameStatus === 'ACTIVE' 
+                      ? 'bg-green-500/60 text-white hover:bg-green-600/70 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/60'
+                      : 'bg-white/30 text-white hover:bg-white/40 hover:scale-105 hover:shadow-md cursor-pointer border-white/30'
+                    : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
+                  }
+                  border-2
+                  ${!isSelectable ? 'opacity-50' : ''}
+                `}
+                whileHover={isSelectable ? { scale: 1.05 } : {}}
+                whileTap={isSelectable ? { scale: 0.95 } : {}}
+                layout
+              >
+                {number}
+                
+                {isTaken && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-4 h-4 text-red-300">
+                      <svg fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+                
+                {!isTaken && isSelectable && gameStatus === 'ACTIVE' && (
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
+                )}
+                
+                {!isTaken && !isSelectable && walletBalance < 10 && (
+                  <div className="absolute inset-0 flex items-center justify-center opacity-60">
+                    <div className="w-3 h-3 text-yellow-400">
+                      <svg fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 9a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+              </motion.button>
+            );
+          })}
+        </motion.div>
+      )}
 
       {selectedNumber && bingoCard && (
         <motion.div
@@ -1382,66 +1320,65 @@ const getStatusMessage = () => {
           </div>
         </div>
         
-
-<div className="space-y-2">
-  {!selectedNumber && walletBalance >= 10 && (
-    <>
-      {gameStatus === 'WAITING' && (
-        <p className="text-blue-300 text-sm text-center">
-          🎯 Select a card number to join the waiting game
-        </p>
-      )}
-      {gameStatus === 'ACTIVE' && (
-        <p className="text-green-300 text-sm text-center">
-          🚀 Game in progress - Select a card for late entry!
-        </p>
-      )}
-      {gameStatus === 'FINISHED' && (
-        <p className="text-orange-300 text-sm text-center">
-          🔄 Select a card for the next game (starting in {restartCountdown}s)
-        </p>
-      )}
-      {gameStatus === 'RESTARTING' && (
-        <p className="text-purple-300 text-sm text-center">
-          ⚡ New game starting soon - Select your card!
-        </p>
-      )}
-    </>
-  )}
-  
-  {!selectedNumber && walletBalance < 10 && (
-    <p className="text-yellow-300 text-sm text-center">
-      💡 Add balance to play - Watch mode available
-    </p>
-  )}
-  
-  {selectedNumber && walletBalance >= 10 && (
-    <>
-      {gameStatus === 'WAITING' && (
-        <p className="text-blue-300 text-sm text-center">
-          ⏳ Ready! Game will start when enough players join
-        </p>
-      )}
-      {gameStatus === 'ACTIVE' && (
-        <p className="text-green-300 text-sm text-center">
-          🚀 Auto-joining active game with card #{selectedNumber}...
-        </p>
-      )}
-      {gameStatus === 'FINISHED' && (
-        <p className="text-orange-300 text-sm text-center">
-          🔄 Card #{selectedNumber} reserved for next game
-        </p>
-      )}
-    </>
-  )}
-  
-  <p className="text-white/60 text-xs text-center">
-    Games restart automatically 30 seconds after completion
-  </p>
-  <p className="text-white/40 text-xs text-center">
-    Minimum 2 players required to start the game
-  </p>
-</div>
+        <div className="space-y-2">
+          {!selectedNumber && walletBalance >= 10 && (
+            <>
+              {gameStatus === 'WAITING' && (
+                <p className="text-blue-300 text-sm text-center">
+                  🎯 Select a card number to join the waiting game
+                </p>
+              )}
+              {gameStatus === 'ACTIVE' && (
+                <p className="text-green-300 text-sm text-center">
+                  🚀 Game in progress - Select a card for late entry!
+                </p>
+              )}
+              {gameStatus === 'FINISHED' && (
+                <p className="text-orange-300 text-sm text-center">
+                  🔄 Select a card for the next game (starting in {restartCountdown}s)
+                </p>
+              )}
+              {gameStatus === 'RESTARTING' && (
+                <p className="text-purple-300 text-sm text-center">
+                  ⚡ New game starting soon - Select your card!
+                </p>
+              )}
+            </>
+          )}
+          
+          {!selectedNumber && walletBalance < 10 && (
+            <p className="text-yellow-300 text-sm text-center">
+              💡 Add balance to play - Watch mode available
+            </p>
+          )}
+          
+          {selectedNumber && walletBalance >= 10 && (
+            <>
+              {gameStatus === 'WAITING' && (
+                <p className="text-blue-300 text-sm text-center">
+                  ⏳ Ready! Game will start when enough players join
+                </p>
+              )}
+              {gameStatus === 'ACTIVE' && (
+                <p className="text-green-300 text-sm text-center">
+                  🚀 Auto-joining active game with card #{selectedNumber}...
+                </p>
+              )}
+              {gameStatus === 'FINISHED' && (
+                <p className="text-orange-300 text-sm text-center">
+                  🔄 Card #{selectedNumber} reserved for next game
+                </p>
+              )}
+            </>
+          )}
+          
+          <p className="text-white/60 text-xs text-center">
+            Games restart automatically 30 seconds after completion
+          </p>
+          <p className="text-white/40 text-xs text-center">
+            Minimum 2 players required to start the game
+          </p>
+        </div>
       </motion.div>
     </div>
   );
