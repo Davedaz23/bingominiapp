@@ -530,6 +530,39 @@ const fetchAvailableCards = async () => {
     console.error('Error fetching available cards:', error);
   }
 };
+const handleLateEntryJoin = async (cardNumber: number) => {
+  if (!user || !gameData?._id) return;
+
+  try {
+    setJoining(true);
+    setCardSelectionError('');
+
+    // Select the card first
+    const cardResponse = await gameAPI.selectCard(gameData._id, user.id, cardNumber);
+    
+    if (cardResponse.data.success) {
+      setSelectedNumber(cardNumber);
+      setBingoCard(generateBingoCard(cardNumber));
+      
+      // Then join the game
+      const joinResponse = await gameAPI.joinGame(gameData.code, user.id);
+      
+      if (joinResponse.data.success) {
+        console.log('✅ Late entry successful with card #', cardNumber);
+        router.push(`/game/${gameData._id}`);
+      } else {
+        setJoinError('Failed to join active game');
+      }
+    }
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.error || 'Failed to join game';
+    setCardSelectionError(errorMessage);
+    console.error('Late entry error:', error);
+  } finally {
+    setJoining(false);
+  }
+};
+
 
 const handleCardSelect = async (cardNumber: number) => {
   if (!user || !gameData?._id) return;
@@ -550,6 +583,14 @@ const handleCardSelect = async (cardNumber: number) => {
       await fetchAvailableCards();
       
       console.log(`✅ Card #${cardNumber} selected successfully`);
+      
+      // If game is ACTIVE, auto-join immediately
+      if (gameStatus === 'ACTIVE') {
+        console.log('🚀 Auto-joining active game with late entry...');
+        setTimeout(() => {
+          handleAutoJoinGame();
+        }, 1000);
+      }
     }
   } catch (error: any) {
     const errorMessage = error.response?.data?.error || 'Failed to select card';
@@ -1117,29 +1158,37 @@ const getStatusMessage = () => {
       const canSelect = shouldEnableCardSelection();
       const isSelectable = canSelect && isAvailable && !isTaken;
       
+      // Special case: if game is ACTIVE and user has balance, allow selection even if card selection not "active"
+      const forceSelectable = walletBalance >= 10 && gameStatus === 'ACTIVE' && isAvailable && !isTaken;
+      const finalSelectable = isSelectable || forceSelectable;
+
       return (
         <motion.button
           key={number}
-          onClick={() => isSelectable && handleCardSelect(number)}
-          disabled={!isSelectable || joining}
+          onClick={() => (finalSelectable || forceSelectable) && handleCardSelect(number)}
+          disabled={!finalSelectable && !forceSelectable}
           className={`
             aspect-square rounded-xl font-bold text-sm transition-all relative
             ${selectedNumber === number
               ? 'bg-yellow-500 text-white scale-105 shadow-lg'
               : isTaken
               ? 'bg-red-500/50 text-white/50 cursor-not-allowed border-red-400/50'
-              : isSelectable
-              ? 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md cursor-pointer border-white/20'
+              : finalSelectable || forceSelectable
+              ? gameStatus === 'ACTIVE' 
+                ? 'bg-green-500/50 text-white hover:bg-green-600/60 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/50'
+                : 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md cursor-pointer border-white/20'
               : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
             }
             border-2
-            ${!isSelectable ? 'opacity-50' : ''}
+            ${!(finalSelectable || forceSelectable) ? 'opacity-50' : ''}
           `}
-          whileHover={isSelectable ? { scale: 1.05 } : {}}
-          whileTap={isSelectable ? { scale: 0.95 } : {}}
+          whileHover={(finalSelectable || forceSelectable) ? { scale: 1.05 } : {}}
+          whileTap={(finalSelectable || forceSelectable) ? { scale: 0.95 } : {}}
           layout
         >
           {number}
+          
+          {/* Taken indicator */}
           {isTaken && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-4 h-4 text-red-300">
@@ -1149,7 +1198,14 @@ const getStatusMessage = () => {
               </div>
             </div>
           )}
-          {!isTaken && !isSelectable && (
+          
+          {/* Late entry indicator for active games */}
+          {!isTaken && forceSelectable && gameStatus === 'ACTIVE' && (
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
+          )}
+          
+          {/* Disabled indicator */}
+          {!isTaken && !finalSelectable && !forceSelectable && (
             <div className="absolute inset-0 flex items-center justify-center opacity-40">
               <div className="w-3 h-3 text-white/50">
                 <svg fill="currentColor" viewBox="0 0 20 20">
@@ -1279,16 +1335,29 @@ const getStatusMessage = () => {
         
 
 <div className="space-y-2">
-  {!selectedNumber && shouldEnableCardSelection() && (
-    <p className="text-green-300 text-sm text-center">
-      🎯 Select a card number to join the next game automatically
-    </p>
-  )}
-  
-  {!selectedNumber && !shouldEnableCardSelection() && walletBalance >= 10 && (
-    <p className="text-blue-300 text-sm text-center">
-      ⏳ Card selection will be available when the next game starts
-    </p>
+  {!selectedNumber && walletBalance >= 10 && (
+    <>
+      {gameStatus === 'WAITING' && (
+        <p className="text-blue-300 text-sm text-center">
+          🎯 Select a card number to join the waiting game
+        </p>
+      )}
+      {gameStatus === 'ACTIVE' && (
+        <p className="text-green-300 text-sm text-center">
+          🚀 Game in progress - Select a card for late entry!
+        </p>
+      )}
+      {gameStatus === 'FINISHED' && (
+        <p className="text-orange-300 text-sm text-center">
+          🔄 Select a card for the next game (starting in {restartCountdown}s)
+        </p>
+      )}
+      {gameStatus === 'RESTARTING' && (
+        <p className="text-purple-300 text-sm text-center">
+          ⚡ New game starting soon - Select your card!
+        </p>
+      )}
+    </>
   )}
   
   {!selectedNumber && walletBalance < 10 && (
@@ -1297,28 +1366,24 @@ const getStatusMessage = () => {
     </p>
   )}
   
-  {selectedNumber && walletBalance >= 10 && gameStatus === 'WAITING' && (
-    <p className="text-blue-300 text-sm text-center">
-      ⏳ Game will start automatically when enough players join
-    </p>
-  )}
-  
-  {selectedNumber && walletBalance >= 10 && gameStatus === 'ACTIVE' && (
-    <p className="text-green-300 text-sm text-center">
-      🚀 Game started! Auto-joining with card #{selectedNumber}...
-    </p>
-  )}
-  
-  {selectedNumber && walletBalance < 10 && (
-    <p className="text-yellow-300 text-sm text-center">
-      👀 You'll join as spectator with card #{selectedNumber}
-    </p>
-  )}
-  
-  {gameStatus === 'FINISHED' && !shouldEnableCardSelection() && (
-    <p className="text-yellow-300 text-sm text-center">
-      ⏳ New game starting in {restartCountdown} seconds
-    </p>
+  {selectedNumber && walletBalance >= 10 && (
+    <>
+      {gameStatus === 'WAITING' && (
+        <p className="text-blue-300 text-sm text-center">
+          ⏳ Ready! Game will start when enough players join
+        </p>
+      )}
+      {gameStatus === 'ACTIVE' && (
+        <p className="text-green-300 text-sm text-center">
+          🚀 Auto-joining active game with card #{selectedNumber}...
+        </p>
+      )}
+      {gameStatus === 'FINISHED' && (
+        <p className="text-orange-300 text-sm text-center">
+          🔄 Card #{selectedNumber} reserved for next game
+        </p>
+      )}
+    </>
   )}
   
   <p className="text-white/60 text-xs text-center">
