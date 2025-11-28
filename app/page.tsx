@@ -991,22 +991,75 @@ const getStatusMessage = () => {
   </motion.div>
 )}
       {/* Only show watch button for users with insufficient balance */}
-      {gameStatus === 'ACTIVE' && !selectedNumber && walletBalance < 10 && (
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
-          <motion.button
-            onClick={handleJoinAsSpectator}
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <span>👀</span>
-            Watch Live Game
-          </motion.button>
-          <p className="text-white/60 text-xs text-center mt-2">
-            Watch the ongoing game without playing
-          </p>
+    {/* CARD SELECTION STATUS */}
+{walletBalance >= 10 && (
+  <motion.div 
+    className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+    initial={{ opacity: 0, y: -10 }}
+    animate={{ opacity: 1, y: 0 }}
+  >
+    <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center gap-2">
+        <Target className="w-4 h-4 text-blue-300" />
+        <p className="text-blue-300 font-bold text-sm">Ready to Play!</p>
+      </div>
+      <p className="text-blue-200 text-sm font-bold">
+        Balance: {walletBalance} ብር
+      </p>
+    </div>
+
+    {/* Different messages based on game status */}
+    {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
+      <div>
+        <div className="flex justify-between text-xs text-blue-200 mb-1">
+          <span>Choose your card number to join the game</span>
+          <span>{takenCards.length}/400 cards taken</span>
         </div>
-      )}
+        <div className="w-full bg-blue-400/20 rounded-full h-2">
+          <div 
+            className="bg-gradient-to-r from-blue-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
+            style={{ 
+              width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
+            }}
+          />
+        </div>
+        <p className="text-blue-200 text-xs mt-2 text-center">
+          {Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining to select
+        </p>
+      </div>
+    )}
+
+    {shouldEnableCardSelection() && !cardSelectionStatus.isSelectionActive && gameStatus === 'WAITING' && (
+      <p className="text-blue-200 text-xs text-center">
+        🎯 Select a card number to join the waiting game
+      </p>
+    )}
+
+    {shouldEnableCardSelection() && !cardSelectionStatus.isSelectionActive && gameStatus === 'ACTIVE' && (
+      <p className="text-green-200 text-xs text-center">
+        🚀 Game in progress - Select a card for late entry!
+      </p>
+    )}
+
+    {shouldEnableCardSelection() && gameStatus === 'FINISHED' && (
+      <p className="text-orange-200 text-xs text-center">
+        🔄 Select a card for the next game (starting in {restartCountdown}s)
+      </p>
+    )}
+
+    {!shouldEnableCardSelection() && walletBalance >= 10 && (
+      <p className="text-yellow-200 text-xs text-center">
+        ⏳ Waiting for card selection to become available...
+      </p>
+    )}
+
+    {cardSelectionError && (
+      <p className="text-red-300 text-xs mt-2 text-center">
+        {cardSelectionError}
+      </p>
+    )}
+  </motion.div>
+)}
 
       {selectedNumber && (
         <motion.div 
