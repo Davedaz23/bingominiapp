@@ -413,13 +413,61 @@ useEffect(() => {
 
 
   // Auto-redirect when game starts and user has selected a card with balance
-  useEffect(() => {
-    if (gameStatus === 'ACTIVE' && selectedNumber && !autoRedirected && walletBalance >= 10) {
-      console.log('🚀 Auto-redirecting to game - user has card and sufficient balance');
-      setAutoRedirected(true);
-      setShowGameView(true);
-    }
-  }, [gameStatus, selectedNumber, autoRedirected, walletBalance]);
+// Auto-join when game starts and user has selected a card with balance
+useEffect(() => {
+  if (gameStatus === 'ACTIVE' && selectedNumber && walletBalance >= 10 && !autoRedirected) {
+    console.log('🚀 Auto-redirecting to game - user has card and sufficient balance');
+    setAutoRedirected(true);
+    
+    // Use a more reliable auto-join with retry
+    const joinGameWithRetry = async (retries = 3) => {
+      try {
+        console.log('🤖 Auto-joining game...');
+        
+        const waitingGamesResponse = await gameAPI.getWaitingGames();
+        const activeGamesResponse = await gameAPI.getActiveGames();
+        
+        let targetGame = null;
+        
+        if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
+          targetGame = waitingGamesResponse.data.games[0];
+        } else if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+          targetGame = activeGamesResponse.data.games[0];
+        }
+        
+        if (targetGame) {
+          const joinResponse = await gameAPI.joinGame(targetGame.code, user.id);
+          
+          
+          if (joinResponse.data.success) {
+            console.log('✅ Auto-joined game successfully');
+            router.push(`/game/${targetGame._id}`);
+          } else {
+            throw new Error('Join game API call failed');
+          }
+        } else {
+          throw new Error('No games available');
+        }
+      } catch (error) {
+        console.error('Auto-join attempt failed:', error);
+        
+        if (retries > 0) {
+          console.log(`🔄 Retrying auto-join... (${retries} attempts left)`);
+          setTimeout(() => joinGameWithRetry(retries - 1), 2000);
+        } else {
+          console.error('❌ All auto-join attempts failed');
+          // Fallback: redirect to watch mode
+          const activeGamesResponse = await gameAPI.getActiveGames();
+          if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+            router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
+          }
+        }
+      }
+    };
+    
+    joinGameWithRetry();
+  }
+}, [gameStatus, selectedNumber, autoRedirected, walletBalance, user, router]);
 
   // Check game status periodically
   useEffect(() => {
@@ -459,15 +507,16 @@ useEffect(() => {
 
 // COMPREHENSIVE CARD SELECTION LOGIC
 const shouldEnableCardSelection = () => {
-  console.log('🎯 Card Selection Check:', {
+  console.log('🎯 CARD SELECTION DEBUG:', {
     gameStatus,
     walletBalance,
     selectedNumber,
-    isSelectionActive: cardSelectionStatus.isSelectionActive,
-    hasGameData: !!gameData?._id
+    hasGameData: !!gameData?._id,
+    availableCardsCount: availableCards.length,
+    isSelectionActive: cardSelectionStatus.isSelectionActive
   });
 
-  // If user already selected a card, they can't select another one
+  // If user already selected a card, disable selection
   if (selectedNumber) {
     console.log('🎯 User already has card #', selectedNumber);
     return false;
@@ -479,37 +528,13 @@ const shouldEnableCardSelection = () => {
     return false;
   }
 
-  // SCENARIO 1: User has sufficient balance AND card selection is active
-  if (walletBalance >= 10 && cardSelectionStatus.isSelectionActive) {
-    console.log('🎯 Scenario 1: Sufficient balance + Active selection');
+  // ALWAYS allow card selection if user has sufficient balance, regardless of game state
+  if (walletBalance >= 10) {
+    console.log('🎯 User has sufficient balance, enabling card selection');
     return true;
   }
 
-  // SCENARIO 2: User has sufficient balance AND game is WAITING
-  if (walletBalance >= 10 && gameStatus === 'WAITING') {
-    console.log('🎯 Scenario 2: Sufficient balance + Game waiting');
-    return true;
-  }
-
-  // SCENARIO 3: User has sufficient balance AND game is FINISHED (next game preparation)
-  if (walletBalance >= 10 && gameStatus === 'FINISHED' && restartCountdown > 0) {
-    console.log('🎯 Scenario 3: Sufficient balance + Game finished (next game soon)');
-    return true;
-  }
-
-  // SCENARIO 4: User has sufficient balance AND game is RESTARTING
-  if (walletBalance >= 10 && gameStatus === 'RESTARTING') {
-    console.log('🎯 Scenario 4: Sufficient balance + Game restarting');
-    return true;
-  }
-
-  // SCENARIO 5: Game is ACTIVE but user has balance - allow late entry if cards available
-  if (walletBalance >= 10 && gameStatus === 'ACTIVE' && availableCards.length > 0) {
-    console.log('🎯 Scenario 5: Sufficient balance + Game active (late entry)');
-    return true;
-  }
-
-  console.log('🎯 Card selection disabled - conditions not met');
+  console.log('🎯 Card selection disabled - insufficient balance');
   return false;
 };
 const fetchAvailableCards = async () => {
@@ -1155,35 +1180,29 @@ const getStatusMessage = () => {
     {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
       const isTaken = takenCards.some(card => card.cardNumber === number);
       const isAvailable = availableCards.includes(number);
-      const canSelect = shouldEnableCardSelection();
+      const canSelect = walletBalance >= 10; // SIMPLIFIED: Only check balance
       const isSelectable = canSelect && isAvailable && !isTaken;
-      
-      // Special case: if game is ACTIVE and user has balance, allow selection even if card selection not "active"
-      const forceSelectable = walletBalance >= 10 && gameStatus === 'ACTIVE' && isAvailable && !isTaken;
-      const finalSelectable = isSelectable || forceSelectable;
 
       return (
         <motion.button
           key={number}
-          onClick={() => (finalSelectable || forceSelectable) && handleCardSelect(number)}
-          disabled={!finalSelectable && !forceSelectable}
+          onClick={() => isSelectable && handleCardSelect(number)}
+          disabled={!isSelectable}
           className={`
             aspect-square rounded-xl font-bold text-sm transition-all relative
-            ${selectedNumber === number
-              ? 'bg-yellow-500 text-white scale-105 shadow-lg'
-              : isTaken
+            ${isTaken
               ? 'bg-red-500/50 text-white/50 cursor-not-allowed border-red-400/50'
-              : finalSelectable || forceSelectable
+              : isSelectable
               ? gameStatus === 'ACTIVE' 
-                ? 'bg-green-500/50 text-white hover:bg-green-600/60 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/50'
-                : 'bg-white/20 text-white hover:bg-white/30 hover:scale-105 hover:shadow-md cursor-pointer border-white/20'
+                ? 'bg-green-500/60 text-white hover:bg-green-600/70 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/60'
+                : 'bg-white/30 text-white hover:bg-white/40 hover:scale-105 hover:shadow-md cursor-pointer border-white/30'
               : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
             }
             border-2
-            ${!(finalSelectable || forceSelectable) ? 'opacity-50' : ''}
+            ${!isSelectable ? 'opacity-50' : ''}
           `}
-          whileHover={(finalSelectable || forceSelectable) ? { scale: 1.05 } : {}}
-          whileTap={(finalSelectable || forceSelectable) ? { scale: 0.95 } : {}}
+          whileHover={isSelectable ? { scale: 1.05 } : {}}
+          whileTap={isSelectable ? { scale: 0.95 } : {}}
           layout
         >
           {number}
@@ -1200,14 +1219,14 @@ const getStatusMessage = () => {
           )}
           
           {/* Late entry indicator for active games */}
-          {!isTaken && forceSelectable && gameStatus === 'ACTIVE' && (
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white"></div>
+          {!isTaken && isSelectable && gameStatus === 'ACTIVE' && (
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
           )}
           
-          {/* Disabled indicator */}
-          {!isTaken && !finalSelectable && !forceSelectable && (
-            <div className="absolute inset-0 flex items-center justify-center opacity-40">
-              <div className="w-3 h-3 text-white/50">
+          {/* Available but insufficient balance */}
+          {!isTaken && !isSelectable && walletBalance < 10 && (
+            <div className="absolute inset-0 flex items-center justify-center opacity-60">
+              <div className="w-3 h-3 text-yellow-400">
                 <svg fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 9a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clipRule="evenodd" />
                 </svg>

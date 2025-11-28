@@ -281,26 +281,59 @@ export const walletAPI = {
 
 // Enhanced convenience methods with proper ID handling
 export const walletAPIAuto = {
-  getBalance: async () => {
-    // Try to get the correct user ID
-    const telegramId = getTelegramId();
-    const userId = getUserId();
+getBalance: async () => {
+    try {
+      // Try multiple sources for user ID with better error handling
+      const telegramId = getTelegramId();
+      const userId = getUserId();
 
-    console.log('💰 Wallet balance request:', { telegramId, userId });
+      console.log('💰 Wallet balance request - Available IDs:', { 
+        telegramId, 
+        userId,
+        telegramIdValid: telegramId && telegramId.match(/^\d+$/),
+        userIdValid: userId && userId.match(/^[0-9a-fA-F]{24}$/)
+      });
 
-    // Prefer Telegram ID for wallet requests since backend expects it
-    if (telegramId && telegramId.match(/^\d+$/)) {
-      console.log('💰 Using Telegram ID for balance:', telegramId);
-      return walletAPI.getBalance(telegramId);
+      // Strategy 1: Try Telegram ID first (preferred)
+      if (telegramId && telegramId.match(/^\d+$/)) {
+        console.log('💰 Strategy 1: Using Telegram ID:', telegramId);
+        try {
+          const response = await walletAPI.getBalance(telegramId);
+          console.log('💰 Telegram ID balance response:', response.data);
+          return response;
+        } catch (error: any) {
+          console.warn('💰 Telegram ID strategy failed:', error.message);
+        }
+      }
+
+      // Strategy 2: Try MongoDB ID
+      if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
+        console.log('💰 Strategy 2: Using MongoDB ID:', userId);
+        try {
+          const response = await walletAPI.getBalance(userId);
+          console.log('💰 MongoDB ID balance response:', response.data);
+          return response;
+        } catch (error: any) {
+          console.warn('💰 MongoDB ID strategy failed:', error.message);
+        }
+      }
+
+      // Strategy 3: Try direct API call with fallback
+      console.log('💰 Strategy 3: Trying direct balance endpoint');
+      try {
+        // Use a generic endpoint that handles both ID types
+        const response = await api.get('/wallet/balance/auto');
+        console.log('💰 Direct balance response:', response.data);
+        return { data: response.data };
+      } catch (error: any) {
+        console.warn('💰 Direct balance strategy failed:', error.message);
+      }
+
+      throw new Error('No valid user ID found for wallet balance');
+    } catch (error) {
+      console.error('💰 All wallet balance strategies failed:', error);
+      throw error;
     }
-
-    // Fallback to user ID if it's a valid MongoDB ID
-    if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
-      console.log('💰 Using MongoDB ID for balance:', userId);
-      return walletAPI.getBalance(userId);
-    }
-
-    throw new Error('No valid user ID found for wallet balance');
   },
   
   getTransactions: async (limit?: number, page?: number) => {
