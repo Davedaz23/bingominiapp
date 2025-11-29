@@ -390,16 +390,28 @@ export default function Home() {
     )}
 
       {/* Selected Card Preview and Controls */}
-      {selectedNumber && bingoCard && (
-        <motion.div
-          className="mb-6"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard} />
-        </motion.div>
-      )}
+  {selectedNumber && bingoCard && (
+  <motion.div
+    className="mb-6"
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: 0.3 }}
+  >
+    {/* Main Card Preview */}
+    <div className="mb-4">
+      <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard} />
+    </div>
+    
+    {/* Small Preview Below */}
+    <div className="max-w-xs mx-auto">
+      <BingoCardPreview 
+        cardNumber={selectedNumber} 
+        numbers={bingoCard} 
+        size="small" 
+      />
+    </div>
+  </motion.div>
+)}
 
       {/* Game Controls */}
       <GameControls
