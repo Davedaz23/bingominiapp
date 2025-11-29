@@ -401,7 +401,7 @@ const ModeratorControls = ({ onModerateGames, onViewReports }: {
 );
 
 export default function Home() {
-  const { user, isAuthenticated, isLoading, isAdmin, isModerator, userRole, hasPermission } = useAuth();
+    const { user, isAuthenticated, isLoading, isAdmin, isModerator, userRole, hasPermission } = useAuth();
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [activeGame, setActiveGame] = useState<any>(null);
   const [showNumberSelection, setShowNumberSelection] = useState<boolean>(false);
