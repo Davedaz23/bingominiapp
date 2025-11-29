@@ -1,5 +1,6 @@
 // components/bingo/CardSelectionGrid.tsx - UPDATED
 import { motion } from 'framer-motion';
+import { Check } from 'lucide-react';
 
 interface CardSelectionGridProps {
   availableCards: Array<{cardIndex: number, numbers: (number | string)[][], preview?: any}>;
@@ -10,6 +11,7 @@ interface CardSelectionGridProps {
   onCardSelect: (cardNumber: number) => void;
 }
 
+// components/bingo/CardSelectionGrid.tsx - Updated
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   availableCards,
   takenCards,
@@ -37,6 +39,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           const isAvailable = availableCardMap.has(number);
           const canSelect = walletBalance >= 10;
           const isSelectable = canSelect && isAvailable && !isTaken;
+          const isCurrentlySelected = selectedNumber === number;
           const cardData = availableCardMap.get(number);
 
           return (
@@ -46,7 +49,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               disabled={!isSelectable}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
-                ${isTaken
+                ${isCurrentlySelected
+                  ? 'bg-telegram-button text-white border-telegram-button shadow-lg scale-105'
+                  : isTaken
                   ? 'bg-red-500/50 text-white/50 cursor-not-allowed border-red-400/50'
                   : isSelectable
                   ? gameStatus === 'ACTIVE' 
@@ -55,7 +60,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                   : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
                 }
                 border-2
-                ${!isSelectable ? 'opacity-50' : ''}
+                ${!isSelectable && !isCurrentlySelected ? 'opacity-50' : ''}
               `}
               whileHover={isSelectable ? { scale: 1.05 } : {}}
               whileTap={isSelectable ? { scale: 0.95 } : {}}
@@ -63,7 +68,14 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
             >
               {number}
               
-              {isTaken && (
+              {/* Current selection indicator */}
+              {isCurrentlySelected && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-telegram-button rounded-full border-2 border-white flex items-center justify-center">
+                  <Check className="w-2 h-2 text-white" />
+                </div>
+              )}
+              
+              {isTaken && !isCurrentlySelected && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-4 h-4 text-red-300">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -73,7 +85,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
-              {!isTaken && isSelectable && gameStatus === 'ACTIVE' && (
+              {!isTaken && isSelectable && gameStatus === 'ACTIVE' && !isCurrentlySelected && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               )}
               
@@ -88,7 +100,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               )}
 
               {/* Show available indicator */}
-              {isAvailable && !isTaken && canSelect && (
+              {isAvailable && !isTaken && canSelect && !isCurrentlySelected && (
                 <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
               )}
             </motion.button>
@@ -96,8 +108,27 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         })}
       </motion.div>
 
+      {/* Selection Info */}
+      {selectedNumber && (
+        <motion.div 
+          className="bg-telegram-button/20 backdrop-blur-lg rounded-2xl p-3 mb-3 border border-telegram-button/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-telegram-button" />
+              <p className="text-telegram-button font-bold text-sm">Card #{selectedNumber} Selected</p>
+            </div>
+            <p className="text-telegram-button/80 text-xs">
+              Click another card to change
+            </p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Available Cards Info */}
-      <div className="text-center text-white/60 text-sm mb-2">
+      <div className="text-center text-white/60 text-sm">
         {availableCards.length} cards available • {takenCards.length} cards taken • {400 - availableCards.length - takenCards.length} cards inactive
       </div>
     </div>

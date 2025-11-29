@@ -128,51 +128,61 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   }
 };
 
-  const handleCardSelect = async (cardIndex: number) => {
-    if (!user?.id || !gameData?._id) {
-      console.log('❌ Missing user ID or game ID for card selection');
+ // hooks/useCardSelection.ts - Updated handleCardSelect
+const handleCardSelect = async (cardNumber: number) => {
+  if (!gameData?._id || !user?.id) return;
+
+  try {
+    setCardSelectionError('');
+    
+    // Find the selected card data from availableCards
+    const selectedCardData = availableCards.find(card => card.cardIndex === cardNumber);
+    
+    if (!selectedCardData) {
+      setCardSelectionError('Selected card not found');
       return;
     }
+
+    console.log('🔄 Selecting card:', {
+      gameId: gameData._id,
+      userId: user.id,
+      cardIndex: cardNumber,
+      cardNumbers: selectedCardData.numbers
+    });
+
+    // Call the API to select/update the card
+    const response = await gameAPI.selectCard(gameData._id, user.id, selectedCardData.numbers);
     
-    try {
-      setCardSelectionError('');
+    if (response.data.success) {
+      console.log(`✅ Card ${response.data.action === 'UPDATED' ? 'updated' : 'selected'} successfully:`, response.data);
       
-      // Get the selected card numbers from available cards
-      const selectedCard = availableCards.find(card => card.cardIndex === cardIndex);
-      if (!selectedCard) {
-        throw new Error('Selected card not found in available cards');
-      }
-
-      console.log('🔄 Selecting card:', {
-        gameId: gameData._id,
-        userId: user.id,
-        cardIndex,
-        cardNumbers: selectedCard.numbers
-      });
-
-      const response = await gameAPI.selectCard(gameData._id, user.id, selectedCard.numbers);
+      // Update local state
+      setSelectedNumber(cardNumber);
+      setBingoCard(selectedCardData.numbers);
       
-      if (response.data.success) {
-        setSelectedNumber(cardIndex);
-        setAccountData('selected_number', cardIndex);
-        setBingoCard(selectedCard.numbers);
-        setCardSelectionError('');
-        
-        console.log(`✅ Card #${cardIndex} selected successfully`);
-        
-        // Refresh available cards after selection
-        fetchAvailableCards();
+      // Show success message based on action
+      if (response.data.action === 'UPDATED') {
+        setCardSelectionError(''); // Clear any previous errors
+        // Optional: Show success toast for card update
+        console.log('🔄 Card successfully updated!');
+      } else {
+        console.log('✅ Card successfully selected!');
       }
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Failed to select card';
-      setCardSelectionError(errorMessage);
-      console.error('❌ Card selection error:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data
-      });
+      
+    } else {
+      setCardSelectionError(response.data.error || 'Failed to select card');
     }
-  };
+  } catch (error: any) {
+    console.error('❌ Card selection error:', error);
+    
+    // Handle specific error cases
+    if (error.response?.data?.error) {
+      setCardSelectionError(error.response.data.error);
+    } else {
+      setCardSelectionError('Failed to select card. Please try again.');
+    }
+  }
+};
 
   const handleCardRelease = async () => {
     if (!user?.id || !gameData?._id) return;

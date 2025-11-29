@@ -83,6 +83,9 @@ const getTelegramId = (): string | null => {
 export interface CardSelectionResponse {
   success: boolean;
   message: string;
+  action?: 'CREATED' | 'UPDATED'; // Add this line
+  cardId?: string; // Add this line
+  error?: string; // Add this line for error responses
 }
 
 export interface AvailableCardsResponse {
@@ -103,7 +106,12 @@ export interface CardSelectionStatusResponse {
   playersWithoutCards: number;
   canStart: boolean;
   minPlayersRequired: number;
-  playersWithCardsList: any[];
+  playersWithCardsList: Array<{
+    userId: string;
+    cardIndex?: number;
+    cardNumber?: number;
+    username?: string;
+  }>; // Make this more specific
   playersWithoutCardsList: any[];
 }
 

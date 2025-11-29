@@ -129,5 +129,6 @@ export interface AdminStats {
   pendingDeposits: number;
 }
 
+
 // Remove duplicate Permission type declaration from here
 // and keep it only in AuthContext
