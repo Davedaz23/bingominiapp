@@ -223,14 +223,7 @@ const UserInfoDisplay = ({ user, balance, userRole }: { user: any; balance: numb
       return 'Guest';
     }
     
-    console.log('👤 UserInfoDisplay - User object:', {
-      id: user.id,
-      _id: user._id,
-      firstName: user.firstName,
-      username: user.username,
-      telegramUsername: user.telegramUsername,
-      telegramId: user.telegramId,
-    });
+   
 
     // Check if this looks like the admin user
     const isLikelyAdmin = user.telegramId === '444206486' || user.firstName === 'ሰው';
@@ -1194,7 +1187,7 @@ export default function Home() {
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-white font-bold text-xl">Bingo Game</h1>
+            <h1 className="text-white font-bold text-xl">Bingo Game {user?.telegramId}</h1>
             <p className="text-white/60 text-sm">
               {isAdmin ? 'Admin Dashboard' : 
                isModerator ? 'Moderator View' : 
