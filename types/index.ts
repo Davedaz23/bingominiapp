@@ -1,4 +1,6 @@
-// types/index.ts - UNIFIED TYPES
+// types/index.ts - UPDATED WITH PROPER TYPES
+export type UserRole = 'admin' | 'moderator' | 'user';
+
 export interface User {
   id: string;
   _id?: string;
@@ -6,11 +8,19 @@ export interface User {
   username: string;
   firstName: string;
   lastName?: string;
+  role?: UserRole;
+  isAdmin?: boolean;
+  isModerator?: boolean;
   gamesPlayed: number;
   gamesWon: number;
   totalScore: number;
+  walletBalance?: number;
+  isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  lastLogin?: string;
+  telegramUsername?: string;
+  photoUrl?: string;
 }
 
 export interface BingoCard {
@@ -44,25 +54,28 @@ export interface WalletInfo {
   betAmount: number;
   potentialWin: number;
 }
+
 export interface GamePlayerUser {
   _id: string;
   id: string;
   username?: string;
   firstName?: string;
   lastName?: string;
-  telegramId?: string; // Added for better user identification
+  telegramId?: string;
+  role?: UserRole;
 }
 
 export interface GamePlayer {
   _id: string;
-  userId: string; // This should be string, not GamePlayerUser
-  user?: GamePlayerUser; // This is populated by Mongoose
+  userId: string;
+  user?: GamePlayerUser;
   isReady: boolean;
   joinedAt: string;
   playerType?: 'PLAYER' | 'SPECTATOR';
-  isLateJoiner?: boolean; // Added: Track if player joined after game started
-  numbersCalledAtJoin?: number[]; // Added: Numbers called when player joined
+  isLateJoiner?: boolean;
+  numbersCalledAtJoin?: number[];
 }
+
 export interface Game {
   isAutoCreated: boolean;
   winner: boolean;
@@ -106,3 +119,15 @@ export interface GameStats {
   totalPlayers: number;
   totalPrizePool: number;
 }
+
+export interface AdminStats {
+  totalUsers: number;
+  totalGames: number;
+  totalTransactions: number;
+  totalBalance: number;
+  activeGames: number;
+  pendingDeposits: number;
+}
+
+// Remove duplicate Permission type declaration from here
+// and keep it only in AuthContext

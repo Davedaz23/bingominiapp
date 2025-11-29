@@ -1,11 +1,11 @@
-// app/page.tsx
+// app/page.tsx - COMPLETE WITH ROLE-BASED UI
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { walletAPIAuto, gameAPI, authAPI, walletAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
-import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy, Target, User } from 'lucide-react';
+import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy, Target, User, Shield, Crown } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 // Memoized Bingo Card Component matching your design system
@@ -214,17 +214,39 @@ const generateBingoCard = (cardNumber: number) => {
   return card;
 };
 
-// User Info Display Component for Navbar
-const UserInfoDisplay = ({ user, balance }: { user: any; balance: number }) => {
+// User Info Display Component with Role Badges
+const UserInfoDisplay = ({ user, balance, userRole }: { user: any; balance: number; userRole: string }) => {
   const getUserDisplayName = () => {
     if (!user) return 'Guest';
     
-    // Priority: firstName > username > telegram username > user ID
     if (user.firstName) return user.firstName;
     if (user.username) return user.username;
     if (user.telegramUsername) return user.telegramUsername;
     return `User${user.id?.toString().slice(-4)}` || 'Player';
   };
+
+  const getRoleBadge = () => {
+    switch (userRole) {
+      case 'admin':
+        return {
+          bg: 'bg-yellow-500/20 border-yellow-400/50',
+          text: 'text-yellow-300',
+          icon: <Crown className="w-3 h-3" />,
+          label: 'ADMIN'
+        };
+      case 'moderator':
+        return {
+          bg: 'bg-blue-500/20 border-blue-400/50',
+          text: 'text-blue-300',
+          icon: <Shield className="w-3 h-3" />,
+          label: 'MOD'
+        };
+      default:
+        return null;
+    }
+  };
+
+  const roleBadge = getRoleBadge();
 
   return (
     <div className="flex items-center gap-3">
@@ -234,17 +256,107 @@ const UserInfoDisplay = ({ user, balance }: { user: any; balance: number }) => {
         <p className="text-white/60 text-xs">Balance</p>
       </div>
       
-      {/* User Name Display */}
-      <div className="flex items-center gap-2 bg-white/20 backdrop-blur-lg rounded-xl px-3 py-2 border border-white/30">
-        <User className="w-4 h-4 text-white" />
-        <p className="text-white font-medium text-sm">{getUserDisplayName()}</p>
+      {/* User Name Display with Role Badge */}
+      <div className={`flex items-center gap-2 backdrop-blur-lg rounded-xl px-3 py-2 border ${
+        roleBadge ? roleBadge.bg : 'bg-white/20 border-white/30'
+      }`}>
+        <User className={`w-4 h-4 ${roleBadge ? roleBadge.text : 'text-white'}`} />
+        <div className="flex flex-col">
+          <p className={`font-medium text-sm ${roleBadge ? roleBadge.text : 'text-white'}`}>
+            {getUserDisplayName()}
+          </p>
+          {roleBadge && (
+            <div className="flex items-center gap-1">
+              {roleBadge.icon}
+              <p className="text-xs font-bold">{roleBadge.label}</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
 
+// Admin Controls Component
+const AdminControls = ({ onStartGame, onEndGame, onManageUsers }: { 
+  onStartGame: () => void;
+  onEndGame: () => void;
+  onManageUsers: () => void;
+}) => (
+  <motion.div 
+    className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-yellow-500/30"
+    initial={{ opacity: 0, y: -10 }}
+    animate={{ opacity: 1, y: 0 }}
+  >
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <Crown className="w-4 h-4 text-yellow-300" />
+        <p className="text-yellow-300 font-bold text-sm">Admin Controls</p>
+      </div>
+    </div>
+    <div className="grid grid-cols-3 gap-2">
+      <button 
+        onClick={onStartGame}
+        className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1"
+      >
+        <Play className="w-3 h-3" />
+        Start Game
+      </button>
+      <button 
+        onClick={onEndGame}
+        className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1"
+      >
+        <Trophy className="w-3 h-3" />
+        End Game
+      </button>
+      <button 
+        onClick={onManageUsers}
+        className="bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1"
+      >
+        <Users className="w-3 h-3" />
+        Manage Users
+      </button>
+    </div>
+  </motion.div>
+);
+
+// Moderator Controls Component
+const ModeratorControls = ({ onModerateGames, onViewReports }: { 
+  onModerateGames: () => void;
+  onViewReports: () => void;
+}) => (
+  <motion.div 
+    className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+    initial={{ opacity: 0, y: -10 }}
+    animate={{ opacity: 1, y: 0 }}
+  >
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <Shield className="w-4 h-4 text-blue-300" />
+        <p className="text-blue-300 font-bold text-sm">Moderator Controls</p>
+      </div>
+    </div>
+    <div className="grid grid-cols-2 gap-2">
+      <button 
+        onClick={onModerateGames}
+        className="bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1"
+      >
+        <Play className="w-3 h-3" />
+        Moderate Games
+      </button>
+      <button 
+        onClick={onViewReports}
+        className="bg-purple-500 hover:bg-purple-600 text-white text-xs font-bold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1"
+      >
+        <Trophy className="w-3 h-3" />
+        View Reports
+      </button>
+    </div>
+  </motion.div>
+);
+
 export default function Home() {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, isAdmin, isModerator, userRole, hasPermission } = useAuth();
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [activeGame, setActiveGame] = useState<any>(null);
   const [showNumberSelection, setShowNumberSelection] = useState<boolean>(false);
@@ -274,6 +386,56 @@ export default function Home() {
   const [cardSelectionError, setCardSelectionError] = useState<string>('');
 
   const router = useRouter();
+
+  // Admin control handlers
+  const handleStartGame = async () => {
+    if (hasPermission('manage_games')) {
+      try {
+        if (!gameData?._id) return;
+        
+        const response = await gameAPI.startGame(gameData._id);
+        
+        if (response.data.success) {
+          console.log('🔄 Admin starting game...');
+          await checkGameStatus();
+        }
+      } catch (error) {
+        console.error('❌ Failed to start game by admin:', error);
+        setJoinError('Failed to start game');
+      }
+    }
+  };
+
+  const handleEndGame = () => {
+    if (hasPermission('manage_games')) {
+      console.log('🛑 Admin ending game...');
+      // Implement game end logic
+      // This would call gameAPI.endGame(gameData._id)
+    }
+  };
+
+  const handleManageUsers = () => {
+    if (hasPermission('manage_users')) {
+      console.log('👥 Admin managing users...');
+      // Navigate to user management
+      // router.push('/admin/users');
+    }
+  };
+
+  const handleModerateGames = () => {
+    if (hasPermission('moderate_games')) {
+      console.log('🛡️ Moderator moderating games...');
+      // Implement moderation logic
+    }
+  };
+
+  const handleViewReports = () => {
+    if (hasPermission('view_reports')) {
+      console.log('📊 Moderator viewing reports...');
+      // Navigate to reports
+      // router.push('/moderator/reports');
+    }
+  };
 
   // FIXED: Proper user ID detection for wallet operations
   const getCurrentUserId = (): string | null => {
@@ -389,7 +551,8 @@ export default function Home() {
         console.log('👤 Initializing app for user:', {
           id: currentUserId,
           name: user.firstName || user.username,
-          telegramId: user.telegramId
+          telegramId: user.telegramId,
+          role: userRole
         });
         
         // Initialize wallet for current user
@@ -432,7 +595,7 @@ export default function Home() {
     };
 
     initializeApp();
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, userRole]);
 
   useEffect(() => {
     console.log('💰 Wallet balance state updated for current user:', walletBalance);
@@ -533,22 +696,6 @@ export default function Home() {
     };
   }, [gameStatus, restartCountdown]);
   
-  const handleStartGame = async () => {
-    try {
-      if (!gameData?._id) return;
-      
-      const response = await gameAPI.startGame(gameData._id);
-      
-      if (response.data.success) {
-        console.log('✅ Game started manually by current user');
-        await checkGameStatus();
-      }
-    } catch (error) {
-      console.error('❌ Failed to start game by current user:', error);
-      setJoinError('Failed to start game');
-    }
-  };
-
   const shouldEnableCardSelection = () => {
     console.log('🎯 CARD SELECTION DEBUG for current user:', {
       gameStatus,
@@ -937,7 +1084,7 @@ export default function Home() {
               <h1 className="text-white font-bold text-xl">Bingo Game</h1>
               <p className="text-white/60 text-sm">Joining Game Automatically</p>
             </div>
-            <UserInfoDisplay user={user} balance={walletBalance} />
+            <UserInfoDisplay user={user} balance={walletBalance} userRole={userRole} />
           </div>
         </div>
 
@@ -991,18 +1138,39 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-      {/* FIXED: Navbar with User Info in the middle */}
+      {/* Updated Navbar with Role Info */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-white font-bold text-xl">Bingo Game</h1>
-            <p className="text-white/60 text-sm">Select your card number</p>
+            <p className="text-white/60 text-sm">
+              {isAdmin ? 'Admin Dashboard' : 
+               isModerator ? 'Moderator View' : 
+               'Select your card number'}
+            </p>
           </div>
           
-          {/* User Info Display in the middle */}
-          <UserInfoDisplay user={user} balance={walletBalance} />
+          {/* User Info with Role Badge */}
+          <UserInfoDisplay user={user} balance={walletBalance} userRole={userRole} />
         </div>
       </div>
+
+      {/* Admin Controls */}
+      {isAdmin && (
+        <AdminControls 
+          onStartGame={handleStartGame}
+          onEndGame={handleEndGame}
+          onManageUsers={handleManageUsers}
+        />
+      )}
+
+      {/* Moderator Controls */}
+      {isModerator && !isAdmin && (
+        <ModeratorControls 
+          onModerateGames={handleModerateGames}
+          onViewReports={handleViewReports}
+        />
+      )}
 
       <motion.div 
         className={`backdrop-blur-lg rounded-2xl p-4 mb-6 border ${statusInfo.color}`}
