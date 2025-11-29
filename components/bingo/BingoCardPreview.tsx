@@ -12,9 +12,25 @@ export const BingoCardPreview: React.FC<BingoCardPreviewProps> = ({
   numbers,
   size = 'normal'
 }) => {
-  // FIXED: Remove the transform function and use the numbers directly as columns
-  // The numbers array should already be in the format: [B_col, I_col, N_col, G_col, O_col]
-  
+  // Debug: Log the numbers structure to understand the format
+  console.log('BingoCardPreview numbers:', numbers);
+
+  // Transform the column-based data to row-based display
+  // numbers should be: [B_col, I_col, N_col, G_col, O_col] where each column has 5 numbers
+  const transformToRows = (columns: (number | string)[][]) => {
+    const rows = [];
+    for (let row = 0; row < 5; row++) {
+      const rowData = [];
+      for (let col = 0; col < 5; col++) {
+        rowData.push(columns[col]?.[row] || '');
+      }
+      rows.push(rowData);
+    }
+    return rows;
+  };
+
+  const rows = transformToRows(numbers);
+
   // Size-based styling
   const containerClass = size === 'small' 
     ? "bg-gradient-to-br from-white to-gray-50 rounded-lg shadow-sm p-2 border border-gray-200"
@@ -91,31 +107,25 @@ export const BingoCardPreview: React.FC<BingoCardPreviewProps> = ({
         ))}
       </div>
 
-      {/* Card Grid - Display as rows */}
+      {/* Card Grid - Display rows properly */}
       <div className={cardGridClass}>
-        {/* Render 5 rows */}
-        {Array.from({ length: 5 }).map((_, rowIndex) => (
-          // For each row, render 5 cells (one from each column)
-          Array.from({ length: 5 }).map((_, colIndex) => {
-            const cell = numbers[colIndex]?.[rowIndex];
-            
-            return (
-              <motion.div
-                key={`${rowIndex}-${colIndex}`}
-                className={cellClass(cell)}
-                whileHover={{ scale: size === 'small' ? 1.02 : 1.05 }}
-                whileTap={{ scale: size === 'small' ? 0.98 : 0.95 }}
-              >
-                {cell}
-                
-                {cell === 'FREE' && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Check className={size === 'small' ? "w-1.5 h-1.5 text-white drop-shadow-sm" : "w-2 h-2 text-white drop-shadow-sm"} />
-                  </div>
-                )}
-              </motion.div>
-            );
-          })
+        {rows.map((row, rowIndex) => (
+          row.map((cell, colIndex) => (
+            <motion.div
+              key={`${rowIndex}-${colIndex}`}
+              className={cellClass(cell)}
+              whileHover={{ scale: size === 'small' ? 1.02 : 1.05 }}
+              whileTap={{ scale: size === 'small' ? 0.98 : 0.95 }}
+            >
+              {cell}
+              
+              {cell === 'FREE' && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Check className={size === 'small' ? "w-1.5 h-1.5 text-white drop-shadow-sm" : "w-2 h-2 text-white drop-shadow-sm"} />
+                </div>
+              )}
+            </motion.div>
+          ))
         ))}
       </div>
 
