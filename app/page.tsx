@@ -378,39 +378,86 @@ export default function Home() {
       )}
 
       {/* Card Selection Grid */}
-      {!selectedNumber && (
-      <CardSelectionGrid
-        availableCards={availableCards}
-        takenCards={takenCards}
-        selectedNumber={selectedNumber}
-        walletBalance={walletBalance}
-        gameStatus={gameStatus}
-        onCardSelect={handleCardSelect}
-      />
-    )}
-
-      {/* Selected Card Preview and Controls */}
-  {selectedNumber && bingoCard && (
+    { !selectedNumber ? (
+  <CardSelectionGrid
+    availableCards={availableCards}
+    takenCards={takenCards}
+    selectedNumber={selectedNumber}
+    walletBalance={walletBalance}
+    gameStatus={gameStatus}
+    onCardSelect={handleCardSelect}
+  />
+) : (
   <motion.div
     className="mb-6"
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay: 0.3 }}
   >
-    {/* Main Card Preview */}
-    <div className="mb-4">
-      <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard} />
+    {/* Selection Header */}
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-white font-bold text-lg">Selected Card #{selectedNumber}</h2>
+      <motion.button
+        onClick={handleCardRelease}
+        className="bg-red-500/50 hover:bg-red-600/60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        Change Card
+      </motion.button>
     </div>
-    
-    {/* Small Preview Below */}
+
+    {/* Small Card Preview */}
     <div className="max-w-xs mx-auto">
       <BingoCardPreview 
         cardNumber={selectedNumber} 
-        numbers={bingoCard} 
+        numbers={bingoCard!} 
         size="small" 
       />
     </div>
+
+    {/* Card Combination Info */}
+    <motion.div 
+      className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: 0.4 }}
+    >
+      <h3 className="text-white font-bold text-sm mb-2 text-center">Card Combination Preview</h3>
+      <div className="text-white/70 text-xs text-center mb-3">
+        Review your card numbers. Click "Change Card" if you want a different combination.
+      </div>
+      
+      {/* Quick stats about the card */}
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="bg-white/5 rounded-lg p-2">
+          <div className="text-telegram-button font-bold">B</div>
+          <div className="text-white/60 text-xs">Column</div>
+        </div>
+        <div className="bg-white/5 rounded-lg p-2">
+          <div className="text-telegram-button font-bold">I</div>
+          <div className="text-white/60 text-xs">Column</div>
+        </div>
+        <div className="bg-white/5 rounded-lg p-2">
+          <div className="text-telegram-button font-bold">N</div>
+          <div className="text-white/60 text-xs">Column</div>
+        </div>
+      </div>
+    </motion.div>
   </motion.div>
+)}
+
+      {/* Selected Card Preview and Controls */}
+   {selectedNumber && (
+  <GameControls
+    selectedNumber={selectedNumber}
+    joining={joining}
+    joinError={joinError}
+    walletBalance={walletBalance}
+    gameStatus={gameStatus}
+    onJoinGame={handleJoinGame}
+    onCardRelease={handleCardRelease}
+  />
 )}
 
       {/* Game Controls */}

@@ -55,23 +55,24 @@ export const BingoCardPreview: React.FC<BingoCardPreviewProps> = ({
     ? "grid grid-cols-5 gap-0.5"
     : "grid grid-cols-5 gap-0.5";
 
-  const cellClass = (cell: number | string) => size === 'small'
-    ? `
-        aspect-square rounded-sm flex items-center justify-center font-bold text-xs
-        border transition-all duration-200 cursor-default relative
-        ${cell === 'FREE' 
-          ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-xs' 
-          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
-        }
-      `
-    : `
-        aspect-square rounded-md flex items-center justify-center font-bold text-xs
-        border transition-all duration-200 cursor-default relative
-        ${cell === 'FREE' 
-          ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-sm' 
-          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
-        }
-      `;
+// Update the cellClass in BingoCardPreview component:
+const cellClass = (cell: number | string) => size === 'small'
+  ? `
+      aspect-square rounded-sm flex items-center justify-center font-bold 
+      border transition-all duration-200 cursor-default relative
+      ${cell === 'FREE' 
+        ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-xs text-[10px]' 
+        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 text-[10px]'
+      }
+    `
+  : `
+      aspect-square rounded-md flex items-center justify-center font-bold text-xs
+      border transition-all duration-200 cursor-default relative
+      ${cell === 'FREE' 
+        ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white border-green-400 shadow-sm' 
+        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300'
+      }
+    `;
 
   const footerClass = size === 'small'
     ? "mt-1 flex justify-between items-center text-[9px] text-gray-600 border-t border-gray-200 pt-1"
