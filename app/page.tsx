@@ -215,14 +215,41 @@ const generateBingoCard = (cardNumber: number) => {
 };
 
 // User Info Display Component with Role Badges
+// User Info Display Component with Role Badges - FIXED
 const UserInfoDisplay = ({ user, balance, userRole }: { user: any; balance: number; userRole: string }) => {
   const getUserDisplayName = () => {
     if (!user) return 'Guest';
     
-    if (user.firstName) return user.firstName;
-    if (user.username) return user.username;
-    if (user.telegramUsername) return user.telegramUsername;
-    return `User${user.id?.toString().slice(-4)}` || 'Player';
+    console.log('👤 User object for display name:', {
+      id: user.id,
+      _id: user._id,
+      firstName: user.firstName,
+      username: user.username,
+      telegramUsername: user.telegramUsername,
+      telegramId: user.telegramId
+    });
+
+    // Priority order for display name
+    if (user.firstName && user.firstName !== 'User') {
+      return user.firstName;
+    }
+    if (user.telegramUsername) {
+      return user.telegramUsername;
+    }
+    if (user.username && user.username !== `user_${user.telegramId}`) {
+      return user.username;
+    }
+    if (user.telegramId) {
+      return `User${user.telegramId.toString().slice(-4)}`;
+    }
+    if (user.id) {
+      return `User${user.id.toString().slice(-4)}`;
+    }
+    if (user._id) {
+      return `User${user._id.toString().slice(-4)}`;
+    }
+    
+    return 'Player';
   };
 
   const getRoleBadge = () => {
@@ -247,6 +274,7 @@ const UserInfoDisplay = ({ user, balance, userRole }: { user: any; balance: numb
   };
 
   const roleBadge = getRoleBadge();
+  const displayName = getUserDisplayName();
 
   return (
     <div className="flex items-center gap-3">
@@ -263,7 +291,7 @@ const UserInfoDisplay = ({ user, balance, userRole }: { user: any; balance: numb
         <User className={`w-4 h-4 ${roleBadge ? roleBadge.text : 'text-white'}`} />
         <div className="flex flex-col">
           <p className={`font-medium text-sm ${roleBadge ? roleBadge.text : 'text-white'}`}>
-            {getUserDisplayName()}
+            {displayName}
           </p>
           {roleBadge && (
             <div className="flex items-center gap-1">
