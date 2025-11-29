@@ -32,7 +32,7 @@ export default function RootLayout({
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gradient-to-br from-purple-600 to-blue-600 min-h-screen`}>
         <AuthProvider>
-          {/* <TelegramInit /> */}
+          <TelegramInit />
           {children}
         </AuthProvider>
       </body>
