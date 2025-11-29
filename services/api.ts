@@ -280,32 +280,25 @@ export const walletAPI = {
 };
 
 // Enhanced convenience methods with proper ID handling
-// In your existing api.ts file, update the walletAPIAuto section:
-
 export const walletAPIAuto = {
-  getBalance: async () => {
+getBalance: async () => {
     try {
-      console.log('💰 Auto balance request - trying multiple strategies...');
-      
-      // Strategy 1: Direct auto endpoint (NEW)
-      try {
-        console.log('💰 Strategy 1: Using auto balance endpoint');
-        const response = await api.get('/wallet/balance/auto');
-        console.log('💰 Auto balance response:', response.data);
-        return response;
-      } catch (error: any) {
-        console.warn('💰 Auto balance endpoint failed:', error.message);
-      }
-
-      // Strategy 2: Try with available IDs
+      // Try multiple sources for user ID with better error handling
       const telegramId = getTelegramId();
       const userId = getUserId();
 
-      // Strategy 2a: Telegram ID
+      console.log('💰 Wallet balance request - Available IDs:', { 
+        telegramId, 
+        userId,
+        telegramIdValid: telegramId && telegramId.match(/^\d+$/),
+        userIdValid: userId && userId.match(/^[0-9a-fA-F]{24}$/)
+      });
+
+      // Strategy 1: Try Telegram ID first (preferred)
       if (telegramId && telegramId.match(/^\d+$/)) {
-        console.log('💰 Strategy 2a: Using Telegram ID:', telegramId);
+        console.log('💰 Strategy 1: Using Telegram ID:', telegramId);
         try {
-          const response = await api.get(`/wallet/balance/telegram/${telegramId}`);
+          const response = await walletAPI.getBalance(telegramId);
           console.log('💰 Telegram ID balance response:', response.data);
           return response;
         } catch (error: any) {
@@ -313,11 +306,11 @@ export const walletAPIAuto = {
         }
       }
 
-      // Strategy 2b: MongoDB ID
+      // Strategy 2: Try MongoDB ID
       if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
-        console.log('💰 Strategy 2b: Using MongoDB ID:', userId);
+        console.log('💰 Strategy 2: Using MongoDB ID:', userId);
         try {
-          const response = await api.get('/wallet/balance', { params: { userId } });
+          const response = await walletAPI.getBalance(userId);
           console.log('💰 MongoDB ID balance response:', response.data);
           return response;
         } catch (error: any) {
@@ -325,55 +318,68 @@ export const walletAPIAuto = {
         }
       }
 
-      throw new Error('All balance retrieval strategies failed');
+      // Strategy 3: Try direct API call with fallback
+      console.log('💰 Strategy 3: Trying direct balance endpoint');
+      try {
+        // Use a generic endpoint that handles both ID types
+        const response = await api.get('/wallet/balance/auto');
+        console.log('💰 Direct balance response:', response.data);
+        return { data: response.data };
+      } catch (error: any) {
+        console.warn('💰 Direct balance strategy failed:', error.message);
+      }
+
+      throw new Error('No valid user ID found for wallet balance');
     } catch (error) {
       console.error('💰 All wallet balance strategies failed:', error);
       throw error;
     }
   },
-
-  // Add similar auto methods for other endpoints
+  
   getTransactions: async (limit?: number, page?: number) => {
-    try {
-      const response = await api.get('/wallet/transactions/auto', {
-        params: { limit, page }
-      });
-      return response;
-    } catch (error) {
-      console.error('Auto transactions failed, falling back...');
-      // Fallback to manual ID resolution
-      const telegramId = getTelegramId();
-      const userId = getUserId();
-      
-      if (telegramId) {
-        return walletAPI.getTransactions(telegramId, limit, page);
-      }
-      if (userId) {
-        return walletAPI.getTransactions(userId, limit, page);
-      }
-      throw error;
+    const telegramId = getTelegramId();
+    const userId = getUserId();
+
+    if (telegramId && telegramId.match(/^\d+$/)) {
+      return walletAPI.getTransactions(telegramId, limit, page);
     }
+
+    if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return walletAPI.getTransactions(userId, limit, page);
+    }
+
+    throw new Error('No valid user ID found for transactions');
+  },
+  
+  createDeposit: async (data: { amount: number; receiptImage: string; reference: string; description?: string }) => {
+    const telegramId = getTelegramId();
+    const userId = getUserId();
+
+    if (telegramId && telegramId.match(/^\d+$/)) {
+      return walletAPI.createDeposit(telegramId, data);
+    }
+
+    if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return walletAPI.createDeposit(userId, data);
+    }
+
+    throw new Error('No valid user ID found for deposit');
   },
 
-  createDeposit: async (data: { amount: number; receiptImage: string; reference: string; description?: string }) => {
-    try {
-      const response = await api.post('/wallet/deposit/auto', data);
-      return response;
-    } catch (error) {
-      console.error('Auto deposit failed, falling back...');
-      // Fallback to manual ID resolution
-      const telegramId = getTelegramId();
-      const userId = getUserId();
-      
-      if (telegramId) {
-        return walletAPI.createDeposit(telegramId, data);
-      }
-      if (userId) {
-        return walletAPI.createDeposit(userId, data);
-      }
-      throw error;
+  updateBalance: async (amount: number) => {
+    const telegramId = getTelegramId();
+    const userId = getUserId();
+
+    if (telegramId && telegramId.match(/^\d+$/)) {
+      return walletAPI.updateBalance(telegramId, amount);
     }
-  }
+
+    if (userId && userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return walletAPI.updateBalance(userId, amount);
+    }
+
+    throw new Error('No valid user ID found for balance update');
+  },
 };
 
 // Enhanced API connection test with detailed diagnostics
