@@ -98,7 +98,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       userId: user.id
     });
 
-    const response = await gameAPI.getAvailableCards(gameData._id, user.id, 3);
+    const response = await gameAPI.getAvailableCards(gameData._id, user.id, 400);
     
     console.log('📦 Available cards response:', response.data);
     
