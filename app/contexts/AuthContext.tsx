@@ -1,4 +1,4 @@
-// contexts/AuthContext.tsx - UPDATED WITH ACCOUNT-SPECIFIC STORAGE
+// contexts/AuthContext.tsx - UPDATED WITH WALLET BALANCE
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
@@ -40,73 +40,14 @@ interface AuthContextType {
   isAdmin: boolean;
   isModerator: boolean;
   userRole: string;
-  walletBalance: number;
+  walletBalance: number; // Add wallet balance to context
   hasPermission: (permission: string) => boolean;
   login: (telegramData: any) => Promise<void>;
   logout: () => void;
-  refreshWalletBalance: () => Promise<void>;
+  refreshWalletBalance: () => Promise<void>; // Add refresh method
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-// Account-specific storage management
-const getAccountStorageKey = (baseKey: string, telegramId?: string): string => {
-  if (!telegramId) return baseKey;
-  return `${baseKey}_${telegramId}`;
-};
-
-const getAccountData = (baseKey: string, telegramId?: string): any => {
-  if (typeof window === 'undefined') return null;
-  
-  const accountKey = getAccountStorageKey(baseKey, telegramId);
-  const stored = localStorage.getItem(accountKey);
-  
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch (error) {
-      console.warn(`⚠️ Failed to parse stored data for ${accountKey}:`, error);
-      return null;
-    }
-  }
-  return null;
-};
-
-const setAccountData = (baseKey: string, data: any, telegramId?: string): void => {
-  if (typeof window === 'undefined' || !telegramId) return;
-  
-  const accountKey = getAccountStorageKey(baseKey, telegramId);
-  localStorage.setItem(accountKey, JSON.stringify(data));
-};
-
-const removeAccountData = (baseKey: string, telegramId?: string): void => {
-  if (typeof window === 'undefined') return;
-  
-  const accountKey = getAccountStorageKey(baseKey, telegramId);
-  localStorage.removeItem(accountKey);
-};
-
-// Clean up old storage data when switching accounts
-const cleanupOldStorage = (currentTelegramId: string) => {
-  if (typeof window === 'undefined') return;
-  
-  // Get all keys that might be account-specific
-  const allKeys = Object.keys(localStorage);
-  const accountKeys = allKeys.filter(key => 
-    key.includes('_') && 
-    !key.endsWith(currentTelegramId) &&
-    (key.includes('user_') || key.includes('selected_number_') || key.includes('wallet_balance_'))
-  );
-  
-  // Remove old account data
-  accountKeys.forEach(key => {
-    localStorage.removeItem(key);
-  });
-  
-  if (accountKeys.length > 0) {
-    console.log('🧹 Cleaned up old account data:', accountKeys);
-  }
-};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -149,14 +90,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Fetch wallet balance for the actual user
-  const fetchWalletBalanceForUser = async (userId: string, telegramId: string): Promise<number> => {
+  const fetchWalletBalanceForUser = async (userId: string): Promise<number> => {
     try {
       console.log('💰 Fetching wallet balance for user ID:', userId);
       
-      // Store user ID for wallet API
+      // Make sure we have the proper user ID in localStorage for wallet API
       if (typeof window !== 'undefined') {
         localStorage.setItem('user_id', userId);
-        setAccountData('user_id', userId, telegramId);
       }
       
       const balanceResponse = await walletAPIAuto.getBalance();
@@ -178,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Transform backend user to frontend user format
   const transformBackendUser = (backendUser: BackendUser): User => {
     return {
-      id: backendUser._id,
+      id: backendUser._id, // Use MongoDB _id as the primary ID
       telegramId: backendUser.telegramId,
       firstName: backendUser.firstName,
       lastName: backendUser.lastName,
@@ -204,29 +144,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (tgUser) {
             console.log('🔐 Telegram user detected:', tgUser);
             
-            const telegramId = tgUser.id.toString();
+            // Fetch actual user data from backend
+            const backendUser = await fetchUserFromBackend(tgUser.id.toString());
             
-            // Clean up old storage data when detecting a new account
-            cleanupOldStorage(telegramId);
+            let userData: User;
             
-            // Check if we already have this user's data
-            const storedUser = getAccountData('user', telegramId);
-            const storedBalance = getAccountData('wallet_balance', telegramId);
-            
-            if (storedUser && storedUser.telegramId === telegramId) {
-              // Use stored data for faster loading
-              console.log('✅ Using stored user data');
-              setUser(storedUser);
-              setWalletBalance(storedBalance || 0);
-              setIsLoading(false);
+            if (backendUser) {
+              // Use backend data with proper MongoDB _id
+              userData = transformBackendUser(backendUser);
               
-              // Refresh data in background
-              refreshUserData(telegramId);
-              return;
+              // Check admin status
+              if (tgUser.id === 444206486 || tgUser.first_name === 'ሰው' || backendUser.isAdmin) {
+                userData.role = 'admin';
+                userData.permissions = ['manage_games', 'manage_users', 'view_reports', 'play_games', 'view_games'];
+                console.log('👑 Admin user detected');
+              }
+              
+              setUser(userData);
+              
+              // Fetch wallet balance using the proper user ID
+              const balance = await fetchWalletBalanceForUser(userData.id);
+              setWalletBalance(balance);
+              
+              // Store both user data and IDs
+              localStorage.setItem('user', JSON.stringify(userData));
+              localStorage.setItem('user_id', userData.id);
+              localStorage.setItem('telegram_user_id', userData.telegramId);
+              localStorage.setItem('wallet_balance', balance.toString());
+              
+            } else {
+              // Fallback to Telegram data
+              console.warn('⚠️ Using fallback Telegram data');
+              userData = {
+                id: tgUser.id.toString(),
+                telegramId: tgUser.id.toString(),
+                firstName: tgUser.first_name,
+                lastName: tgUser.last_name,
+                username: tgUser.username,
+                telegramUsername: tgUser.username,
+                role: 'user',
+                permissions: ['play_games', 'view_games']
+              };
+              
+              if (tgUser.id === 444206486 || tgUser.first_name === 'ሰው') {
+                userData.role = 'admin';
+                userData.permissions = ['manage_games', 'manage_users', 'view_reports', 'play_games', 'view_games'];
+              }
+              
+              setUser(userData);
+              
+              // Try to fetch wallet balance with Telegram ID
+              const balance = await fetchWalletBalanceForUser(userData.id);
+              setWalletBalance(balance);
+              
+              localStorage.setItem('user', JSON.stringify(userData));
+              localStorage.setItem('user_id', userData.id);
+              localStorage.setItem('telegram_user_id', userData.telegramId);
+              localStorage.setItem('wallet_balance', balance.toString());
             }
-            
-            // Fetch fresh user data from backend
-            await refreshUserData(telegramId);
             
           } else {
             console.log('⚠️ No Telegram user data found');
@@ -238,104 +213,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error('❌ Auth initialization error:', error);
-        setIsLoading(false);
-      }
-    };
-
-    const refreshUserData = async (telegramId: string) => {
-      try {
-        const backendUser = await fetchUserFromBackend(telegramId);
-        
-        let userData: User;
-        
-        if (backendUser) {
-          // Use backend data with proper MongoDB _id
-          userData = transformBackendUser(backendUser);
-          
-          // Check admin status
-          const tg = (window as any).Telegram?.WebApp;
-          const tgUser = tg?.initDataUnsafe?.user;
-          if (tgUser && (tgUser.id === 444206486 || tgUser.first_name === 'ሰው' || backendUser.isAdmin)) {
-            userData.role = 'admin';
-            userData.permissions = ['manage_games', 'manage_users', 'view_reports', 'play_games', 'view_games'];
-            console.log('👑 Admin user detected');
-          }
-          
-          setUser(userData);
-          
-          // Fetch wallet balance using the proper user ID
-          const balance = await fetchWalletBalanceForUser(userData.id, telegramId);
-          setWalletBalance(balance);
-          
-          // Store account-specific data
-          setAccountData('user', userData, telegramId);
-          setAccountData('wallet_balance', balance, telegramId);
-          setAccountData('user_id', userData.id, telegramId);
-          setAccountData('telegram_user_id', telegramId, telegramId);
-          
-        } else {
-          // Fallback to Telegram data
-          console.warn('⚠️ Using fallback Telegram data');
-          const tg = (window as any).Telegram.WebApp;
-          const tgUser = tg.initDataUnsafe.user;
-          
-          userData = {
-            id: tgUser.id.toString(),
-            telegramId: tgUser.id.toString(),
-            firstName: tgUser.first_name,
-            lastName: tgUser.last_name,
-            username: tgUser.username,
-            telegramUsername: tgUser.username,
-            role: 'user',
-            permissions: ['play_games', 'view_games']
-          };
-          
-          if (tgUser.id === 444206486 || tgUser.first_name === 'ሰው') {
-            userData.role = 'admin';
-            userData.permissions = ['manage_games', 'manage_users', 'view_reports', 'play_games', 'view_games'];
-          }
-          
-          setUser(userData);
-          
-          // Try to fetch wallet balance with Telegram ID
-          const balance = await fetchWalletBalanceForUser(userData.id, telegramId);
-          setWalletBalance(balance);
-          
-          // Store account-specific data
-          setAccountData('user', userData, telegramId);
-          setAccountData('wallet_balance', balance, telegramId);
-          setAccountData('user_id', userData.id, telegramId);
-          setAccountData('telegram_user_id', telegramId, telegramId);
-        }
-        
-      } catch (error) {
-        console.error('❌ Error refreshing user data:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
     const restoreUserFromStorage = async () => {
-      // Try to find any stored user data
-      const allKeys = Object.keys(localStorage);
-      const userKeys = allKeys.filter(key => key.startsWith('user_'));
+      const storedUser = localStorage.getItem('user');
+      const storedBalance = localStorage.getItem('wallet_balance');
       
-      if (userKeys.length > 0) {
-        // Use the first found user (most recent)
-        const userKey = userKeys[0];
-        const telegramId = userKey.replace('user_', '');
+      if (storedUser) {
+        const userData = JSON.parse(storedUser);
+        setUser(userData);
         
-        const storedUser = getAccountData('user', telegramId);
-        const storedBalance = getAccountData('wallet_balance', telegramId);
-        
-        if (storedUser) {
-          setUser(storedUser);
-          setWalletBalance(storedBalance || 0);
-          console.log('✅ User restored from storage:', storedUser);
+        if (storedBalance) {
+          setWalletBalance(parseFloat(storedBalance));
+        } else {
+          // Refresh balance for stored user
+          const balance = await fetchWalletBalanceForUser(userData.id);
+          setWalletBalance(balance);
         }
+        
+        console.log('✅ User restored from storage:', userData);
       }
-      
-      setIsLoading(false);
     };
 
     initializeAuth();
@@ -345,13 +245,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('🔐 Logging in user:', telegramData);
       
-      const telegramId = telegramData.id.toString();
-      
-      // Clean up old storage
-      cleanupOldStorage(telegramId);
-      
       // Fetch actual user data from backend
-      const backendUser = await fetchUserFromBackend(telegramId);
+      const backendUser = await fetchUserFromBackend(telegramData.id.toString());
       
       let userData: User;
       
@@ -385,14 +280,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
       
       // Fetch wallet balance
-      const balance = await fetchWalletBalanceForUser(userData.id, telegramId);
+      const balance = await fetchWalletBalanceForUser(userData.id);
       setWalletBalance(balance);
       
-      // Store account-specific data
-      setAccountData('user', userData, telegramId);
-      setAccountData('wallet_balance', balance, telegramId);
-      setAccountData('user_id', userData.id, telegramId);
-      setAccountData('telegram_user_id', telegramId, telegramId);
+      // Store auth data
+      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('user_id', userData.id);
+      localStorage.setItem('telegram_user_id', userData.telegramId);
+      localStorage.setItem('wallet_balance', balance.toString());
       
       console.log('✅ User logged in with balance:', balance);
     } catch (error) {
@@ -401,17 +296,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    if (user?.telegramId) {
-      // Remove account-specific data
-      removeAccountData('user', user.telegramId);
-      removeAccountData('wallet_balance', user.telegramId);
-      removeAccountData('user_id', user.telegramId);
-      removeAccountData('telegram_user_id', user.telegramId);
-      removeAccountData('selected_number', user.telegramId);
-    }
-    
     setUser(null);
     setWalletBalance(0);
+    localStorage.removeItem('user');
+    localStorage.removeItem('user_id');
+    localStorage.removeItem('telegram_user_id');
+    localStorage.removeItem('wallet_balance');
     router.push('/');
   };
 
@@ -420,9 +310,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     
     try {
-      const balance = await fetchWalletBalanceForUser(user.id, user.telegramId);
+      const balance = await fetchWalletBalanceForUser(user.id);
       setWalletBalance(balance);
-      setAccountData('wallet_balance', balance, user.telegramId);
+      localStorage.setItem('wallet_balance', balance.toString());
       console.log('💰 Wallet balance refreshed:', balance);
     } catch (error) {
       console.error('❌ Error refreshing wallet balance:', error);
@@ -447,11 +337,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin,
         isModerator,
         userRole,
-        walletBalance,
+        walletBalance, // Include wallet balance in context
         hasPermission,
         login,
         logout,
-        refreshWalletBalance,
+        refreshWalletBalance, // Include refresh method
       }}
     >
       {children}
