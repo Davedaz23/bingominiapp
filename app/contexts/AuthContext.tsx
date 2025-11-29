@@ -3,6 +3,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
+import { validateAdminAccess, validateModeratorAccess } from '../../lib/utils/roleValidation';
+
 
 // Extended Telegram WebApp types - FIXED
 // declare global {
@@ -134,45 +136,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Check user role based on multiple factors
-  const checkUserRole = (userData: User): UserRole => {
-    if (!userData) return 'user';
-    
-    const adminTelegramId = getAdminTelegramId();
-    const moderatorTelegramIds = getModeratorTelegramIds();
-    
-    console.log('🔍 Checking user role:', {
-      userId: userData._id,
-      telegramId: userData.telegramId,
-      adminTelegramId,
-      moderatorTelegramIds,
-      existingRole: userData.role,
-      isAdmin: userData.isAdmin
-    });
+ const checkUserRole = (userData: User): UserRole => {
+  if (!userData) return 'user';
+  
+  console.log('🔍 Checking user role for:', {
+    telegramId: userData.telegramId,
+    existingRole: userData.role
+  });
 
-    // Check admin first
-    if (
-      userData.telegramId === adminTelegramId ||
-      userData.role === 'admin' ||
-      userData.isAdmin === true
-    ) {
-      console.log('✅ User is ADMIN');
-      return 'admin';
-    }
-    
-    // Check moderator
-    if (
-      moderatorTelegramIds.includes(userData.telegramId || '') ||
-      userData.role === 'moderator' ||
-      userData.isModerator === true
-    ) {
-      console.log('✅ User is MODERATOR');
-      return 'moderator';
-    }
-    
-    // Default to user
-    console.log('✅ User is regular USER');
-    return userData.role || 'user';
-  };
+  // ✅ Use the validation functions
+  if (validateAdminAccess(userData.telegramId)) {
+    console.log('✅ User is ADMIN');
+    return 'admin';
+  }
+  
+  if (validateModeratorAccess(userData.telegramId)) {
+    console.log('✅ User is MODERATOR');
+    return 'moderator';
+  }
+  
+  // Use existing role if present, otherwise default to user
+  console.log('✅ User is regular USER');
+  return userData.role || 'user';
+};
 
   // Check if user is admin (backward compatibility)
   const checkAdminStatus = (userData: User): boolean => {

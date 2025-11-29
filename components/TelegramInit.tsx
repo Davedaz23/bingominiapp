@@ -1,4 +1,4 @@
-// app/components/TelegramInit.tsx - FIXED (prevent multiple auth attempts)
+// app/components/TelegramInit.tsx - FIXED
 'use client';
 
 import { useEffect, useRef } from 'react';
@@ -10,7 +10,6 @@ export default function TelegramInit() {
 
   useEffect(() => {
     const initializeTelegram = async () => {
-      // Prevent multiple login attempts
       if (hasAttemptedLogin.current || isAuthenticated || isLoading) {
         return;
       }
@@ -19,49 +18,76 @@ export default function TelegramInit() {
       console.log('🔄 Starting Telegram initialization...');
 
       try {
-        // Check if we're in Telegram WebApp
         const telegram = (window as any).Telegram;
         
         if (telegram?.WebApp) {
           const webApp = telegram.WebApp;
-          
           console.log('📱 Telegram WebApp detected');
           
-          // Expand the WebApp to full height
           webApp.expand();
           
-          // Safely call enableClosingConfirmation if it exists
           if (typeof webApp.enableClosingConfirmation === 'function') {
             webApp.enableClosingConfirmation();
           }
           
-          // Get init data for authentication
           const initData = webApp.initData;
+          const telegramUser = webApp.initDataUnsafe?.user;
           
-          if (initData) {
-            console.log('🔐 Attempting Telegram authentication...');
-            await login(initData);
+          if (telegramUser && telegramUser.id) {
+            console.log('🔐 Attempting Telegram authentication with user:', telegramUser);
+            
+            // ✅ CORRECT: Create proper User object from Telegram data
+            const userData = {
+              id: telegramUser.id.toString(),
+              _id: telegramUser.id.toString(),
+              telegramId: telegramUser.id.toString(),
+              firstName: telegramUser.first_name,
+              username: telegramUser.username || '',
+              language_code: telegramUser.language_code,
+              gamesPlayed: 0,
+              gamesWon: 0,
+              totalScore: 0,
+              isAdmin: false,
+              isModerator: false,
+              role: 'user' as const
+            };
+            
+            await login(userData);
             console.log('✅ Telegram WebApp authenticated successfully');
-            return; // Success, don't fall back to development mode
+            return;
           } else {
-            console.warn('⚠️ No init data available in Telegram WebApp');
+            console.warn('⚠️ No Telegram user data available');
           }
         } else {
           console.log('🌐 Not in Telegram WebApp environment');
         }
 
-        // Fallback to development mode only if not in Telegram or Telegram auth failed
+        // ✅ CORRECT: Create proper User object for development mode
         console.log('🔧 Falling back to development mode...');
-        await login('development');
+        const devUser = {
+          id: 'dev-user-001',
+          _id: 'dev-user-001', 
+          telegramId: 'dev-telegram-001',
+          firstName: 'Development',
+          username: 'dev_user',
+          language_code: 'en',
+          gamesPlayed: 0,
+          gamesWon: 0,
+          totalScore: 0,
+          isAdmin: false,
+          isModerator: false,
+          role: 'user' as const
+        };
+        
+        await login(devUser);
         console.log('✅ Development mode authentication successful');
         
       } catch (error) {
         console.error('❌ Authentication failed:', error);
-        hasAttemptedLogin.current = false; // Reset on error to allow retry
+        hasAttemptedLogin.current = false;
       }
     };
 
-    // Only initialize if not loading and not already authenticated
     if (!isLoading && !isAuthenticated) {
       initializeTelegram();
     }
