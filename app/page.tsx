@@ -1,9 +1,9 @@
-// app/page.tsx - COMPLETE WITH ROLE-BASED UI
+// app/page.tsx - COMPLETE FIXED VERSION
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
-import { walletAPIAuto, gameAPI, authAPI, walletAPI } from '../services/api';
+import { gameAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
 import { Check, Grid3X3, RotateCcw, Clock, Users, Play, Trophy, Target, User, Shield, Crown } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -215,51 +215,36 @@ const generateBingoCard = (cardNumber: number) => {
 };
 
 // User Info Display Component with Role Badges
-// User Info Display Component with Role Badges - FIXED
-const UserInfoDisplay = ({ user, balance, userRole }: { user: any; balance: number; userRole: string }) => {
+const UserInfoDisplay = ({ user, userRole }: { user: any; userRole: string }) => {
+  const { walletBalance } = useAuth(); // Get balance from context
+
   const getUserDisplayName = () => {
     if (!user) {
       console.log('❌ No user object provided to UserInfoDisplay');
       return 'Guest';
     }
-    
-   
-
-    // Check if this looks like the admin user
-    const isLikelyAdmin = user.telegramId === '444206486' || user.firstName === 'ሰው';
-    if (isLikelyAdmin) {
-      console.log('⚠️ This appears to be the admin user');
-    }
 
     // More robust display name logic
     if (user.firstName && user.firstName !== 'User' && user.firstName !== 'Development') {
-      console.log('✅ Using firstName:', user.firstName);
       return user.firstName;
     }
     
     if (user.telegramUsername) {
-      console.log('✅ Using telegramUsername:', user.telegramUsername);
       return user.telegramUsername;
     }
     
     if (user.username && !user.username.startsWith('user_') && user.username !== 'dev_user') {
-      console.log('✅ Using username:', user.username);
       return user.username;
     }
     
     if (user.telegramId) {
-      const displayId = `User${user.telegramId.toString().slice(-4)}`;
-      console.log('✅ Using telegramId-based name:', displayId);
-      return displayId;
+      return `User${user.telegramId.toString().slice(-4)}`;
     }
     
     if (user.id) {
-      const displayId = `User${user.id.toString().slice(-4)}`;
-      console.log('✅ Using id-based name:', displayId);
-      return displayId;
+      return `User${user.id.toString().slice(-4)}`;
     }
     
-    console.log('❌ No suitable display name found, using default');
     return 'Player';
   };
 
@@ -287,17 +272,11 @@ const UserInfoDisplay = ({ user, balance, userRole }: { user: any; balance: numb
   const roleBadge = getRoleBadge();
   const displayName = getUserDisplayName();
 
-  console.log('🎯 Final display name decision:', {
-    displayName,
-    userRole,
-    hasRoleBadge: !!roleBadge
-  });
-
   return (
     <div className="flex items-center gap-3">
       {/* Balance Display */}
       <div className="text-right">
-        <p className="text-white font-bold text-lg">{balance} ብር</p>
+        <p className="text-white font-bold text-lg">{walletBalance} ብር</p>
         <p className="text-white/60 text-xs">Balance</p>
       </div>
       
@@ -401,8 +380,20 @@ const ModeratorControls = ({ onModerateGames, onViewReports }: {
 );
 
 export default function Home() {
-    const { user, isAuthenticated, isLoading, isAdmin, isModerator, userRole, hasPermission } = useAuth();
-  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const { 
+    user, 
+    isAuthenticated, 
+    isLoading, 
+    isAdmin, 
+    isModerator, 
+    userRole, 
+    walletBalance,  // Get wallet balance from AuthContext
+    refreshWalletBalance,
+    hasPermission 
+  } = useAuth();
+
+  // REMOVED: const [walletBalance, setWalletBalance] = useState<number>(0);
+
   const [activeGame, setActiveGame] = useState<any>(null);
   const [showNumberSelection, setShowNumberSelection] = useState<boolean>(false);
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
@@ -455,7 +446,6 @@ export default function Home() {
     if (hasPermission('manage_games')) {
       console.log('🛑 Admin ending game...');
       // Implement game end logic
-      // This would call gameAPI.endGame(gameData._id)
     }
   };
 
@@ -463,7 +453,6 @@ export default function Home() {
     if (hasPermission('manage_users')) {
       console.log('👥 Admin managing users...');
       // Navigate to user management
-      // router.push('/admin/users');
     }
   };
 
@@ -478,7 +467,6 @@ export default function Home() {
     if (hasPermission('view_reports')) {
       console.log('📊 Moderator viewing reports...');
       // Navigate to reports
-      // router.push('/moderator/reports');
     }
   };
 
@@ -505,43 +493,6 @@ export default function Home() {
     
     console.warn('❌ No valid user ID found');
     return null;
-  };
-
-  // FIXED: Wallet initialization with proper user ID
-  const initializeUserWallet = async (userId: string): Promise<boolean> => {
-    try {
-      console.log('💰 Initializing wallet for current user:', userId);
-      
-      // First, try to get balance directly using the authenticated user's ID
-      const balanceResponse = await walletAPIAuto.getBalance();
-      
-      if (balanceResponse.data.success) {
-        console.log('✅ Wallet exists with balance:', balanceResponse.data.balance);
-        setWalletBalance(balanceResponse.data.balance);
-        return true;
-      }
-    } catch (error: any) {
-      console.log('🔄 Wallet initialization attempt:', error.message);
-      
-      // If wallet doesn't exist, try to initialize it
-      if (error.response?.status === 404 || error.message?.includes('not found')) {
-        try {
-          console.log('🆕 Creating new wallet for current user...');
-          
-          // Use the direct API call to initialize wallet with current user ID
-          const initResponse = await walletAPI.updateBalance(userId, 0);
-          
-          if (initResponse.data.success) {
-            console.log('✅ Wallet initialized successfully for current user');
-            setWalletBalance(0);
-            return true;
-          }
-        } catch (initError) {
-          console.error('❌ Failed to initialize wallet for current user:', initError);
-        }
-      }
-    }
-    return false;
   };
 
   // Fetch available cards when game data changes
@@ -597,36 +548,13 @@ export default function Home() {
           id: currentUserId,
           name: user.firstName || user.username,
           telegramId: user.telegramId,
-          role: userRole
+          role: userRole,
+          balance: walletBalance // Already available from context
         });
         
-        // Initialize wallet for current user
-        await initializeUserWallet(currentUserId);
+        // Refresh wallet balance to ensure it's current
+        await refreshWalletBalance();
         
-        // Then load balance with retry logic
-        let retries = 3;
-        while (retries > 0) {
-          try {
-            const walletResponse = await walletAPIAuto.getBalance();
-            if (walletResponse.data.success) {
-              console.log('💰 Balance loaded successfully for current user:', walletResponse.data.balance);
-              setWalletBalance(walletResponse.data.balance);
-              break;
-            }
-          } catch (balanceError: any) {
-            console.warn(`💰 Balance load attempt ${4 - retries} failed:`, balanceError.message);
-            retries--;
-            
-            if (retries === 0) {
-              console.error('💰 All balance load attempts failed for current user');
-              setWalletBalance(0);
-            } else {
-              // Wait before retry
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
-        }
-
         // Rest of initialization...
         await checkGameStatus();
         setShowNumberSelection(true);
@@ -931,14 +859,6 @@ export default function Home() {
     }
   };
 
-  const handleNumberSelect = (number: number) => {
-    setSelectedNumber(number);
-    setBingoCard(generateBingoCard(number));
-    setJoinError('');
-    setShowGameView(false);
-    setAutoRedirected(false);
-  };
-
   const handleJoinGame = async () => {
     const currentUserId = getCurrentUserId();
     if (!selectedNumber || !currentUserId) return;
@@ -947,17 +867,8 @@ export default function Home() {
     setJoinError('');
 
     try {
-      let userBalance = 0;
-      try {
-        const balanceResponse = await walletAPIAuto.getBalance();
-        if (balanceResponse.data.success) {
-          userBalance = balanceResponse.data.balance;
-        }
-      } catch (error: any) {
-        userBalance = 0;
-      }
-      
-      if (userBalance < 10) {
+      // Use walletBalance directly from context
+      if (walletBalance < 10) {
         setJoinError('Insufficient balance. Minimum 10 ብር required to play.');
         setJoining(false);
         setTimeout(() => {
@@ -1129,7 +1040,7 @@ export default function Home() {
               <h1 className="text-white font-bold text-xl">Bingo Game</h1>
               <p className="text-white/60 text-sm">Joining Game Automatically</p>
             </div>
-            <UserInfoDisplay user={user} balance={walletBalance} userRole={userRole} />
+            <UserInfoDisplay user={user} userRole={userRole} />
           </div>
         </div>
 
@@ -1196,7 +1107,7 @@ export default function Home() {
           </div>
           
           {/* User Info with Role Badge */}
-          <UserInfoDisplay user={user} balance={walletBalance} userRole={userRole} />
+          <UserInfoDisplay user={user} userRole={userRole} />
         </div>
       </div>
 
