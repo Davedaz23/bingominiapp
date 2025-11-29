@@ -383,22 +383,20 @@ export default function Home() {
   const { 
     user, 
     isAuthenticated, 
-    isLoading, 
+    isLoading: authLoading, 
     isAdmin, 
     isModerator, 
     userRole, 
-    walletBalance,  // Get wallet balance from AuthContext
+    walletBalance,
     refreshWalletBalance,
     hasPermission 
   } = useAuth();
-
-  // REMOVED: const [walletBalance, setWalletBalance] = useState<number>(0);
 
   const [activeGame, setActiveGame] = useState<any>(null);
   const [showNumberSelection, setShowNumberSelection] = useState<boolean>(false);
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [bingoCard, setBingoCard] = useState<(number | string)[][] | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [pageLoading, setPageLoading] = useState<boolean>(true);
   const [joining, setJoining] = useState<boolean>(false);
   const [joinError, setJoinError] = useState<string>('');
   const [gameStatus, setGameStatus] = useState<'WAITING' | 'ACTIVE' | 'FINISHED' | 'RESTARTING'>('WAITING');
@@ -422,6 +420,16 @@ export default function Home() {
   const [cardSelectionError, setCardSelectionError] = useState<string>('');
 
   const router = useRouter();
+
+  // FIXED: Debug logging to track initialization
+  console.log('🔄 Home Component State:', {
+    authLoading,
+    isAuthenticated,
+    user: user ? { id: user.id, name: user.firstName } : null,
+    pageLoading,
+    showNumberSelection,
+    gameStatus
+  });
 
   // Admin control handlers
   const handleStartGame = async () => {
@@ -474,11 +482,8 @@ export default function Home() {
   const getCurrentUserId = (): string | null => {
     if (!user) return null;
     
-    console.log('🔍 Current user object:', user);
-    
     // Use the authenticated user's ID from context (most reliable)
     if (user.id) {
-      console.log('✅ Using authenticated user ID:', user.id);
       return user.id.toString();
     }
     
@@ -486,13 +491,55 @@ export default function Home() {
     if (typeof window !== 'undefined') {
       const storedUserId = localStorage.getItem('user_id');
       if (storedUserId && storedUserId !== 'undefined' && storedUserId !== 'null') {
-        console.log('📱 Using user ID from localStorage:', storedUserId);
         return storedUserId;
       }
     }
     
     console.warn('❌ No valid user ID found');
     return null;
+  };
+
+  // FIXED: Check game status function
+  const checkGameStatus = async () => {
+    try {
+      console.log('🎮 Checking game status...');
+      
+      const waitingGamesResponse = await gameAPI.getWaitingGames();
+      const activeGamesResponse = await gameAPI.getActiveGames();
+
+      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+        const game = activeGamesResponse.data.games[0];
+        setGameStatus('ACTIVE');
+        setCurrentPlayers(game.currentPlayers || 0);
+        setGameData(game);
+        setRestartCountdown(0);
+        setAutoRedirected(false);
+        console.log('✅ Active game found:', game._id);
+        
+      } else if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
+        const game = waitingGamesResponse.data.games[0];
+        setGameStatus('WAITING');
+        setCurrentPlayers(game.currentPlayers || 0);
+        setGameData(game);
+        setRestartCountdown(0);
+        setAutoRedirected(false);
+        console.log('✅ Waiting game found:', game._id);
+      } else {
+        setGameStatus('FINISHED');
+        setRestartCountdown(30);
+        setCurrentPlayers(0);
+        setAutoRedirected(false);
+        console.log('✅ No active games, status set to FINISHED');
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error checking game status:', error);
+      // Even if there's an error, we should still show the number selection
+      setGameStatus('FINISHED');
+      setRestartCountdown(30);
+      return false;
+    }
   };
 
   // Fetch available cards when game data changes
@@ -532,15 +579,33 @@ export default function Home() {
   // FIXED: Main initialization with proper user context
   useEffect(() => {
     const initializeApp = async () => {
-      if (!isAuthenticated || !user) return;
+      console.log('🚀 Starting app initialization...');
+      
+      // If auth is still loading, wait for it
+      if (authLoading) {
+        console.log('⏳ Waiting for auth to load...');
+        return;
+      }
+
+      // If not authenticated, we can still show the UI but with limited functionality
+      if (!isAuthenticated || !user) {
+        console.log('⚠️ User not authenticated, showing limited UI');
+        setShowNumberSelection(true);
+        setPageLoading(false);
+        await checkGameStatus();
+        return;
+      }
 
       try {
-        setLoading(true);
+        setPageLoading(true);
         
         const currentUserId = getCurrentUserId();
         if (!currentUserId) {
           console.error('No valid user ID available for current user');
-          setLoading(false);
+          // Still show the UI even if no user ID
+          setShowNumberSelection(true);
+          setPageLoading(false);
+          await checkGameStatus();
           return;
         }
 
@@ -549,99 +614,46 @@ export default function Home() {
           name: user.firstName || user.username,
           telegramId: user.telegramId,
           role: userRole,
-          balance: walletBalance // Already available from context
+          balance: walletBalance
         });
         
         // Refresh wallet balance to ensure it's current
-        await refreshWalletBalance();
-        
-        // Rest of initialization...
+        try {
+          await refreshWalletBalance();
+          console.log('✅ Wallet balance refreshed');
+        } catch (balanceError) {
+          console.warn('⚠️ Could not refresh wallet balance:', balanceError);
+          // Continue even if balance refresh fails
+        }
+
+        // Check game status
         await checkGameStatus();
+        
+        // Always show number selection after initialization
         setShowNumberSelection(true);
+        console.log('✅ App initialization complete, showing number selection');
         
       } catch (error) {
-        console.error('Initialization error for current user:', error);
+        console.error('❌ Initialization error:', error);
+        // Even if there's an error, show the number selection
         setShowNumberSelection(true);
+        await checkGameStatus();
       } finally {
-        setLoading(false);
+        setPageLoading(false);
+        console.log('✅ Page loading set to false');
       }
     };
 
     initializeApp();
-  }, [isAuthenticated, user, userRole]);
+  }, [authLoading, isAuthenticated, user, userRole]);
 
-  useEffect(() => {
-    console.log('💰 Wallet balance state updated for current user:', walletBalance);
-  }, [walletBalance]);
-
-  // Auto-redirect when game starts and user has selected a card with balance
-  useEffect(() => {
-    if (!user) return;
-    
-    if (gameStatus === 'ACTIVE' && selectedNumber && walletBalance >= 10 && !autoRedirected) {
-      console.log('🚀 Auto-redirecting current user to game');
-      setAutoRedirected(true);
-      
-      const joinGameWithRetry = async (retries = 3) => {
-        try {
-          console.log('🤖 Auto-joining game for current user...');
-          
-          const waitingGamesResponse = await gameAPI.getWaitingGames();
-          const activeGamesResponse = await gameAPI.getActiveGames();
-          
-          let targetGame = null;
-          
-          if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
-            targetGame = waitingGamesResponse.data.games[0];
-          } else if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-            targetGame = activeGamesResponse.data.games[0];
-          }
-          
-          if (targetGame) {
-            const currentUserId = getCurrentUserId();
-            if (!currentUserId) {
-              throw new Error('No user ID available for current user');
-            }
-            
-            const joinResponse = await gameAPI.joinGame(targetGame.code, currentUserId);
-            
-            if (joinResponse.data.success) {
-              console.log('✅ Current user auto-joined game successfully');
-              router.push(`/game/${targetGame._id}`);
-            } else {
-              throw new Error('Join game API call failed for current user');
-            }
-          } else {
-            throw new Error('No games available for current user');
-          }
-        } catch (error) {
-          console.error('Auto-join attempt failed for current user:', error);
-          
-          if (retries > 0) {
-            console.log(`🔄 Retrying auto-join for current user... (${retries} attempts left)`);
-            setTimeout(() => joinGameWithRetry(retries - 1), 2000);
-          } else {
-            console.error('❌ All auto-join attempts failed for current user');
-            // Fallback: redirect to watch mode
-            const activeGamesResponse = await gameAPI.getActiveGames();
-            if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-              router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
-            }
-          }
-        }
-      };
-      
-      joinGameWithRetry();
-    }
-  }, [gameStatus, selectedNumber, autoRedirected, walletBalance, user, router]);
-
-  // Check game status periodically
+  // FIXED: Check game status periodically - only when showNumberSelection is true
   useEffect(() => {
     if (!showNumberSelection) return;
 
     const interval = setInterval(async () => {
       await checkGameStatus();
-    }, 3000);
+    }, 10000); // Check every 10 seconds instead of 3 to reduce load
 
     return () => clearInterval(interval);
   }, [showNumberSelection]);
@@ -670,31 +682,18 @@ export default function Home() {
   }, [gameStatus, restartCountdown]);
   
   const shouldEnableCardSelection = () => {
-    console.log('🎯 CARD SELECTION DEBUG for current user:', {
-      gameStatus,
-      walletBalance,
-      selectedNumber,
-      hasGameData: !!gameData?._id,
-      availableCardsCount: availableCards.length,
-      isSelectionActive: cardSelectionStatus.isSelectionActive
-    });
-
     if (selectedNumber) {
-      console.log('🎯 Current user already has card #', selectedNumber);
       return false;
     }
 
     if (!gameData?._id) {
-      console.log('🎯 No game data available for current user');
       return false;
     }
 
     if (walletBalance >= 10) {
-      console.log('🎯 Current user has sufficient balance, enabling card selection');
       return true;
     }
 
-    console.log('🎯 Card selection disabled for current user - insufficient balance');
     return false;
   };
 
@@ -825,37 +824,6 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error checking card selection status for current user:', error);
-    }
-  };
-
-  const checkGameStatus = async () => {
-    try {
-      const waitingGamesResponse = await gameAPI.getWaitingGames();
-      const activeGamesResponse = await gameAPI.getActiveGames();
-
-      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-        const game = activeGamesResponse.data.games[0];
-        setGameStatus('ACTIVE');
-        setCurrentPlayers(game.currentPlayers || 0);
-        setGameData(game);
-        setRestartCountdown(0);
-        setAutoRedirected(false);
-        
-      } else if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
-        const game = waitingGamesResponse.data.games[0];
-        setGameStatus('WAITING');
-        setCurrentPlayers(game.currentPlayers || 0);
-        setGameData(game);
-        setRestartCountdown(0);
-        setAutoRedirected(false);
-      } else {
-        setGameStatus('FINISHED');
-        setRestartCountdown(30);
-        setCurrentPlayers(0);
-        setAutoRedirected(false);
-      }
-    } catch (error) {
-      console.error('Error checking game status:', error);
     }
   };
 
@@ -1030,6 +998,31 @@ export default function Home() {
     }
   };
 
+  // FIXED: Show loading only when both auth and page are loading
+  if (authLoading || pageLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="text-2xl font-bold mb-4">Loading Bingo Game...</div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
+          <p className="mt-4">Initializing your game experience...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // FIXED: Remove the !showNumberSelection check since we always set it to true now
+  // if (!showNumberSelection) {
+  //   return (
+  //     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+  //       <div className="text-white text-center">
+  //         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+  //         <p>Checking your games...</p>
+  //       </div>
+  //     </div>
+  //   );
+  // }
+
   // Auto-join loading screen
   if (showGameView && selectedNumber && walletBalance >= 10) {
     return (
@@ -1063,28 +1056,6 @@ export default function Home() {
 
         <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
           <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard!} />
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="text-2xl font-bold mb-4">Loading Bingo Game...</div>
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!showNumberSelection) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Checking your games...</p>
         </div>
       </div>
     );
