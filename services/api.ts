@@ -1,4 +1,4 @@
-// services/api.ts - COMPLETE FIXED VERSION
+// services/api.ts - FIXED VERSION
 import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
@@ -20,6 +20,17 @@ api.interceptors.request.use((config) => {
     
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    // Add user IDs to headers for auto endpoints
+    const userId = localStorage.getItem('user_id');
+    const telegramId = localStorage.getItem('telegram_user_id');
+    
+    if (userId) {
+      (config.headers as any)['User-ID'] = userId;
+    }
+    if (telegramId) {
+      (config.headers as any)['Telegram-ID'] = telegramId;
     }
   }
   return config;
@@ -280,14 +291,12 @@ export const walletAPI = {
 };
 
 // Enhanced convenience methods with proper ID handling
-// In your existing api.ts file, update the walletAPIAuto section:
-
 export const walletAPIAuto = {
   getBalance: async () => {
     try {
       console.log('💰 Auto balance request - trying multiple strategies...');
       
-      // Strategy 1: Direct auto endpoint (NEW)
+      // Strategy 1: Direct auto endpoint
       try {
         console.log('💰 Strategy 1: Using auto balance endpoint');
         const response = await api.get('/wallet/balance/auto');
@@ -332,7 +341,6 @@ export const walletAPIAuto = {
     }
   },
 
-  // Add similar auto methods for other endpoints
   getTransactions: async (limit?: number, page?: number) => {
     try {
       const response = await api.get('/wallet/transactions/auto', {
@@ -357,7 +365,14 @@ export const walletAPIAuto = {
 
   createDeposit: async (data: { amount: number; receiptImage: string; reference: string; description?: string }) => {
     try {
-      const response = await api.post('/wallet/deposit/auto', data);
+      // Add user IDs to the request data
+      const requestData = {
+        ...data,
+        userId: getUserId(),
+        telegramId: getTelegramId()
+      };
+      
+      const response = await api.post('/wallet/deposit/auto', requestData);
       return response;
     } catch (error) {
       console.error('Auto deposit failed, falling back...');
