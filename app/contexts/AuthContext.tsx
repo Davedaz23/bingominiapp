@@ -1,31 +1,9 @@
-// contexts/AuthContext.tsx - FIXED WITHOUT DUPLICATES
+// contexts/AuthContext.tsx - COMPLETE FIXED VERSION
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../../types';
 import { validateAdminAccess, validateModeratorAccess } from '../../lib/utils/roleValidation';
-
-
-// Extended Telegram WebApp types - FIXED
-// declare global {
-//   interface Window {
-//     Telegram?: {
-//       WebApp: {
-//         initDataUnsafe?: {
-//           user?: {
-//             id: number;
-//             first_name: string;
-//             username?: string;
-//             language_code?: string;
-//             is_bot?: boolean;
-//           };
-//         };
-//         expand: () => void;
-//         colorScheme?: string;
-//       };
-//     };
-//   }
-// }
 
 interface AuthContextType {
   user: User | null;
@@ -34,7 +12,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isModerator: boolean;
   userRole: UserRole;
-  login: (userData: User, token?: string) => void;
+  login: (userData: User, token?: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   initializeTelegramAuth: () => Promise<void>;
@@ -45,20 +23,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Permission definitions with proper typing - FIXED (only declare once)
+// Permission definitions
 const PERMISSIONS = {
-  // Admin permissions
   MANAGE_USERS: 'manage_users',
   MANAGE_GAMES: 'manage_games',
   MANAGE_WALLETS: 'manage_wallets',
   VIEW_ADMIN_DASHBOARD: 'view_admin_dashboard',
   MANAGE_SETTINGS: 'manage_settings',
-  
-  // Moderator permissions
   MODERATE_GAMES: 'moderate_games',
   VIEW_REPORTS: 'view_reports',
-  
-  // User permissions
   PLAY_GAMES: 'play_games',
   JOIN_GAMES: 'join_games',
   VIEW_LEADERBOARD: 'view_leaderboard',
@@ -113,52 +86,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Get admin Telegram ID from environment
   const getAdminTelegramId = (): string | null => {
     if (typeof window === 'undefined') return null;
-    
-    // Try multiple possible environment variable names
-    const adminId = 
-      process.env.NEXT_PUBLIC_ADMIN_TELEGRAM_ID ||
-      process.env.REACT_APP_ADMIN_TELEGRAM_ID ||
-      localStorage.getItem('admin_telegram_id');
-    
+    const adminId = process.env.NEXT_PUBLIC_ADMIN_TELEGRAM_ID;
     return adminId || null;
   };
 
   // Get moderator Telegram IDs from environment
   const getModeratorTelegramIds = (): string[] => {
     if (typeof window === 'undefined') return [];
-    
-    const moderatorIds = 
-      process.env.NEXT_PUBLIC_MODERATOR_TELEGRAM_IDS ||
-      process.env.REACT_APP_MODERATOR_TELEGRAM_IDS ||
-      localStorage.getItem('moderator_telegram_ids');
-    
+    const moderatorIds = process.env.NEXT_PUBLIC_MODERATOR_TELEGRAM_IDS;
     return moderatorIds ? moderatorIds.split(',') : [];
   };
 
   // Check user role based on multiple factors
- const checkUserRole = (userData: User): UserRole => {
-  if (!userData) return 'user';
-  
-  console.log('🔍 Checking user role for:', {
-    telegramId: userData.telegramId,
-    existingRole: userData.role
-  });
+  const checkUserRole = (userData: User): UserRole => {
+    if (!userData) return 'user';
+    
+    console.log('🔍 Checking user role for:', {
+      telegramId: userData.telegramId,
+      firstName: userData.firstName,
+      username: userData.username,
+      existingRole: userData.role,
+      isAdmin: userData.isAdmin,
+      isModerator: userData.isModerator
+    });
 
-  // ✅ Use the validation functions
-  if (validateAdminAccess(userData.telegramId)) {
-    console.log('✅ User is ADMIN');
-    return 'admin';
-  }
-  
-  if (validateModeratorAccess(userData.telegramId)) {
-    console.log('✅ User is MODERATOR');
-    return 'moderator';
-  }
-  
-  // Use existing role if present, otherwise default to user
-  console.log('✅ User is regular USER');
-  return userData.role || 'user';
-};
+    // Priority 1: Check if user object already has role flags
+    if (userData.isAdmin === true || userData.role === 'admin') {
+      console.log('✅ User is ADMIN (from user object)');
+      return 'admin';
+    }
+    
+    if (userData.isModerator === true || userData.role === 'moderator') {
+      console.log('✅ User is MODERATOR (from user object)');
+      return 'moderator';
+    }
+
+    // Priority 2: Check against environment variables (for Telegram WebApp users)
+    if (validateAdminAccess(userData.telegramId)) {
+      console.log('✅ User is ADMIN (from Telegram ID match)');
+      return 'admin';
+    }
+    
+    if (validateModeratorAccess(userData.telegramId)) {
+      console.log('✅ User is MODERATOR (from Telegram ID match)');
+      return 'moderator';
+    }
+    
+    // Priority 3: Use existing role if present
+    if (userData.role && ['admin', 'moderator', 'user'].includes(userData.role)) {
+      console.log('✅ User role from existing data:', userData.role);
+      return userData.role;
+    }
+    
+    // Default to user
+    console.log('✅ User is regular USER (default)');
+    return 'user';
+  };
 
   // Check if user is admin (backward compatibility)
   const checkAdminStatus = (userData: User): boolean => {
@@ -218,19 +201,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsModerator(false);
   };
 
-  // Refresh user data - Enhanced version
+  // Refresh user data
   const refreshUser = async (): Promise<void> => {
     try {
       console.log('🔄 Refreshing user data...');
       
-      // In a real implementation, you would call your API here
-      // For now, we'll just reload from localStorage
       const savedUser = localStorage.getItem('bingo_user');
       if (savedUser) {
         const userData = JSON.parse(savedUser);
         setUser(userData);
         
-        // Update role and permissions
         const newRole = checkUserRole(userData);
         setUserRole(newRole);
         setIsAdmin(newRole === 'admin');
@@ -245,7 +225,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Initialize Telegram WebApp authentication - Enhanced
+  // Initialize Telegram WebApp authentication
   const initializeTelegramAuth = async (): Promise<void> => {
     if (typeof window === 'undefined') return;
 
@@ -259,8 +239,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const telegramUser = tg.initDataUnsafe?.user;
         
         if (telegramUser && telegramUser.id) {
-      
-          
           // Store Telegram user data
           localStorage.setItem('telegram_user_data', JSON.stringify(telegramUser));
           localStorage.setItem('telegram_user_id', telegramUser.id.toString());
@@ -294,42 +272,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Login function - Now properly implemented
-  const login = (userData: User, token?: string) => {
-    console.log('🔐 Logging in user:', {
-      id: userData._id,
-      name: userData.firstName,
-      telegramId: userData.telegramId,
-      role: userData.role
-    });
-    
-    setUser(userData);
-    
-    // Check and set role
-    const newRole = checkUserRole(userData);
-    setUserRole(newRole);
-    setIsAdmin(newRole === 'admin');
-    setIsModerator(newRole === 'moderator');
-    
-    // Store auth data
-    if (token) {
-      setAuthData(token, userData);
-    } else {
-      // Store without token (for demo/development)
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('bingo_user', JSON.stringify(userData));
-        localStorage.setItem('user_role', newRole);
-        
-        if (userData._id) {
-          localStorage.setItem('user_id', userData._id);
+  // Login function - FIXED to fetch actual user data
+  const login = async (userData: User, token?: string): Promise<void> => {
+    try {
+      console.log('🔐 Logging in user with Telegram data:', {
+        telegramId: userData.telegramId,
+        firstName: userData.firstName,
+        username: userData.username
+      });
+
+      // ✅ IMPORTANT: Fetch the actual user data from your backend
+      let actualUserData = userData;
+      
+      try {
+        // Call your backend API to get the real user data
+        const response = await fetch(`/api/users/${userData.telegramId}`);
+        if (response.ok) {
+          const backendUser = await response.json();
+          actualUserData = { ...userData, ...backendUser };
+          console.log('✅ Fetched user data from backend:', backendUser);
+        } else {
+          console.log('⚠️ Could not fetch user from backend, using Telegram data');
         }
-        if (userData.telegramId) {
-          localStorage.setItem('telegram_user_id', userData.telegramId);
+      } catch (error) {
+        console.log('⚠️ Backend fetch failed, using Telegram data:', error);
+      }
+
+      console.log('🔐 Final user data for login:', {
+        id: actualUserData._id,
+        name: actualUserData.firstName,
+        telegramId: actualUserData.telegramId,
+        role: actualUserData.role,
+        isAdmin: actualUserData.isAdmin,
+        isModerator: actualUserData.isModerator
+      });
+      
+      setUser(actualUserData);
+      
+      // Check and set role using the actual user data
+      const newRole = checkUserRole(actualUserData);
+      setUserRole(newRole);
+      setIsAdmin(newRole === 'admin');
+      setIsModerator(newRole === 'moderator');
+      
+      // Store auth data
+      if (token) {
+        setAuthData(token, actualUserData);
+      } else {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('bingo_user', JSON.stringify(actualUserData));
+          localStorage.setItem('user_role', newRole);
+          
+          if (actualUserData._id) {
+            localStorage.setItem('user_id', actualUserData._id);
+          }
+          if (actualUserData.telegramId) {
+            localStorage.setItem('telegram_user_id', actualUserData.telegramId);
+          }
         }
       }
+      
+      console.log('✅ Login successful - Role:', newRole);
+    } catch (error) {
+      console.error('❌ Login failed:', error);
     }
-    
-    console.log('✅ Login successful - Role:', newRole);
   };
 
   const logout = () => {
@@ -340,7 +346,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsModerator(false);
     clearAuthData();
     
-    // Optional: Redirect to home or login page
     if (typeof window !== 'undefined') {
       window.location.href = '/';
     }
@@ -374,7 +379,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setIsAdmin(savedRole === 'admin');
             setIsModerator(savedRole === 'moderator');
           } else {
-            // Re-check role
             const newRole = checkUserRole(userData);
             setUserRole(newRole);
             setIsAdmin(newRole === 'admin');
@@ -387,7 +391,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log('ℹ️ No saved user found - starting fresh');
         }
 
-        // Initialize Telegram auth if available
         await initializeTelegramAuth();
         
       } catch (error) {
@@ -428,6 +431,5 @@ export function useAuth() {
   return context;
 }
 
-// Export permission constants and types
 export { PERMISSIONS };
 export type { Permission };

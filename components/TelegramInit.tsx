@@ -30,42 +30,41 @@ export default function TelegramInit() {
             webApp.enableClosingConfirmation();
           }
           
-          const initData = webApp.initData;
           const telegramUser = webApp.initDataUnsafe?.user;
           
-       // In your TelegramInit, make sure user creation is correct
-if (telegramUser && telegramUser.id) {
-  console.log('🔐 Attempting Telegram authentication with user:', telegramUser);
-  
-  // ✅ CORRECT: Create proper User object from Telegram data
-  const userData = {
-    id: telegramUser.id.toString(),
-    _id: telegramUser.id.toString(),
-    telegramId: telegramUser.id.toString(),
-    firstName: telegramUser.first_name, // This should be unique per user
-    username: telegramUser.username || `user_${telegramUser.id}`,
-    language_code: telegramUser.language_code,
-    gamesPlayed: 0,
-    gamesWon: 0,
-    totalScore: 0,
-    isAdmin: false,
-    isModerator: false,
-    role: 'user' as const
-  };
-  
-  console.log('👤 TelegramInit - Created user data:', userData);
-  
-  await login(userData);
-  console.log('✅ Telegram WebApp authenticated successfully');
-  return;
-} else {
+          if (telegramUser && telegramUser.id) {
+            console.log('🔐 Attempting Telegram authentication with user:', telegramUser);
+            
+            // Create proper User object from Telegram data
+            const userData = {
+              id: telegramUser.id.toString(),
+              _id: telegramUser.id.toString(),
+              telegramId: telegramUser.id.toString(),
+              firstName: telegramUser.first_name,
+              username: telegramUser.username || `user_${telegramUser.id}`,
+              telegramUsername: telegramUser.username,
+              language_code: telegramUser.language_code,
+              gamesPlayed: 0,
+              gamesWon: 0,
+              totalScore: 0,
+              isAdmin: false,
+              isModerator: false,
+              role: 'user' as const
+            };
+            
+            console.log('👤 TelegramInit - Created user data:', userData);
+            
+            await login(userData);
+            console.log('✅ Telegram WebApp authenticated successfully');
+            return;
+          } else {
             console.warn('⚠️ No Telegram user data available');
           }
         } else {
           console.log('🌐 Not in Telegram WebApp environment');
         }
 
-        // ✅ CORRECT: Create proper User object for development mode
+        // Development mode fallback
         console.log('🔧 Falling back to development mode...');
         const devUser = {
           id: 'dev-user-001',

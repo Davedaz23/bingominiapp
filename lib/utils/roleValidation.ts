@@ -1,4 +1,4 @@
-// utils/roleValidation.ts
+// lib/utils/roleValidation.ts
 export const validateAdminAccess = (telegramId: string): boolean => {
   const adminTelegramId = process.env.NEXT_PUBLIC_ADMIN_TELEGRAM_ID;
   

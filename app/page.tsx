@@ -218,37 +218,55 @@ const generateBingoCard = (cardNumber: number) => {
 // User Info Display Component with Role Badges - FIXED
 const UserInfoDisplay = ({ user, balance, userRole }: { user: any; balance: number; userRole: string }) => {
   const getUserDisplayName = () => {
-    if (!user) return 'Guest';
+    if (!user) {
+      console.log('❌ No user object provided to UserInfoDisplay');
+      return 'Guest';
+    }
     
-    console.log('👤 User object for display name:', {
+    console.log('👤 UserInfoDisplay - User object:', {
       id: user.id,
       _id: user._id,
       firstName: user.firstName,
       username: user.username,
       telegramUsername: user.telegramUsername,
-      telegramId: user.telegramId
+      telegramId: user.telegramId,
     });
 
-    // Priority order for display name
-    if (user.firstName && user.firstName !== 'User') {
+    // Check if this looks like the admin user
+    const isLikelyAdmin = user.telegramId === '444206486' || user.firstName === 'ሰው';
+    if (isLikelyAdmin) {
+      console.log('⚠️ This appears to be the admin user');
+    }
+
+    // More robust display name logic
+    if (user.firstName && user.firstName !== 'User' && user.firstName !== 'Development') {
+      console.log('✅ Using firstName:', user.firstName);
       return user.firstName;
     }
+    
     if (user.telegramUsername) {
+      console.log('✅ Using telegramUsername:', user.telegramUsername);
       return user.telegramUsername;
     }
-    if (user.username && user.username !== `user_${user.telegramId}`) {
+    
+    if (user.username && !user.username.startsWith('user_') && user.username !== 'dev_user') {
+      console.log('✅ Using username:', user.username);
       return user.username;
     }
+    
     if (user.telegramId) {
-      return `User${user.telegramId.toString().slice(-4)}`;
-    }
-    if (user.id) {
-      return `User${user.id.toString().slice(-4)}`;
-    }
-    if (user._id) {
-      return `User${user._id.toString().slice(-4)}`;
+      const displayId = `User${user.telegramId.toString().slice(-4)}`;
+      console.log('✅ Using telegramId-based name:', displayId);
+      return displayId;
     }
     
+    if (user.id) {
+      const displayId = `User${user.id.toString().slice(-4)}`;
+      console.log('✅ Using id-based name:', displayId);
+      return displayId;
+    }
+    
+    console.log('❌ No suitable display name found, using default');
     return 'Player';
   };
 
@@ -275,6 +293,12 @@ const UserInfoDisplay = ({ user, balance, userRole }: { user: any; balance: numb
 
   const roleBadge = getRoleBadge();
   const displayName = getUserDisplayName();
+
+  console.log('🎯 Final display name decision:', {
+    displayName,
+    userRole,
+    hasRoleBadge: !!roleBadge
+  });
 
   return (
     <div className="flex items-center gap-3">
