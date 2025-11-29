@@ -150,7 +150,7 @@ export const authAPI = {
 
 export const gameAPI = {
   // ==================== CARD SELECTION ROUTES ====================
-  getAvailableCards: (gameId: string, userId: string, count: number = 3) =>
+  getAvailableCards: (gameId: string, userId: string, count: number = 400) =>
     api.get<AvailableCardsResponse>(`/games/${gameId}/available-cards/${userId}`, {
       params: { count }
     }),
