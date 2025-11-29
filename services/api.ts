@@ -1,4 +1,4 @@
-// services/api.ts - COMPLETE FIXED VERSION
+// services/api.ts - UPDATED TO MATCH BACKEND ROUTES
 import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
@@ -82,35 +82,38 @@ const getTelegramId = (): string | null => {
 // Types for card selection
 export interface CardSelectionResponse {
   success: boolean;
-  cardNumber: number;
-  gameId: string;
-  userId: string;
-  selectionEndTime: string;
+  message: string;
 }
 
 export interface AvailableCardsResponse {
   success: boolean;
-  availableCards: number[];
-  takenCards: { cardNumber: number; userId: string }[];
-  isSelectionActive: boolean;
-  selectionEndTime: string;
-  timeRemaining: number;
+  cards: Array<{
+    cardIndex: number;
+    numbers: (number | string)[][];
+    preview: any;
+  }>;
+  count: number;
 }
 
 export interface CardSelectionStatusResponse {
   success: boolean;
-  isSelectionActive: boolean;
-  selectionEndTime: string;
-  timeRemaining: number;
-  totalCardsSelected: number;
+  gameId: string;
+  totalPlayers: number;
+  playersWithCards: number;
+  playersWithoutCards: number;
+  canStart: boolean;
+  minPlayersRequired: number;
+  playersWithCardsList: any[];
+  playersWithoutCardsList: any[];
 }
 
-export interface CardReleaseResponse {
+export interface HasCardResponse {
   success: boolean;
-  released: boolean;
+  hasCard: boolean;
+  bingoCard: BingoCard | null;
 }
 
-// FIXED: All endpoints now use the same api instance with consistent base URL
+// FIXED: All endpoints now match the backend routes exactly
 export const authAPI = {
   // Telegram WebApp authentication
   telegramLogin: (initData: string) => 
@@ -146,6 +149,24 @@ export const authAPI = {
 };
 
 export const gameAPI = {
+  // ==================== CARD SELECTION ROUTES ====================
+  getAvailableCards: (gameId: string, userId: string, count: number = 3) =>
+    api.get<AvailableCardsResponse>(`/games/${gameId}/available-cards/${userId}`, {
+      params: { count }
+    }),
+  
+  selectCard: (gameId: string, userId: string, cardNumbers: (number | string)[][]) =>
+    api.post<CardSelectionResponse>(`/games/${gameId}/select-card`, {
+      userId,
+      cardNumbers
+    }),
+  
+  hasCard: (gameId: string, userId: string) =>
+    api.get<HasCardResponse>(`/games/${gameId}/has-card/${userId}`),
+  
+  getCardSelectionStatus: (gameId: string) =>
+    api.get<CardSelectionStatusResponse>(`/games/${gameId}/card-selection-status`),
+
   // ==================== GAME MANAGEMENT ====================
   joinGame: (code: string, userId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${code}/join`, { userId }),
@@ -206,29 +227,6 @@ export const gameAPI = {
   
   getUserGameRole: (gameId: string, userId: string) =>
     api.get<{ success: boolean; role: any }>(`/games/user/${userId}/role/${gameId}`),
-  
-  // ==================== CARD SELECTION ====================
-  selectCard: (gameId: string, userId: string, cardNumber: number) => 
-    api.post<CardSelectionResponse>(
-      `/games/${gameId}/select-card`, 
-      { userId, cardNumber }
-    ),
-  
-  getAvailableCards: (gameId: string) => 
-    api.get<AvailableCardsResponse>(
-      `/games/${gameId}/available-cards`
-    ),
-  
-  releaseCard: (gameId: string, userId: string) => 
-    api.post<CardReleaseResponse>(
-      `/games/${gameId}/release-card`, 
-      { userId }
-    ),
-  
-  getCardSelectionStatus: (gameId: string) => 
-    api.get<CardSelectionStatusResponse>(
-      `/games/${gameId}/card-selection-status`
-    ),
 
   // ==================== HEALTH CHECK ====================
   healthCheck: () =>
@@ -281,7 +279,7 @@ export const walletAPI = {
 
 // Enhanced convenience methods with proper ID handling
 export const walletAPIAuto = {
-getBalance: async () => {
+  getBalance: async () => {
     try {
       // Try multiple sources for user ID with better error handling
       const telegramId = getTelegramId();
