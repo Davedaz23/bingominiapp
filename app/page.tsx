@@ -379,15 +379,15 @@ export default function Home() {
 
       {/* Card Selection Grid */}
       {!selectedNumber && (
-        <CardSelectionGrid
-          availableCards={availableCards}
-          takenCards={takenCards}
-          selectedNumber={selectedNumber}
-          walletBalance={walletBalance}
-          gameStatus={gameStatus}
-          onCardSelect={handleCardSelect}
-        />
-      )}
+      <CardSelectionGrid
+        availableCards={availableCards}
+        takenCards={takenCards}
+        selectedNumber={selectedNumber}
+        walletBalance={walletBalance}
+        gameStatus={gameStatus}
+        onCardSelect={handleCardSelect}
+      />
+    )}
 
       {/* Selected Card Preview and Controls */}
       {selectedNumber && bingoCard && (

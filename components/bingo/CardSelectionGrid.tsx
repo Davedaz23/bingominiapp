@@ -1,7 +1,8 @@
+// components/bingo/CardSelectionGrid.tsx - UPDATED
 import { motion } from 'framer-motion';
 
 interface CardSelectionGridProps {
-  availableCards: number[];
+  availableCards: Array<{cardIndex: number, numbers: (number | string)[][], preview?: any}>;
   takenCards: {cardNumber: number, userId: string}[];
   selectedNumber: number | null;
   walletBalance: number;
@@ -17,6 +18,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   gameStatus,
   onCardSelect
 }) => {
+  // Extract just the card numbers from availableCards objects
+  const availableCardNumbers = availableCards.map(card => card.cardIndex);
+
   return (
     <motion.div 
       className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
@@ -26,7 +30,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
     >
       {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
         const isTaken = takenCards.some(card => card.cardNumber === number);
-        const isAvailable = availableCards.includes(number);
+        const isAvailable = availableCardNumbers.includes(number);
         const canSelect = walletBalance >= 10;
         const isSelectable = canSelect && isAvailable && !isTaken;
 

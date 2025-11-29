@@ -90,38 +90,43 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   };
 
   const fetchAvailableCards = async () => {
-    try {
-      if (!gameData?._id || !user?.id) {
-        console.log('❌ Missing gameId or userId:', { 
-          gameId: gameData?._id, 
-          userId: user?.id 
-        });
-        return;
-      }
-      
-      console.log('🔍 Fetching available cards with:', {
-        gameId: gameData._id,
-        userId: user.id
-      });
+  try {
+    if (!gameData?._id || !user?.id) return;
+    
+    console.log('🔍 Fetching available cards with:', {
+      gameId: gameData._id,
+      userId: user.id
+    });
 
-      // FIXED: Make sure userId is properly passed to the API call
-      const response = await gameAPI.getAvailableCards(gameData._id, user.id, 3);
+    const response = await gameAPI.getAvailableCards(gameData._id, user.id, 3);
+    
+    console.log('📦 Available cards response:', response.data);
+    
+    if (response.data.success) {
+      setAvailableCards(response.data.cards);
+      console.log('✅ Available cards fetched:', response.data.cards);
       
-      console.log('📦 Available cards response:', response.data);
-      
-      if (response.data.success) {
-        setAvailableCards(response.data.cards);
-        console.log('✅ Available cards fetched:', response.data.cards);
+      // FIX: Get taken cards from card selection status
+      const statusResponse = await gameAPI.getCardSelectionStatus(gameData._id);
+      if (statusResponse.data.success) {
+        // Convert playersWithCardsList to takenCards format
+        const taken = statusResponse.data.playersWithCardsList.map((player: any) => ({
+          cardNumber: player.cardIndex || player.cardNumber,
+          userId: player.userId
+        }));
+        setTakenCards(taken);
+        console.log('✅ Taken cards updated:', taken);
       }
-    } catch (error: any) {
-      console.error('❌ Error fetching available cards:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        url: error.config?.url
-      });
     }
-  };
+  } catch (error: any) {
+    console.error('❌ Error fetching available cards:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      url: error.config?.url
+    });
+  }
+};
 
   const handleCardSelect = async (cardIndex: number) => {
     if (!user?.id || !gameData?._id) {
