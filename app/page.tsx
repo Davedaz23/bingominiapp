@@ -1,4 +1,4 @@
-// app/page.tsx - COMPLETE FIXED VERSION
+// app/page.tsx - COMPLETE FIXED VERSION WITH MULTI-ACCOUNT SUPPORT
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -216,7 +216,7 @@ const generateBingoCard = (cardNumber: number) => {
 
 // User Info Display Component with Role Badges
 const UserInfoDisplay = ({ user, userRole }: { user: any; userRole: string }) => {
-  const { walletBalance } = useAuth(); // Get balance from context
+  const { walletBalance } = useAuth();
 
   const getUserDisplayName = () => {
     if (!user) {
@@ -224,7 +224,6 @@ const UserInfoDisplay = ({ user, userRole }: { user: any; userRole: string }) =>
       return 'Guest';
     }
 
-    // More robust display name logic
     if (user.firstName && user.firstName !== 'User' && user.firstName !== 'Development') {
       return user.firstName;
     }
@@ -425,7 +424,7 @@ export default function Home() {
   console.log('🔄 Home Component State:', {
     authLoading,
     isAuthenticated,
-    user: user ? { id: user.id, name: user.firstName } : null,
+    user: user ? { id: user.id, telegramId: user.telegramId, name: user.firstName } : null,
     pageLoading,
     showNumberSelection,
     gameStatus
@@ -478,25 +477,54 @@ export default function Home() {
     }
   };
 
-  // FIXED: Proper user ID detection for wallet operations
-  const getCurrentUserId = (): string | null => {
-    if (!user) return null;
+  // FIXED: Account-specific storage management
+  const getAccountStorageKey = (baseKey: string): string => {
+    if (!user?.telegramId) return baseKey;
+    return `${baseKey}_${user.telegramId}`;
+  };
+
+  const getAccountData = (baseKey: string): any => {
+    if (typeof window === 'undefined') return null;
     
-    // Use the authenticated user's ID from context (most reliable)
-    if (user.id) {
-      return user.id.toString();
-    }
+    const accountKey = getAccountStorageKey(baseKey);
+    const stored = localStorage.getItem(accountKey);
     
-    // Fallback to localStorage with proper validation
-    if (typeof window !== 'undefined') {
-      const storedUserId = localStorage.getItem('user_id');
-      if (storedUserId && storedUserId !== 'undefined' && storedUserId !== 'null') {
-        return storedUserId;
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch (error) {
+        console.warn(`⚠️ Failed to parse stored data for ${accountKey}:`, error);
+        return null;
       }
     }
-    
-    console.warn('❌ No valid user ID found');
     return null;
+  };
+
+  const setAccountData = (baseKey: string, data: any): void => {
+    if (typeof window === 'undefined' || !user?.telegramId) return;
+    
+    const accountKey = getAccountStorageKey(baseKey);
+    localStorage.setItem(accountKey, JSON.stringify(data));
+  };
+
+  const removeAccountData = (baseKey: string): void => {
+    if (typeof window === 'undefined') return;
+    
+    const accountKey = getAccountStorageKey(baseKey);
+    localStorage.removeItem(accountKey);
+  };
+
+  // FIXED: Account-specific selected number management
+  const loadSelectedNumber = (): number | null => {
+    return getAccountData('selected_number');
+  };
+
+  const saveSelectedNumber = (number: number | null): void => {
+    setAccountData('selected_number', number);
+  };
+
+  const clearSelectedNumber = (): void => {
+    removeAccountData('selected_number');
   };
 
   // FIXED: Check game status function
@@ -535,7 +563,6 @@ export default function Home() {
       return true;
     } catch (error) {
       console.error('❌ Error checking game status:', error);
-      // Even if there's an error, we should still show the number selection
       setGameStatus('FINISHED');
       setRestartCountdown(30);
       return false;
@@ -576,7 +603,7 @@ export default function Home() {
     }
   }, [cardSelectionStatus, selectedNumber, availableCards]);
 
-  // FIXED: Main initialization with proper user context
+  // FIXED: Main initialization with account-specific storage
   useEffect(() => {
     const initializeApp = async () => {
       console.log('🚀 Starting app initialization...');
@@ -599,20 +626,10 @@ export default function Home() {
       try {
         setPageLoading(true);
         
-        const currentUserId = getCurrentUserId();
-        if (!currentUserId) {
-          console.error('No valid user ID available for current user');
-          // Still show the UI even if no user ID
-          setShowNumberSelection(true);
-          setPageLoading(false);
-          await checkGameStatus();
-          return;
-        }
-
         console.log('👤 Initializing app for user:', {
-          id: currentUserId,
-          name: user.firstName || user.username,
+          id: user.id,
           telegramId: user.telegramId,
+          name: user.firstName || user.username,
           role: userRole,
           balance: walletBalance
         });
@@ -623,7 +640,14 @@ export default function Home() {
           console.log('✅ Wallet balance refreshed');
         } catch (balanceError) {
           console.warn('⚠️ Could not refresh wallet balance:', balanceError);
-          // Continue even if balance refresh fails
+        }
+
+        // Load account-specific selected number
+        const savedSelectedNumber = loadSelectedNumber();
+        if (savedSelectedNumber) {
+          setSelectedNumber(savedSelectedNumber);
+          setBingoCard(generateBingoCard(savedSelectedNumber));
+          console.log('✅ Loaded saved card selection:', savedSelectedNumber);
         }
 
         // Check game status
@@ -635,7 +659,6 @@ export default function Home() {
         
       } catch (error) {
         console.error('❌ Initialization error:', error);
-        // Even if there's an error, show the number selection
         setShowNumberSelection(true);
         await checkGameStatus();
       } finally {
@@ -647,13 +670,13 @@ export default function Home() {
     initializeApp();
   }, [authLoading, isAuthenticated, user, userRole]);
 
-  // FIXED: Check game status periodically - only when showNumberSelection is true
+  // FIXED: Check game status periodically
   useEffect(() => {
     if (!showNumberSelection) return;
 
     const interval = setInterval(async () => {
       await checkGameStatus();
-    }, 10000); // Check every 10 seconds instead of 3 to reduce load
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [showNumberSelection]);
@@ -712,53 +735,53 @@ export default function Home() {
         });
       }
     } catch (error) {
-      console.error('Error fetching available cards for current user:', error);
+      console.error('Error fetching available cards:', error);
     }
   };
 
   const handleLateEntryJoin = async (cardNumber: number) => {
-    const currentUserId = getCurrentUserId();
-    if (!currentUserId || !gameData?._id) return;
+    if (!user?.id || !gameData?._id) return;
 
     try {
       setJoining(true);
       setCardSelectionError('');
 
-      const cardResponse = await gameAPI.selectCard(gameData._id, currentUserId, cardNumber);
+      const cardResponse = await gameAPI.selectCard(gameData._id, user.id, cardNumber);
       
       if (cardResponse.data.success) {
         setSelectedNumber(cardNumber);
+        saveSelectedNumber(cardNumber);
         setBingoCard(generateBingoCard(cardNumber));
         
-        const joinResponse = await gameAPI.joinGame(gameData.code, currentUserId);
+        const joinResponse = await gameAPI.joinGame(gameData.code, user.id);
         
         if (joinResponse.data.success) {
-          console.log('✅ Late entry successful for current user with card #', cardNumber);
+          console.log('✅ Late entry successful with card #', cardNumber);
           router.push(`/game/${gameData._id}`);
         } else {
-          setJoinError('Failed to join active game for current user');
+          setJoinError('Failed to join active game');
         }
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || 'Failed to join game for current user';
+      const errorMessage = error.response?.data?.error || 'Failed to join game';
       setCardSelectionError(errorMessage);
-      console.error('Late entry error for current user:', error);
+      console.error('Late entry error:', error);
     } finally {
       setJoining(false);
     }
   };
 
   const handleCardSelect = async (cardNumber: number) => {
-    const currentUserId = getCurrentUserId();
-    if (!currentUserId || !gameData?._id) return;
+    if (!user?.id || !gameData?._id) return;
     
     try {
       setCardSelectionError('');
       
-      const response = await gameAPI.selectCard(gameData._id, currentUserId, cardNumber);
+      const response = await gameAPI.selectCard(gameData._id, user.id, cardNumber);
       
       if (response.data.success) {
         setSelectedNumber(cardNumber);
+        saveSelectedNumber(cardNumber);
         setBingoCard(generateBingoCard(cardNumber));
         setJoinError('');
         setShowGameView(false);
@@ -766,40 +789,40 @@ export default function Home() {
         
         await fetchAvailableCards();
         
-        console.log(`✅ Card #${cardNumber} selected successfully for current user`);
+        console.log(`✅ Card #${cardNumber} selected successfully`);
         
         if (gameStatus === 'ACTIVE') {
-          console.log('🚀 Auto-joining active game for current user with late entry...');
+          console.log('🚀 Auto-joining active game with late entry...');
           setTimeout(() => {
             handleAutoJoinGame();
           }, 1000);
         }
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || 'Failed to select card for current user';
+      const errorMessage = error.response?.data?.error || 'Failed to select card';
       setCardSelectionError(errorMessage);
-      console.error('Card selection error for current user:', error);
+      console.error('Card selection error:', error);
     }
   };
 
   const handleCardRelease = async () => {
-    const currentUserId = getCurrentUserId();
-    if (!currentUserId || !gameData?._id) return;
+    if (!user?.id || !gameData?._id) return;
     
     try {
-      const response = await gameAPI.releaseCard(gameData._id, currentUserId);
+      const response = await gameAPI.releaseCard(gameData._id, user.id);
       
       if (response.data.success) {
         setSelectedNumber(null);
+        clearSelectedNumber();
         setBingoCard(null);
         setJoinError('');
         
         await fetchAvailableCards();
         
-        console.log('🔄 Card released successfully for current user');
+        console.log('🔄 Card released successfully');
       }
     } catch (error: any) {
-      console.error('Card release error for current user:', error);
+      console.error('Card release error:', error);
     }
   };
 
@@ -823,19 +846,17 @@ export default function Home() {
         }
       }
     } catch (error) {
-      console.error('Error checking card selection status for current user:', error);
+      console.error('Error checking card selection status:', error);
     }
   };
 
   const handleJoinGame = async () => {
-    const currentUserId = getCurrentUserId();
-    if (!selectedNumber || !currentUserId) return;
+    if (!selectedNumber || !user?.id) return;
 
     setJoining(true);
     setJoinError('');
 
     try {
-      // Use walletBalance directly from context
       if (walletBalance < 10) {
         setJoinError('Insufficient balance. Minimum 10 ብር required to play.');
         setJoining(false);
@@ -849,7 +870,7 @@ export default function Home() {
       
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game = waitingGamesResponse.data.games[0];
-        const joinResponse = await gameAPI.joinGame(game.code, currentUserId);
+        const joinResponse = await gameAPI.joinGame(game.code, user.id);
         
         if (joinResponse.data.success) {
           const updatedGame = joinResponse.data.game;
@@ -885,24 +906,23 @@ export default function Home() {
   };
 
   const handleAutoJoinGame = async () => {
-    const currentUserId = getCurrentUserId();
-    if (!selectedNumber || !currentUserId) return;
+    if (!selectedNumber || !user?.id) return;
 
     try {
-      console.log('🤖 Auto-joining game for current user...');
+      console.log('🤖 Auto-joining game...');
       
       const waitingGamesResponse = await gameAPI.getWaitingGames();
       
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game = waitingGamesResponse.data.games[0];
-        const joinResponse = await gameAPI.joinGame(game.code, currentUserId);
+        const joinResponse = await gameAPI.joinGame(game.code, user.id);
         
         if (joinResponse.data.success) {
           const updatedGame = joinResponse.data.game;
-          console.log('✅ Current user auto-joined game successfully');
+          console.log('✅ Auto-joined game successfully');
           router.push(`/game/${updatedGame._id}`);
         } else {
-          console.log('⚠️ Auto-join failed for current user, redirecting to watch');
+          console.log('⚠️ Auto-join failed, redirecting to watch');
           router.push(`/game/${game._id}?spectator=true`);
         }
       } else {
@@ -912,7 +932,7 @@ export default function Home() {
         }
       }
     } catch (error: any) {
-      console.error('Auto-join failed for current user:', error);
+      console.error('Auto-join failed:', error);
       const activeGamesResponse = await gameAPI.getActiveGames();
       if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
         router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
@@ -1011,18 +1031,6 @@ export default function Home() {
     );
   }
 
-  // FIXED: Remove the !showNumberSelection check since we always set it to true now
-  // if (!showNumberSelection) {
-  //   return (
-  //     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-  //       <div className="text-white text-center">
-  //         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
-  //         <p>Checking your games...</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
-
   // Auto-join loading screen
   if (showGameView && selectedNumber && walletBalance >= 10) {
     return (
@@ -1069,7 +1077,7 @@ export default function Home() {
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-white font-bold text-xl">Bingo Game {user?.telegramId}</h1>
+            <h1 className="text-white font-bold text-xl">Bingo Game</h1>
             <p className="text-white/60 text-sm">
               {isAdmin ? 'Admin Dashboard' : 
                isModerator ? 'Moderator View' : 
@@ -1368,6 +1376,7 @@ export default function Home() {
             <motion.button
               onClick={() => {
                 setSelectedNumber(null);
+                clearSelectedNumber();
                 setBingoCard(null);
                 setJoinError('');
               }}
