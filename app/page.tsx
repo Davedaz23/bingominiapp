@@ -1,3 +1,4 @@
+// app/page.tsx - UPDATE THE COMPONENT
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -19,7 +20,7 @@ import { GameControls } from '../components/game/GameControls';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
 import { useAccountStorage } from '../hooks/useAccountStorage';
-import { Clock, Play, Check } from 'lucide-react';
+import { Clock, Play, Check, Rocket } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -45,7 +46,10 @@ export default function Home() {
     calledNumbers,
     pageLoading,
     checkGameStatus,
-    initializeGameState
+    initializeGameState,
+    // ADD AUTO-START STATES
+    autoStartTimeRemaining,
+    hasAutoStartTimer
   } = useGameState();
 
   const {
@@ -66,7 +70,7 @@ export default function Home() {
   const [showGameView, setShowGameView] = useState<boolean>(false);
   const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
 
-  // Admin control handlers
+  // Admin control handlers (keep existing)
   const handleStartGame = async () => {
     if (hasPermission('manage_games')) {
       try {
@@ -88,28 +92,24 @@ export default function Home() {
   const handleEndGame = () => {
     if (hasPermission('manage_games')) {
       console.log('🛑 Admin ending game...');
-      // Implement game end logic
     }
   };
 
   const handleManageUsers = () => {
     if (hasPermission('manage_users')) {
       console.log('👥 Admin managing users...');
-      // Navigate to user management
     }
   };
 
   const handleModerateGames = () => {
     if (hasPermission('moderate_games')) {
       console.log('🛡️ Moderator moderating games...');
-      // Implement moderation logic
     }
   };
 
   const handleViewReports = () => {
     if (hasPermission('view_reports')) {
       console.log('📊 Moderator viewing reports...');
-      // Navigate to reports
     }
   };
 
@@ -241,7 +241,7 @@ export default function Home() {
     }
   }, [showGameView, selectedNumber, walletBalance]);
 
-  // Auto-join loading screen
+  // Auto-join loading screen (keep existing)
   if (showGameView && selectedNumber && walletBalance >= 10) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
@@ -279,7 +279,7 @@ export default function Home() {
     );
   }
 
-  // FIXED: Show loading only when both auth and page are loading
+  // Show loading only when both auth and page are loading
   if (authLoading || pageLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
@@ -328,7 +328,7 @@ export default function Home() {
         />
       )}
 
-      {/* Game Status Display */}
+      {/* Game Status Display - UPDATED WITH AUTO-START PROPS */}
       <GameStatusDisplay 
         gameStatus={gameStatus}
         currentPlayers={currentPlayers}
@@ -336,38 +336,80 @@ export default function Home() {
         selectedNumber={selectedNumber}
         walletBalance={walletBalance}
         shouldEnableCardSelection={shouldEnableCardSelection}
+        autoStartTimeRemaining={autoStartTimeRemaining}
+        hasAutoStartTimer={hasAutoStartTimer}
       />
 
-      {/* Card Selection Status */}
+      {/* Card Selection Status - UPDATED WITH AUTO-START */}
       {shouldEnableCardSelection && cardSelectionStatus.isSelectionActive && (
         <motion.div 
-          className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30"
+          className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
+            hasAutoStartTimer 
+              ? 'bg-orange-500/20 border-orange-500/30' 
+              : 'bg-green-500/20 border-green-500/30'
+          }`}
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-green-300" />
-              <p className="text-green-300 font-bold text-sm">Card Selection Active</p>
+              {hasAutoStartTimer ? (
+                <Rocket className="w-4 h-4 text-orange-300" />
+              ) : (
+                <Clock className="w-4 h-4 text-green-300" />
+              )}
+              <p className={`font-bold text-sm ${
+                hasAutoStartTimer ? 'text-orange-300' : 'text-green-300'
+              }`}>
+                {hasAutoStartTimer ? '🚀 Game Starting Soon!' : 'Card Selection Active'}
+              </p>
             </div>
-            <p className="text-green-200 text-sm">
-              {Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining
+            <p className={`text-sm ${
+              hasAutoStartTimer ? 'text-orange-200' : 'text-green-200'
+            }`}>
+              {hasAutoStartTimer 
+                ? `${Math.ceil(autoStartTimeRemaining / 1000)}s to start`
+                : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
+              }
             </p>
           </div>
-          <div className="mt-2">
-            <div className="flex justify-between text-xs text-green-200 mb-1">
-              <span>Choose your card number to join the game</span>
-              <span>{takenCards.length}/400 cards taken</span>
+          
+          {/* AUTO-START PROGRESS */}
+          {hasAutoStartTimer && (
+            <div className="mt-2">
+              <div className="flex justify-between text-xs text-orange-200 mb-1">
+                <span>Game will start automatically</span>
+                <span>{currentPlayers}/2 players ready</span>
+              </div>
+              <div className="w-full bg-orange-400/20 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-orange-400 to-red-400 h-2 rounded-full transition-all duration-1000"
+                  style={{ 
+                    width: `${((30000 - autoStartTimeRemaining) / 30000) * 100}%` 
+                  }}
+                />
+              </div>
             </div>
-            <div className="w-full bg-green-400/20 rounded-full h-2">
-              <div 
-                className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
-                style={{ 
-                  width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
-                }}
-              />
+          )}
+          
+          {/* REGULAR CARD SELECTION PROGRESS */}
+          {!hasAutoStartTimer && (
+            <div className="mt-2">
+              <div className="flex justify-between text-xs text-green-200 mb-1">
+                <span>Choose your card number to join the game</span>
+                <span>{takenCards.length}/400 cards taken</span>
+              </div>
+              <div className="w-full bg-green-400/20 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
+                  style={{ 
+                    width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
+                  }}
+                />
+              </div>
             </div>
-          </div>
+          )}
+          
           {cardSelectionError && (
             <p className="text-red-300 text-xs mt-2 text-center">
               {cardSelectionError}
@@ -447,13 +489,9 @@ export default function Home() {
               </div>
             </div>
           </motion.div>
-
-         
-        
         </motion.div>
       )}
 
-    
       {/* Game Info Footer */}
       <motion.div 
         className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20"

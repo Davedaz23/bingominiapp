@@ -98,6 +98,16 @@ export interface Game {
   endedAt?: string;
   createdAt?: string;
   updatedAt?: string;
+  
+  // Add these new properties for auto-start timer
+  hasAutoStartTimer?: boolean;
+  autoStartTimeRemaining?: number;
+  autoStartEndTime?: string;
+  
+  // Add card selection properties
+  selectedCards?: Record<string, string>;
+  cardSelectionEndTime?: string;
+  isCardSelectionActive?: boolean;
 }
 
 export interface WinnerInfo {

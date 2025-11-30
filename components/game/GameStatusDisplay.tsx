@@ -8,6 +8,9 @@ interface GameStatusDisplayProps {
   selectedNumber: number | null;
   walletBalance: number;
   shouldEnableCardSelection: boolean;
+   autoStartTimeRemaining?: number; // ADD THIS
+  hasAutoStartTimer?: boolean; // ADD THIS
+  
 }
 
 export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
@@ -16,14 +19,26 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
   restartCountdown,
   selectedNumber,
   walletBalance,
-  shouldEnableCardSelection
+  shouldEnableCardSelection,
+   autoStartTimeRemaining = 0,
+  hasAutoStartTimer = false
 }) => {
   const getStatusMessage = () => {
     const players = currentPlayers || 0;
     const minPlayers = 2;
     
     const canSelectCards = shouldEnableCardSelection;
-    
+    // AUTO-START COUNTDOWN
+    if (hasAutoStartTimer && autoStartTimeRemaining > 0) {
+      const secondsRemaining = Math.ceil(autoStartTimeRemaining / 1000);
+      return {
+        message: '🚀 Game Starting Soon!',
+        description: `Auto-starting in ${secondsRemaining}s (${players}/2 players ready)`,
+        color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
+        icon: <Clock className="w-5 h-5" />,
+        showAutoStartCountdown: true
+      };
+    }
     switch (gameStatus) {
       case 'WAITING':
         const playersNeeded = Math.max(0, minPlayers - players);
@@ -98,7 +113,24 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
         <p className="font-bold text-lg">{statusInfo.message}</p>
       </div>
       <p className="text-sm text-center">{statusInfo.description}</p>
-      
+       
+      {/* AUTO-START COUNTDOWN */}
+      {statusInfo.showAutoStartCountdown && autoStartTimeRemaining > 0 && (
+        <div className="mt-3">
+          <div className="flex justify-between text-xs text-white/80 mb-1">
+            <span>Game starts in:</span>
+            <span className="font-bold">{Math.ceil(autoStartTimeRemaining / 1000)}s</span>
+          </div>
+          <div className="w-full bg-white/20 rounded-full h-2">
+            <div 
+              className="bg-gradient-to-r from-orange-400 to-red-400 h-2 rounded-full transition-all duration-1000"
+              style={{ 
+                width: `${((30000 - autoStartTimeRemaining) / 30000) * 100}%` 
+              }}
+            />
+          </div>
+        </div>
+      )}
       {gameStatus === 'FINISHED' && restartCountdown > 0 && (
         <div className="mt-3">
           <div className="flex justify-between text-xs text-white/80 mb-1">
