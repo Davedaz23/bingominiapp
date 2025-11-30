@@ -97,7 +97,7 @@ const fetchTakenCards = useCallback(async () => {
   try {
     console.log('🔄 Polling for taken cards...');
     const response = await gameAPI.getTakenCards(gameData._id);
-    
+    console.log("taken payload",response);
     if (response.data.success) {
       // Merge with current user's selection to avoid flickering
       setTakenCards(prev => {
