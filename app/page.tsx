@@ -395,29 +395,7 @@ export default function Home() {
           transition={{ delay: 0.3 }}
         >
           {/* Selection Header */}
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-white font-bold text-lg">Selected Card #{selectedNumber}</h2>
-            <motion.button
-              onClick={handleCardRelease}
-              className="bg-red-500/50 hover:bg-red-600/60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              Change Card
-            </motion.button>
-          </div>
-
-          {/* Card Preview */}
-          <div className="max-w-xs mx-auto">
-            <BingoCardPreview 
-              cardNumber={selectedNumber} 
-              numbers={bingoCard!} 
-              size="small" 
-            />
-          </div>
-
-          {/* Card Combination Details */}
-          <motion.div 
+         <motion.div 
             className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -469,6 +447,18 @@ export default function Home() {
               </div>
             </div>
           </motion.div>
+
+          {/* Card Preview */}
+          <div className="max-w-xs mx-auto">
+            <BingoCardPreview 
+              cardNumber={selectedNumber} 
+              numbers={bingoCard!} 
+              size="small" 
+            />
+          </div>
+
+          {/* Card Combination Details */}
+        
         </motion.div>
       )}
 
