@@ -1,50 +1,128 @@
-// app/game/[id]/page.tsx
+// app/game/[id]/page.tsx - FIXED VERSION WITH PROPER TYPES
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useGame } from '../../../hooks/useGame';
-import { walletAPIAuto } from '../../../services/api';
+import { walletAPIAuto, gameAPI } from '../../../services/api';
+
+interface CardData {
+  cardNumber: number;
+  numbers: (number | string)[][];
+}
+
+interface LocalBingoCard {
+  cardNumber: number;
+  numbers: (number | string)[][];
+  markedPositions: number[];
+  selected?: boolean[][];
+}
 
 export default function GamePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params.id as string;
   
-  const { game, bingoCard, gameState, markNumber, isLoading } = useGame(id);
+  const { game, bingoCard: gameBingoCard, gameState, markNumber, isLoading } = useGame(id);
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
+  const [localBingoCard, setLocalBingoCard] = useState<LocalBingoCard | null>(null);
+  const [isLoadingCard, setIsLoadingCard] = useState<boolean>(true);
 
   useEffect(() => {
-    const loadWallet = async () => {
+    const initializeGame = async () => {
       try {
-        const response = await walletAPIAuto.getBalance();
-        if (response.data.success) {
-          setWalletBalance(response.data.balance);
+        // Load wallet balance
+        const walletResponse = await walletAPIAuto.getBalance();
+        if (walletResponse.data.success) {
+          setWalletBalance(walletResponse.data.balance);
         }
+
+        // Try to get card data from URL parameters first
+        const cardParam = searchParams.get('card');
+        if (cardParam) {
+          try {
+            const cardData: CardData = JSON.parse(decodeURIComponent(cardParam));
+            console.log('🎯 Loaded card from URL:', cardData);
+            setLocalBingoCard({
+              cardNumber: cardData.cardNumber,
+              numbers: cardData.numbers,
+              markedPositions: []
+            });
+            setSelectedNumber(cardData.cardNumber);
+            setIsLoadingCard(false);
+            return;
+          } catch (error) {
+            console.error('Failed to parse card data from URL:', error);
+          }
+        }
+
+        // If no card in URL, try to fetch from API
+        console.log('🔄 Fetching card from API...');
+        try {
+          // You'll need to get the user ID - this depends on your auth setup
+          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+          if (userId) {
+            const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+            if (cardResponse.data.success && cardResponse.data.bingoCard) {
+              console.log('✅ Loaded card from API:', cardResponse.data.bingoCard);
+              
+              // Handle the API response based on your actual BingoCard type
+              const apiCard = cardResponse.data.bingoCard;
+              setLocalBingoCard({
+                cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
+                numbers: apiCard.numbers || [],
+                markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
+                selected: (apiCard as any).selected
+              });
+              setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch card from API:', error);
+        }
+
+        setIsLoadingCard(false);
       } catch (error) {
-        console.error('Failed to load wallet:', error);
+        console.error('Failed to initialize game:', error);
+        setIsLoadingCard(false);
       }
     };
 
-    loadWallet();
-  }, []);
+    initializeGame();
+  }, [id, searchParams]);
 
   const handleMarkNumber = async (number: number) => {
     try {
       await markNumber(number);
       setSelectedNumber(number);
+      
+      // Update local bingo card marked positions with proper typing
+      if (localBingoCard) {
+        setLocalBingoCard((prev: LocalBingoCard | null) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            markedPositions: [...(prev.markedPositions || []), number]
+          };
+        });
+      }
     } catch (error) {
       console.error('Failed to mark number:', error);
     }
   };
 
-  if (isLoading) {
+  // Use local card if available, otherwise use the one from useGame hook
+  const displayBingoCard = localBingoCard || gameBingoCard;
+
+  if (isLoading || isLoadingCard) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
           <p>Loading game...</p>
+          {isLoadingCard && <p className="text-sm mt-2">Loading your bingo card...</p>}
         </div>
       </div>
     );
@@ -70,7 +148,7 @@ export default function GamePage() {
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
       {/* Header */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
-        <div className="grid grid-cols-4 gap-4 text-center">
+        <div className="grid grid-cols-5 gap-4 text-center">
           <div>
             <p className="text-white font-bold text-lg">{walletBalance} ብር</p>
             <p className="text-white/60 text-xs">Balance</p>
@@ -87,6 +165,12 @@ export default function GamePage() {
             <p className="text-white font-bold text-lg">10 ብር</p>
             <p className="text-white/60 text-xs">Bet</p>
           </div>
+          <div>
+            <p className="text-white font-bold text-lg">
+              {selectedNumber ? `#${selectedNumber}` : 'N/A'}
+            </p>
+            <p className="text-white/60 text-xs">Your Card</p>
+          </div>
         </div>
       </div>
 
@@ -96,7 +180,7 @@ export default function GamePage() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <h3 className="text-white font-bold mb-3 text-center">Called Numbers</h3>
             <div className="grid grid-cols-5 gap-2 max-h-[60vh] overflow-y-auto">
-              {Array.from({ length: 75 }, (_, i) => i + 1).map((number) => (
+              {Array.from({ length: 75 }, (_, i) => i + 1).map((number: number) => (
                 <div
                   key={number}
                   className={`
@@ -121,37 +205,58 @@ export default function GamePage() {
         {/* Right: Bingo Card */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-            <h3 className="text-white font-bold mb-3 text-center">Your Bingo Card</h3>
-            {bingoCard ? (
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-white font-bold">Your Bingo Card</h3>
+              {selectedNumber && (
+                <span className="text-white/80 text-sm bg-white/20 px-3 py-1 rounded-full">
+                  Card #{selectedNumber}
+                </span>
+              )}
+            </div>
+            
+            {displayBingoCard ? (
               <div className="grid grid-cols-5 gap-2">
-                {bingoCard.numbers.map((row, rowIndex) =>
-                  row.map((number, colIndex) => (
-                    <div
-                      key={`${rowIndex}-${colIndex}`}
-                      className={`
-                        aspect-square rounded-lg flex items-center justify-center font-bold
-                        ${bingoCard.markedPositions?.includes(number) || bingoCard.selected?.[rowIndex]?.[colIndex]
-                          ? 'bg-green-500 text-white'
-                          : gameState.calledNumbers.includes(number)
-                          ? 'bg-yellow-500 text-white'
-                          : rowIndex === 2 && colIndex === 2
-                          ? 'bg-purple-500 text-white'
-                          : 'bg-white/20 text-white'
+                {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+                  row.map((number: number | string, colIndex: number) => {
+                    const isMarked = displayBingoCard.markedPositions?.includes(number as number) || 
+                                    (displayBingoCard.selected && displayBingoCard.selected[rowIndex]?.[colIndex]);
+                    const isCalled = gameState.calledNumbers.includes(number as number);
+                    const isFreeSpace = rowIndex === 2 && colIndex === 2;
+
+                    return (
+                      <div
+                        key={`${rowIndex}-${colIndex}`}
+                        className={`
+                          aspect-square rounded-lg flex items-center justify-center font-bold
+                          ${isMarked
+                            ? 'bg-green-500 text-white'
+                            : isCalled
+                            ? 'bg-yellow-500 text-white'
+                            : isFreeSpace
+                            ? 'bg-purple-500 text-white'
+                            : 'bg-white/20 text-white'
+                          }
+                          transition-all duration-200 hover:scale-105 cursor-pointer
+                        `}
+                        onClick={() => 
+                          !isFreeSpace && isCalled && !isMarked && handleMarkNumber(number as number)
                         }
-                      `}
-                      onClick={() => 
-                        gameState.calledNumbers.includes(number) && 
-                        handleMarkNumber(number)
-                      }
-                    >
-                      {number === 0 ? 'FREE' : number}
-                    </div>
-                  ))
+                      >
+                        {isFreeSpace ? 'FREE' : number}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             ) : (
               <div className="text-center text-white/60 py-8">
-                Loading your bingo card...
+                <p>No bingo card found</p>
+                <button 
+                  onClick={() => router.push('/')}
+                  className="mt-4 bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30"
+                >
+                  Select a Card
+                </button>
               </div>
             )}
           </div>
@@ -161,6 +266,18 @@ export default function GamePage() {
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mt-4 border border-white/20 text-center">
               <p className="text-white/80 text-sm mb-2">Current Number</p>
               <p className="text-6xl font-bold text-white">{gameState.currentNumber}</p>
+            </div>
+          )}
+
+          {/* Debug Info */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-yellow-500/30">
+              <h4 className="text-yellow-300 font-bold mb-2">Debug Info</h4>
+              <p className="text-yellow-200 text-xs">
+                Card Loaded: {displayBingoCard ? 'Yes' : 'No'} | 
+                Card Number: {selectedNumber || 'None'} | 
+                Marked: {displayBingoCard?.markedPositions?.length || 0}
+              </p>
             </div>
           )}
         </div>

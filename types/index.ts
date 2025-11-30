@@ -35,6 +35,8 @@ export interface BingoCard {
   isWinner?: boolean;
   createdAt?: string;
   user?: User;
+    markedNumbers?: number[]; // Flat array of marked numbers
+
 }
 
 export interface GameState {

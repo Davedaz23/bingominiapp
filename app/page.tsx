@@ -96,60 +96,70 @@ export default function Home() {
   }, [cardSelectionStatus.timeRemaining, cardSelectionStatus.isSelectionActive, selectedNumber, walletBalance]);
 
   // ==================== ENHANCED AUTO-JOIN FUNCTION ====================
-  const handleAutoJoinGame = async () => {
-    if (!selectedNumber || !user?.id) return;
 
-    try {
-      console.log('🤖 Auto-joining game...');
+const handleAutoJoinGame = async () => {
+  if (!selectedNumber || !user?.id) return;
+
+  try {
+    console.log('🤖 Auto-joining game...');
+    
+    // Set showGameView to true to trigger the loading screen
+    setShowGameView(true);
+    
+    const waitingGamesResponse = await gameAPI.getWaitingGames();
+    
+    if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
+      const game = waitingGamesResponse.data.games[0];
+      console.log('🎯 Joining waiting game:', game._id);
       
-      // Set showGameView to true to trigger the loading screen
-      setShowGameView(true);
+      const joinResponse = await gameAPI.joinGame(game.code, user.id);
       
-      const waitingGamesResponse = await gameAPI.getWaitingGames();
-      
-      if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
-        const game = waitingGamesResponse.data.games[0];
-        console.log('🎯 Joining waiting game:', game._id);
+      if (joinResponse.data.success) {
+        const updatedGame = joinResponse.data.game;
+        console.log('✅ Auto-joined game successfully');
         
-        const joinResponse = await gameAPI.joinGame(game.code, user.id);
+        // Pass card data via URL parameters
+        const cardData = {
+          cardNumber: selectedNumber,
+          numbers: bingoCard
+        };
         
-        if (joinResponse.data.success) {
-          const updatedGame = joinResponse.data.game;
-          console.log('✅ Auto-joined game successfully');
-          // Use setTimeout to ensure the loading screen shows before redirect
-          setTimeout(() => {
-            router.push(`/game/${updatedGame._id}`);
-          }, 1500);
-        } else {
-          console.log('⚠️ Auto-join failed, redirecting to watch');
-          setTimeout(() => {
-            router.push(`/game/${game._id}?spectator=true`);
-          }, 1500);
-        }
+        const encodedCardData = encodeURIComponent(JSON.stringify(cardData));
+        
+        // Use setTimeout to ensure the loading screen shows before redirect
+        setTimeout(() => {
+          router.push(`/game/${updatedGame._id}?card=${encodedCardData}`);
+        }, 1500);
       } else {
-        const activeGamesResponse = await gameAPI.getActiveGames();
-        if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-          console.log('🎯 Joining active game as spectator');
-          setTimeout(() => {
-            router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
-          }, 1500);
-        } else {
-          console.log('❌ No games available');
-          setShowGameView(false);
-          setJoinError('No games available at the moment');
-        }
+        console.log('⚠️ Auto-join failed, redirecting to watch');
+        setTimeout(() => {
+          router.push(`/game/${game._id}?spectator=true`);
+        }, 1500);
       }
-    } catch (error: any) {
-      console.error('Auto-join failed:', error);
-      setShowGameView(false);
+    } else {
       const activeGamesResponse = await gameAPI.getActiveGames();
       if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+        console.log('🎯 Joining active game as spectator');
         setTimeout(() => {
           router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
         }, 1500);
+      } else {
+        console.log('❌ No games available');
+        setShowGameView(false);
+        setJoinError('No games available at the moment');
       }
     }
-  };
+  } catch (error: any) {
+    console.error('Auto-join failed:', error);
+    setShowGameView(false);
+    const activeGamesResponse = await gameAPI.getActiveGames();
+    if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+      setTimeout(() => {
+        router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
+      }, 1500);
+    }
+  }
+};
 
   // Admin control handlers (keep existing)
   const handleStartGame = async () => {
