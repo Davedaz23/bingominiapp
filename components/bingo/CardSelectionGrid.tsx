@@ -11,7 +11,6 @@ interface CardSelectionGridProps {
   onCardSelect: (cardNumber: number) => void;
 }
 
-// components/bingo/CardSelectionGrid.tsx - Updated
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   availableCards,
   takenCards,
@@ -49,8 +48,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               disabled={!isSelectable}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
+                border-2
                 ${isCurrentlySelected
-                  ? 'bg-telegram-button text-white border-telegram-button shadow-lg scale-105'
+                  ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
                   : isTaken
                   ? 'bg-red-500/50 text-white/50 cursor-not-allowed border-red-400/50'
                   : isSelectable
@@ -59,8 +59,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                     : 'bg-white/30 text-white hover:bg-white/40 hover:scale-105 hover:shadow-md cursor-pointer border-white/30'
                   : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
                 }
-                border-2
-                ${!isSelectable && !isCurrentlySelected ? 'opacity-50' : ''}
+                ${isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
               `}
               whileHover={isSelectable ? { scale: 1.05 } : {}}
               whileTap={isSelectable ? { scale: 0.95 } : {}}
@@ -70,8 +69,8 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               
               {/* Current selection indicator */}
               {isCurrentlySelected && (
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-telegram-button rounded-full border-2 border-white flex items-center justify-center">
-                  <Check className="w-2 h-2 text-white" />
+                <div className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-400 rounded-full border-2 border-white flex items-center justify-center">
+                  <Check className="w-3 h-3 text-white" />
                 </div>
               )}
               
@@ -121,7 +120,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               <p className="text-telegram-button font-bold text-sm">Card #{selectedNumber} Selected</p>
             </div>
             <p className="text-telegram-button/80 text-xs">
-              Click another card to change
+              Click another card to change selection
             </p>
           </div>
         </motion.div>

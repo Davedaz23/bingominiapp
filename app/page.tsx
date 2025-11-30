@@ -7,7 +7,6 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 // Import all components
-// import { BingoCardPreview } from './components/bingo/BingoCardPreview';
 import { BingoCardPreview } from '../components/bingo/BingoCardPreview';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
 import { UserInfoDisplay } from '../components/user/UserInfoDisplay';
@@ -20,7 +19,7 @@ import { GameControls } from '../components/game/GameControls';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
 import { useAccountStorage } from '../hooks/useAccountStorage';
-import { Clock, Play } from 'lucide-react';
+import { Clock, Play, Check } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -377,88 +376,101 @@ export default function Home() {
         </motion.div>
       )}
 
-      {/* Card Selection Grid */}
-    { !selectedNumber ? (
-  <CardSelectionGrid
-    availableCards={availableCards}
-    takenCards={takenCards}
-    selectedNumber={selectedNumber}
-    walletBalance={walletBalance}
-    gameStatus={gameStatus}
-    onCardSelect={handleCardSelect}
-  />
-) : (
-  <motion.div
-    className="mb-6"
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: 0.3 }}
-  >
-    {/* Selection Header */}
-    <div className="flex items-center justify-between mb-4">
-      <h2 className="text-white font-bold text-lg">Selected Card #{selectedNumber}</h2>
-      <motion.button
-        onClick={handleCardRelease}
-        className="bg-red-500/50 hover:bg-red-600/60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all"
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-      >
-        Change Card
-      </motion.button>
-    </div>
-
-    {/* Small Card Preview */}
-    <div className="max-w-xs mx-auto">
-      <BingoCardPreview 
-        cardNumber={selectedNumber} 
-        numbers={bingoCard!} 
-        size="small" 
+      {/* Card Selection Grid - ALWAYS VISIBLE */}
+      <CardSelectionGrid
+        availableCards={availableCards}
+        takenCards={takenCards}
+        selectedNumber={selectedNumber}
+        walletBalance={walletBalance}
+        gameStatus={gameStatus}
+        onCardSelect={handleCardSelect}
       />
-    </div>
 
-    {/* Card Combination Info */}
-    <motion.div 
-      className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ delay: 0.4 }}
-    >
-      <h3 className="text-white font-bold text-sm mb-2 text-center">Card Combination Preview</h3>
-      <div className="text-white/70 text-xs text-center mb-3">
-        Review your card numbers. Click "Change Card" if you want a different combination.
-      </div>
-      
-      {/* Quick stats about the card */}
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="bg-white/5 rounded-lg p-2">
-          <div className="text-telegram-button font-bold">B</div>
-          <div className="text-white/60 text-xs">Column</div>
-        </div>
-        <div className="bg-white/5 rounded-lg p-2">
-          <div className="text-telegram-button font-bold">I</div>
-          <div className="text-white/60 text-xs">Column</div>
-        </div>
-        <div className="bg-white/5 rounded-lg p-2">
-          <div className="text-telegram-button font-bold">N</div>
-          <div className="text-white/60 text-xs">Column</div>
-        </div>
-      </div>
-    </motion.div>
-  </motion.div>
-)}
+      {/* Selected Card Preview - Show below the grid when a card is selected */}
+      {selectedNumber && (
+        <motion.div
+          className="mb-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          {/* Selection Header */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-white font-bold text-lg">Selected Card #{selectedNumber}</h2>
+            <motion.button
+              onClick={handleCardRelease}
+              className="bg-red-500/50 hover:bg-red-600/60 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              Change Card
+            </motion.button>
+          </div>
 
-      {/* Selected Card Preview and Controls */}
-   {selectedNumber && (
-  <GameControls
-    selectedNumber={selectedNumber}
-    joining={joining}
-    joinError={joinError}
-    walletBalance={walletBalance}
-    gameStatus={gameStatus}
-    onJoinGame={handleJoinGame}
-    onCardRelease={handleCardRelease}
-  />
-)}
+          {/* Card Preview */}
+          <div className="max-w-xs mx-auto">
+            <BingoCardPreview 
+              cardNumber={selectedNumber} 
+              numbers={bingoCard!} 
+              size="small" 
+            />
+          </div>
+
+          {/* Card Combination Details */}
+          <motion.div 
+            className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+          >
+            <h3 className="text-white font-bold text-sm mb-3 text-center">Card Combination Details</h3>
+            
+            {/* Column-wise breakdown */}
+            <div className="grid grid-cols-5 gap-2 mb-4">
+              {['B', 'I', 'N', 'G', 'O'].map((letter, index) => (
+                <div key={letter} className="text-center">
+                  <div className="text-telegram-button font-bold text-lg">{letter}</div>
+                  <div className="text-white/60 text-xs">Column</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Number breakdown */}
+            <div className="space-y-3">
+              {bingoCard && bingoCard.map((column, colIndex) => (
+                <div key={colIndex} className="flex items-center">
+                  <div className="w-8 text-telegram-button font-bold text-sm">
+                    {['B', 'I', 'N', 'G', 'O'][colIndex]}:
+                  </div>
+                  <div className="flex-1 flex gap-1">
+                    {column.map((number, rowIndex) => (
+                      <div
+                        key={`${colIndex}-${rowIndex}`}
+                        className={`
+                          flex-1 text-center py-1 rounded text-xs font-medium
+                          ${number === 'FREE' 
+                            ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
+                            : 'bg-white/20 text-white'
+                          }
+                        `}
+                      >
+                        {number}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-white/20">
+              <div className="text-center text-white/60 text-xs">
+                Total Numbers: {bingoCard ? bingoCard.flat().filter(num => num !== 'FREE').length : 0} • 
+                FREE Space: 1
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
 
       {/* Game Controls */}
       <GameControls
