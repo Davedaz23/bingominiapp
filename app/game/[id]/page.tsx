@@ -1,4 +1,4 @@
-// app/game/[id]/page.tsx - FIXED VERSION WITH PROPER TYPES
+// app/game/[id]/page.tsx - IMPROVED ERROR HANDLING
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -29,6 +29,7 @@ export default function GamePage() {
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [localBingoCard, setLocalBingoCard] = useState<LocalBingoCard | null>(null);
   const [isLoadingCard, setIsLoadingCard] = useState<boolean>(true);
+  const [cardError, setCardError] = useState<string>('');
 
   useEffect(() => {
     const initializeGame = async () => {
@@ -52,23 +53,26 @@ export default function GamePage() {
             });
             setSelectedNumber(cardData.cardNumber);
             setIsLoadingCard(false);
+            setCardError('');
             return;
           } catch (error) {
             console.error('Failed to parse card data from URL:', error);
+            setCardError('Failed to load card data from URL');
           }
         }
 
         // If no card in URL, try to fetch from API
         console.log('🔄 Fetching card from API...');
         try {
-          // You'll need to get the user ID - this depends on your auth setup
+          // Use Telegram user ID instead of MongoDB ObjectId
           const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
           if (userId) {
+            console.log('📋 Fetching card for user:', userId);
             const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+            
             if (cardResponse.data.success && cardResponse.data.bingoCard) {
               console.log('✅ Loaded card from API:', cardResponse.data.bingoCard);
               
-              // Handle the API response based on your actual BingoCard type
               const apiCard = cardResponse.data.bingoCard;
               setLocalBingoCard({
                 cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
@@ -77,15 +81,29 @@ export default function GamePage() {
                 selected: (apiCard as any).selected
               });
               setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
+              setCardError('');
+            } else {
+              setCardError('No bingo card found for this user');
+              console.log('❌ No bingo card in response:', cardResponse.data);
             }
+          } else {
+            setCardError('User ID not found');
+            console.log('❌ No user ID found in localStorage');
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('Failed to fetch card from API:', error);
+          // Check if it's the ObjectId casting error
+          if (error.response?.data?.error?.includes('Cast to ObjectId failed')) {
+            setCardError('User ID format error. Please rejoin the game.');
+          } else {
+            setCardError('Failed to load bingo card from server');
+          }
         }
 
         setIsLoadingCard(false);
       } catch (error) {
         console.error('Failed to initialize game:', error);
+        setCardError('Failed to initialize game');
         setIsLoadingCard(false);
       }
     };
@@ -123,6 +141,9 @@ export default function GamePage() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
           <p>Loading game...</p>
           {isLoadingCard && <p className="text-sm mt-2">Loading your bingo card...</p>}
+          {cardError && (
+            <p className="text-yellow-300 text-sm mt-2">{cardError}</p>
+          )}
         </div>
       </div>
     );
@@ -172,6 +193,19 @@ export default function GamePage() {
             <p className="text-white/60 text-xs">Your Card</p>
           </div>
         </div>
+        
+        {/* Card Error Display */}
+        {cardError && (
+          <div className="mt-3 p-3 bg-red-500/20 rounded-lg border border-red-500/30">
+            <p className="text-red-300 text-sm text-center">{cardError}</p>
+            <button 
+              onClick={() => router.push('/')}
+              className="mt-2 bg-red-500 text-white px-4 py-2 rounded-lg text-sm mx-auto block"
+            >
+              Select New Card
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -251,6 +285,7 @@ export default function GamePage() {
             ) : (
               <div className="text-center text-white/60 py-8">
                 <p>No bingo card found</p>
+                <p className="text-sm mt-2">{cardError}</p>
                 <button 
                   onClick={() => router.push('/')}
                   className="mt-4 bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30"
@@ -276,7 +311,8 @@ export default function GamePage() {
               <p className="text-yellow-200 text-xs">
                 Card Loaded: {displayBingoCard ? 'Yes' : 'No'} | 
                 Card Number: {selectedNumber || 'None'} | 
-                Marked: {displayBingoCard?.markedPositions?.length || 0}
+                Marked: {displayBingoCard?.markedPositions?.length || 0} |
+                Card Error: {cardError || 'None'}
               </p>
             </div>
           )}

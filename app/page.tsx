@@ -97,69 +97,98 @@ export default function Home() {
 
   // ==================== ENHANCED AUTO-JOIN FUNCTION ====================
 
-const handleAutoJoinGame = async () => {
-  if (!selectedNumber || !user?.id) return;
+ // ==================== FIXED AUTO-JOIN FUNCTION ====================
+  const handleAutoJoinGame = async () => {
+    if (!selectedNumber || !user?.id) return;
 
-  try {
-    console.log('🤖 Auto-joining game...');
-    
-    // Set showGameView to true to trigger the loading screen
-    setShowGameView(true);
-    
-    const waitingGamesResponse = await gameAPI.getWaitingGames();
-    
-    if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
-      const game = waitingGamesResponse.data.games[0];
-      console.log('🎯 Joining waiting game:', game._id);
+    try {
+      console.log('🤖 Auto-joining game...');
       
-      const joinResponse = await gameAPI.joinGame(game.code, user.id);
+      // Set showGameView to true to trigger the loading screen
+      setShowGameView(true);
       
-      if (joinResponse.data.success) {
-        const updatedGame = joinResponse.data.game;
-        console.log('✅ Auto-joined game successfully');
+      const waitingGamesResponse = await gameAPI.getWaitingGames();
+      
+      if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
+        const game = waitingGamesResponse.data.games[0];
+        console.log('🎯 Joining waiting game:', game._id);
         
-        // Pass card data via URL parameters
-        const cardData = {
-          cardNumber: selectedNumber,
-          numbers: bingoCard
-        };
+        // FIX: Use user.id (Telegram ID) instead of MongoDB ObjectId
+        const joinResponse = await gameAPI.joinGame(game.code, user.id);
         
-        const encodedCardData = encodeURIComponent(JSON.stringify(cardData));
-        
-        // Use setTimeout to ensure the loading screen shows before redirect
-        setTimeout(() => {
-          router.push(`/game/${updatedGame._id}?card=${encodedCardData}`);
-        }, 1500);
+        if (joinResponse.data.success) {
+          const updatedGame = joinResponse.data.game;
+          console.log('✅ Auto-joined game successfully');
+          
+          // Get the user's bingo card using Telegram ID
+          try {
+            const cardResponse = await gameAPI.getUserBingoCard(updatedGame._id, user.id);
+            if (cardResponse.data.success && cardResponse.data.bingoCard) {
+              const cardData = {
+                cardNumber: selectedNumber,
+                numbers: cardResponse.data.bingoCard.numbers
+              };
+              
+              const encodedCardData = encodeURIComponent(JSON.stringify(cardData));
+              
+              setTimeout(() => {
+                router.push(`/game/${updatedGame._id}?card=${encodedCardData}`);
+              }, 1500);
+            } else {
+              // Fallback: use generated bingo card
+              const cardData = {
+                cardNumber: selectedNumber,
+                numbers: bingoCard
+              };
+              
+              const encodedCardData = encodeURIComponent(JSON.stringify(cardData));
+              setTimeout(() => {
+                router.push(`/game/${updatedGame._id}?card=${encodedCardData}`);
+              }, 1500);
+            }
+          } catch (cardError) {
+            console.error('Failed to fetch bingo card:', cardError);
+            // Fallback with generated card
+            const cardData = {
+              cardNumber: selectedNumber,
+              numbers: bingoCard
+            };
+            
+            const encodedCardData = encodeURIComponent(JSON.stringify(cardData));
+            setTimeout(() => {
+              router.push(`/game/${updatedGame._id}?card=${encodedCardData}`);
+            }, 1500);
+          }
+        } else {
+          console.log('⚠️ Auto-join failed, redirecting to watch');
+          setTimeout(() => {
+            router.push(`/game/${game._id}?spectator=true`);
+          }, 1500);
+        }
       } else {
-        console.log('⚠️ Auto-join failed, redirecting to watch');
-        setTimeout(() => {
-          router.push(`/game/${game._id}?spectator=true`);
-        }, 1500);
+        const activeGamesResponse = await gameAPI.getActiveGames();
+        if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+          console.log('🎯 Joining active game as spectator');
+          setTimeout(() => {
+            router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
+          }, 1500);
+        } else {
+          console.log('❌ No games available');
+          setShowGameView(false);
+          setJoinError('No games available at the moment');
+        }
       }
-    } else {
+    } catch (error: any) {
+      console.error('Auto-join failed:', error);
+      setShowGameView(false);
       const activeGamesResponse = await gameAPI.getActiveGames();
       if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-        console.log('🎯 Joining active game as spectator');
         setTimeout(() => {
           router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
         }, 1500);
-      } else {
-        console.log('❌ No games available');
-        setShowGameView(false);
-        setJoinError('No games available at the moment');
       }
     }
-  } catch (error: any) {
-    console.error('Auto-join failed:', error);
-    setShowGameView(false);
-    const activeGamesResponse = await gameAPI.getActiveGames();
-    if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-      setTimeout(() => {
-        router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
-      }, 1500);
-    }
-  }
-};
+  };
 
   // Admin control handlers (keep existing)
   const handleStartGame = async () => {
