@@ -1,5 +1,5 @@
-// app/hooks/useCardSelection.ts - FIXED
-import { useState, useEffect } from 'react';
+// app/hooks/useCardSelection.ts - FIXED VERSION
+import { useState, useEffect, useCallback } from 'react';
 import { gameAPI } from '../services/api';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { useAccountStorage } from './useAccountStorage';
@@ -73,131 +73,153 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     return card;
   };
 
-  const shouldEnableCardSelection = () => {
-    if (selectedNumber) {
-      return false;
-    }
+  // FIXED: This should be a computed value, not a function
+  const shouldEnableCardSelection = !selectedNumber && gameData?._id && walletBalance >= 10;
 
-    if (!gameData?._id) {
-      return false;
-    }
+  // Real-time polling for taken cards
+  const fetchTakenCards = useCallback(async () => {
+    if (!gameData?._id) return;
 
-    if (walletBalance >= 10) {
-      return true;
+    try {
+      console.log('🔄 Polling for taken cards...');
+      const response = await gameAPI.getTakenCards(gameData._id);
+      
+      if (response.data.success) {
+        setTakenCards(response.data.takenCards);
+        console.log('✅ Taken cards updated:', response.data.takenCards.length, 'cards taken');
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching taken cards:', error.message);
     }
-
-    return false;
-  };
+  }, [gameData?._id]);
 
   const fetchAvailableCards = async () => {
-  try {
+    try {
+      if (!gameData?._id || !user?.id) return;
+      
+      console.log('🔍 Fetching available cards with:', {
+        gameId: gameData._id,
+        userId: user.id
+      });
+
+      const response = await gameAPI.getAvailableCards(gameData._id, user.id, 400);
+      
+      console.log('📦 Available cards response:', response.data);
+      
+      if (response.data.success) {
+        setAvailableCards(response.data.cards);
+        console.log('✅ Available cards fetched:', response.data.cards.length);
+        
+        // Also fetch taken cards initially
+        await fetchTakenCards();
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching available cards:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        url: error.config?.url
+      });
+    }
+  };
+
+  // Enhanced handleCardSelect with real-time updates
+  const handleCardSelect = async (cardNumber: number) => {
     if (!gameData?._id || !user?.id) return;
-    
-    console.log('🔍 Fetching available cards with:', {
-      gameId: gameData._id,
-      userId: user.id
-    });
 
-    const response = await gameAPI.getAvailableCards(gameData._id, user.id, 400);
-    
-    console.log('📦 Available cards response:', response.data);
-    
-    if (response.data.success) {
-      setAvailableCards(response.data.cards);
-      console.log('✅ Available cards fetched:', response.data.cards);
+    try {
+      setCardSelectionError('');
       
-      // FIX: Get taken cards from card selection status
-      const statusResponse = await gameAPI.getCardSelectionStatus(gameData._id);
-      if (statusResponse.data.success) {
-        // Convert playersWithCardsList to takenCards format
-        const taken = statusResponse.data.playersWithCardsList.map((player: any) => ({
-          cardNumber: player.cardIndex || player.cardNumber,
-          userId: player.userId
-        }));
-        setTakenCards(taken);
-        console.log('✅ Taken cards updated:', taken);
+      // Check if card is already taken (real-time check)
+      const isCardTaken = takenCards.some(card => card.cardNumber === cardNumber);
+      if (isCardTaken) {
+        setCardSelectionError(`Card #${cardNumber} is already taken by another player`);
+        
+        // Refresh taken cards to get latest status
+        await fetchTakenCards();
+        return;
       }
-    }
-  } catch (error: any) {
-    console.error('❌ Error fetching available cards:', {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
-      url: error.config?.url
-    });
-  }
-};
 
- // hooks/useCardSelection.ts - Updated handleCardSelect
-const handleCardSelect = async (cardNumber: number) => {
-  if (!gameData?._id || !user?.id) return;
-
-  try {
-    setCardSelectionError('');
-    
-    // Find the selected card data from availableCards
-    const selectedCardData = availableCards.find(card => card.cardIndex === cardNumber);
-    
-    if (!selectedCardData) {
-      setCardSelectionError('Selected card not found');
-      return;
-    }
-
-    console.log('🔄 Selecting card:', {
-      gameId: gameData._id,
-      userId: user.id,
-      cardIndex: cardNumber,
-      cardNumbers: selectedCardData.numbers
-    });
-
-    // Call the API to select/update the card
-    const response = await gameAPI.selectCard(gameData._id, user.id, selectedCardData.numbers);
-    
-    if (response.data.success) {
-      console.log(`✅ Card ${response.data.action === 'UPDATED' ? 'updated' : 'selected'} successfully:`, response.data);
+      // Find the selected card data from availableCards
+      const selectedCardData = availableCards.find(card => card.cardIndex === cardNumber);
       
-      // Update local state
-      setSelectedNumber(cardNumber);
-      setBingoCard(selectedCardData.numbers);
+      if (!selectedCardData) {
+        setCardSelectionError('Selected card not found');
+        return;
+      }
+
+      console.log('🔄 Selecting card:', {
+        gameId: gameData._id,
+        userId: user.id,
+        cardIndex: cardNumber,
+        cardNumbers: selectedCardData.numbers
+      });
+
+      // Call the API to select the card with card number
+      const response = await gameAPI.selectCardWithNumber(gameData._id, {
+        userId: user.id,
+        cardNumbers: selectedCardData.numbers,
+        cardNumber: cardNumber
+      });
       
-      // Show success message based on action
-      if (response.data.action === 'UPDATED') {
-        setCardSelectionError(''); // Clear any previous errors
-        // Optional: Show success toast for card update
-        console.log('🔄 Card successfully updated!');
+      if (response.data.success) {
+        console.log(`✅ Card ${response.data.action === 'UPDATED' ? 'updated' : 'selected'} successfully:`, response.data);
+        
+        // Update local state
+        setSelectedNumber(cardNumber);
+        setBingoCard(selectedCardData.numbers);
+        
+        // Save to account storage
+        setAccountData('selected_number', cardNumber);
+        
+        // Immediately update taken cards to reflect this selection
+        await fetchTakenCards();
+        
+        // Show success message based on action
+        if (response.data.action === 'UPDATED') {
+          setCardSelectionError(''); // Clear any previous errors
+          console.log('🔄 Card successfully updated!');
+        } else {
+          console.log('✅ Card successfully selected!');
+        }
+        
       } else {
-        console.log('✅ Card successfully selected!');
+        setCardSelectionError(response.data.error || 'Failed to select card');
       }
+    } catch (error: any) {
+      console.error('❌ Card selection error:', error);
       
-    } else {
-      setCardSelectionError(response.data.error || 'Failed to select card');
+      // Handle specific error cases
+      if (error.response?.data?.error) {
+        setCardSelectionError(error.response.data.error);
+        
+        // If card is taken, refresh the taken cards list
+        if (error.response.data.error.includes('already taken')) {
+          await fetchTakenCards();
+        }
+      } else {
+        setCardSelectionError('Failed to select card. Please try again.');
+      }
     }
-  } catch (error: any) {
-    console.error('❌ Card selection error:', error);
-    
-    // Handle specific error cases
-    if (error.response?.data?.error) {
-      setCardSelectionError(error.response.data.error);
-    } else {
-      setCardSelectionError('Failed to select card. Please try again.');
-    }
-  }
-};
+  };
 
   const handleCardRelease = async () => {
-    if (!user?.id || !gameData?._id) return;
+    if (!user?.id || !gameData?._id || !selectedNumber) return;
     
     try {
+      console.log('🔄 Releasing card:', selectedNumber);
+      
       // Note: The backend doesn't have a release card endpoint yet
       // For now, we'll just clear the local state
       setSelectedNumber(null);
       removeAccountData('selected_number');
       setBingoCard(null);
       
-      console.log('🔄 Card released successfully (local state only)');
+      console.log('✅ Card released successfully (local state only)');
       
-      // Refresh available cards after release
-      fetchAvailableCards();
+      // Refresh available cards and taken cards after release
+      await fetchAvailableCards();
+      await fetchTakenCards();
     } catch (error: any) {
       console.error('❌ Card release error:', error);
     }
@@ -215,7 +237,7 @@ const handleCardSelect = async (cardNumber: number) => {
       if (response.data.success) {
         // Note: The backend doesn't return time-based selection status
         // We'll use the game status to determine if selection is active
-        const isSelectionActive = gameStatus === 'WAITING';
+        const isSelectionActive = gameStatus === 'WAITING' || gameStatus === 'ACTIVE';
         setCardSelectionStatus({
           isSelectionActive,
           selectionEndTime: null, // Not provided by backend
@@ -236,6 +258,22 @@ const handleCardSelect = async (cardNumber: number) => {
     }
   };
 
+  // Real-time polling for taken cards
+  useEffect(() => {
+    if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
+
+    console.log('⏰ Starting real-time taken cards polling');
+    
+    const interval = setInterval(() => {
+      fetchTakenCards();
+    }, 2000); // Poll every 2 seconds for real-time updates
+
+    return () => {
+      console.log('🛑 Stopping real-time taken cards polling');
+      clearInterval(interval);
+    };
+  }, [gameData?._id, cardSelectionStatus.isSelectionActive, fetchTakenCards]);
+
   // Fetch available cards when game data changes
   useEffect(() => {
     console.log('🔄 useCardSelection effect triggered:', {
@@ -243,21 +281,21 @@ const handleCardSelect = async (cardNumber: number) => {
       gameStatus,
       walletBalance,
       userId: user?.id,
-      shouldEnable: shouldEnableCardSelection()
+      shouldEnableCardSelection
     });
 
-    if (gameData?._id && shouldEnableCardSelection() && user?.id) {
+    if (gameData?._id && shouldEnableCardSelection && user?.id) {
       console.log('🚀 Fetching available cards...');
       fetchAvailableCards();
       checkCardSelectionStatus();
     } else {
       console.log('⏸️ Skipping card fetch - conditions not met:', {
         hasGameId: !!gameData?._id,
-        shouldEnable: shouldEnableCardSelection(),
+        shouldEnableCardSelection,
         hasUserId: !!user?.id
       });
     }
-  }, [gameData, gameStatus, walletBalance, user]);
+  }, [gameData, gameStatus, walletBalance, user, shouldEnableCardSelection]);
 
   // Check card selection status periodically
   useEffect(() => {
@@ -282,11 +320,12 @@ const handleCardSelect = async (cardNumber: number) => {
     takenCards,
     cardSelectionStatus,
     cardSelectionError,
-    shouldEnableCardSelection,
+    shouldEnableCardSelection, // Now this is a boolean value, not a function
     handleCardSelect,
     handleCardRelease,
     fetchAvailableCards,
     checkCardSelectionStatus,
-    setCardSelectionError
+    setCardSelectionError,
+    fetchTakenCards // Export for manual refreshing if needed
   };
 };

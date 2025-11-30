@@ -13,16 +13,16 @@ interface CardSelectionGridProps {
 
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   availableCards,
-  takenCards,
+  takenCards, // This now updates in real-time
   selectedNumber,
   walletBalance,
   gameStatus,
   onCardSelect
 }) => {
-  // Create a map of available card numbers for quick lookup
-  const availableCardMap = new Map();
-  availableCards.forEach(card => {
-    availableCardMap.set(card.cardIndex, card);
+  // Create a map of taken cards for quick lookup
+  const takenCardMap = new Map();
+  takenCards.forEach(card => {
+    takenCardMap.set(card.cardNumber, card);
   });
 
   return (
@@ -34,12 +34,12 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         transition={{ delay: 0.2 }}
       >
         {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
-          const isTaken = takenCards.some(card => card.cardNumber === number);
-          const isAvailable = availableCardMap.has(number);
+          const isTaken = takenCardMap.has(number);
+          const isAvailable = availableCards.some(card => card.cardIndex === number);
           const canSelect = walletBalance >= 10;
           const isSelectable = canSelect && isAvailable && !isTaken;
           const isCurrentlySelected = selectedNumber === number;
-          const cardData = availableCardMap.get(number);
+          const takenBy = isTaken ? takenCardMap.get(number) : null;
 
           return (
             <motion.button
@@ -52,7 +52,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 ${isCurrentlySelected
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
                   : isTaken
-                  ? 'bg-red-500/50 text-white/50 cursor-not-allowed border-red-400/50'
+                  ? 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
                   : isSelectable
                   ? gameStatus === 'ACTIVE' 
                     ? 'bg-green-500/60 text-white hover:bg-green-600/70 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/60'
@@ -60,6 +60,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                   : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
                 }
                 ${isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
+                ${isTaken ? 'animate-pulse' : ''}
               `}
               whileHover={isSelectable ? { scale: 1.05 } : {}}
               whileTap={isSelectable ? { scale: 0.95 } : {}}
@@ -74,6 +75,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
+              {/* Taken indicator - shows immediately when card is taken */}
               {isTaken && !isCurrentlySelected && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-4 h-4 text-red-300">
@@ -84,10 +86,12 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
+              {/* Available for selection indicator */}
               {!isTaken && isSelectable && gameStatus === 'ACTIVE' && !isCurrentlySelected && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               )}
               
+              {/* Insufficient balance indicator */}
               {!isTaken && !isSelectable && walletBalance < 10 && (
                 <div className="absolute inset-0 flex items-center justify-center opacity-60">
                   <div className="w-3 h-3 text-yellow-400">
@@ -107,6 +111,18 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         })}
       </motion.div>
 
+      {/* Real-time status */}
+      <div className="text-center text-white/60 text-sm mb-3">
+        <div className="flex justify-center gap-4">
+          <span>✅ {availableCards.length} available</span>
+          <span>❌ {takenCards.length} taken</span>
+          <span>⏳ {400 - availableCards.length - takenCards.length} inactive</span>
+        </div>
+        <div className="text-xs text-white/40 mt-1">
+          Updates in real-time • Refresh automatically
+        </div>
+      </div>
+
       {/* Selection Info */}
       {selectedNumber && (
         <motion.div 
@@ -125,11 +141,6 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           </div>
         </motion.div>
       )}
-
-      {/* Available Cards Info */}
-      <div className="text-center text-white/60 text-sm">
-        {availableCards.length} cards available • {takenCards.length} cards taken • {400 - availableCards.length - takenCards.length} cards inactive
-      </div>
     </div>
   );
 };

@@ -154,6 +154,7 @@ export const authAPI = {
   // Create default user - for testing
   createDefaultUser: () =>
     api.get('/auth/create-default-user'),
+  
 };
 
 export const gameAPI = {
@@ -235,7 +236,12 @@ export const gameAPI = {
   
   getUserGameRole: (gameId: string, userId: string) =>
     api.get<{ success: boolean; role: any }>(`/games/user/${userId}/role/${gameId}`),
-
+ // NEW: Get real-time taken cards
+  getTakenCards: (gameId: string) =>
+    api.get<{ success: boolean; takenCards: Array<{cardNumber: number; userId: string}>; count: number }>(`/games/${gameId}/taken-cards`),
+// NEW: Select card with specific card number
+  selectCardWithNumber: (gameId: string, data: { userId: string; cardNumbers: (number | string)[][]; cardNumber: number }) =>
+    api.post<CardSelectionResponse>(`/games/${gameId}/select-card-with-number`, data),
   // ==================== HEALTH CHECK ====================
   healthCheck: () =>
     api.get<{ status: string; timestamp: string; database: string }>('/health'),
@@ -243,6 +249,8 @@ export const gameAPI = {
   // ==================== GAMES HEALTH CHECK ====================
   gamesHealthCheck: () =>
     api.get<{ success: boolean; status: string; activeGames: number; waitingGames: number; timestamp: string }>('/games/health/status')
+
+
 };
 
 export const walletAPI = {

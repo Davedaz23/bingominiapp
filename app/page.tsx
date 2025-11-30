@@ -453,17 +453,7 @@ export default function Home() {
         </motion.div>
       )}
 
-      {/* Game Controls */}
-      <GameControls
-        selectedNumber={selectedNumber}
-        joining={joining}
-        joinError={joinError}
-        walletBalance={walletBalance}
-        gameStatus={gameStatus}
-        onJoinGame={handleJoinGame}
-        onCardRelease={handleCardRelease}
-      />
-
+    
       {/* Game Info Footer */}
       <motion.div 
         className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20"
