@@ -70,6 +70,18 @@ export default function Home() {
   const [showGameView, setShowGameView] = useState<boolean>(false);
   const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
 
+  // NEW: Auto-join when card selection time reaches 0
+  useEffect(() => {
+    if (cardSelectionStatus.timeRemaining <= 0 && 
+        cardSelectionStatus.isSelectionActive && 
+        selectedNumber && 
+        walletBalance >= 10) {
+      
+      console.log('⏰ Card selection time ended - Auto-joining game...');
+      handleAutoJoinGame();
+    }
+  }, [cardSelectionStatus.timeRemaining, cardSelectionStatus.isSelectionActive, selectedNumber, walletBalance]);
+
   // Admin control handlers (keep existing)
   const handleStartGame = async () => {
     if (hasPermission('manage_games')) {
@@ -335,7 +347,7 @@ export default function Home() {
         restartCountdown={restartCountdown}
         selectedNumber={selectedNumber}
         walletBalance={walletBalance}
-  shouldEnableCardSelection={shouldEnableCardSelection()} // CALL THE FUNCTION
+        shouldEnableCardSelection={shouldEnableCardSelection()} // CALL THE FUNCTION
         autoStartTimeRemaining={autoStartTimeRemaining}
         hasAutoStartTimer={hasAutoStartTimer}
       />
@@ -369,7 +381,9 @@ export default function Home() {
             }`}>
               {hasAutoStartTimer 
                 ? `${Math.ceil(autoStartTimeRemaining / 1000)}s to start`
-                : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
+                : cardSelectionStatus.timeRemaining <= 0 
+                  ? 'Joining game...' 
+                  : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
               }
             </p>
           </div>
@@ -396,14 +410,25 @@ export default function Home() {
           {!hasAutoStartTimer && (
             <div className="mt-2">
               <div className="flex justify-between text-xs text-green-200 mb-1">
-                <span>Choose your card number to join the game</span>
+                <span>
+                  {cardSelectionStatus.timeRemaining <= 0 
+                    ? 'Joining game automatically...' 
+                    : 'Choose your card number to join the game'
+                  }
+                </span>
                 <span>{takenCards.length}/400 cards taken</span>
               </div>
               <div className="w-full bg-green-400/20 rounded-full h-2">
                 <div 
-                  className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
+                  className={`h-2 rounded-full transition-all duration-1000 ${
+                    cardSelectionStatus.timeRemaining <= 0
+                      ? 'bg-gradient-to-r from-green-400 to-teal-400 w-full'
+                      : 'bg-gradient-to-r from-green-400 to-cyan-400'
+                  }`}
                   style={{ 
-                    width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
+                    width: cardSelectionStatus.timeRemaining <= 0 
+                      ? '100%' 
+                      : `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
                   }}
                 />
               </div>
@@ -414,6 +439,22 @@ export default function Home() {
             <p className="text-red-300 text-xs mt-2 text-center">
               {cardSelectionError}
             </p>
+          )}
+
+          {/* AUTO-JOIN MESSAGE WHEN TIME IS UP */}
+          {cardSelectionStatus.timeRemaining <= 0 && selectedNumber && walletBalance >= 10 && (
+            <motion.div 
+              className="mt-3 bg-green-500/30 rounded-lg p-3 border border-green-400/50"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <Play className="w-4 h-4 text-green-200" />
+                <p className="text-green-200 text-sm font-medium text-center">
+                  Auto-joining game with Card #{selectedNumber}...
+                </p>
+              </div>
+            </motion.div>
           )}
         </motion.div>
       )}
@@ -546,7 +587,10 @@ export default function Home() {
             <>
               {gameStatus === 'WAITING' && (
                 <p className="text-blue-300 text-sm text-center">
-                  ⏳ Ready! Game will start when enough players join
+                  {cardSelectionStatus.timeRemaining <= 0 
+                    ? '🚀 Auto-joining game...' 
+                    : '⏳ Ready! Game will start when enough players join'
+                  }
                 </p>
               )}
               {gameStatus === 'ACTIVE' && (
