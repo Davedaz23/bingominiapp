@@ -335,11 +335,11 @@ export default function Home() {
         restartCountdown={restartCountdown}
         selectedNumber={selectedNumber}
         walletBalance={walletBalance}
-        shouldEnableCardSelection={shouldEnableCardSelection()}
+        shouldEnableCardSelection={shouldEnableCardSelection}
       />
 
       {/* Card Selection Status */}
-      {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
+      {shouldEnableCardSelection && cardSelectionStatus.isSelectionActive && (
         <motion.div 
           className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30"
           initial={{ opacity: 0, y: -10 }}
