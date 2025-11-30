@@ -142,7 +142,9 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
     try {
       setCardSelectionError('');
-      
+       if (selectedNumber && selectedNumber !== cardNumber) {
+      await handleCardRelease(); // Release the previous card
+    }
       // Check if card is already taken (real-time check)
       const isCardTaken = takenCards.some(card => card.cardNumber === cardNumber);
       if (isCardTaken) {
