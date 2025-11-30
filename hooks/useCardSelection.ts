@@ -74,8 +74,20 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   };
 
   // FIX: Change back to function
+//   const shouldEnableCardSelection = () => {
+//     return !selectedNumber && !!gameData?._id && walletBalance >= 10;
+//   };
+
   const shouldEnableCardSelection = () => {
-    return !selectedNumber && !!gameData?._id && walletBalance >= 10;
+    if (!gameData?._id) {
+      return false;
+    }
+
+    if (walletBalance >= 10) {
+      return true;
+    }
+
+    return false;
   };
 
   // Real-time polling for taken cards
