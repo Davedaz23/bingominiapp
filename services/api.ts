@@ -245,7 +245,10 @@ export const gameAPI = {
   // ==================== HEALTH CHECK ====================
   healthCheck: () =>
     api.get<{ status: string; timestamp: string; database: string }>('/health'),
-
+  //====== auto check
+checkAutoStart: (gameId: string) => {
+    return axios.post(`/api/games/${gameId}/check-auto-start`);
+  },
   // ==================== GAMES HEALTH CHECK ====================
   gamesHealthCheck: () =>
     api.get<{ success: boolean; status: string; activeGames: number; waitingGames: number; timestamp: string }>('/games/health/status')
