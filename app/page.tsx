@@ -448,16 +448,7 @@ export default function Home() {
             </div>
           </motion.div>
 
-          {/* Card Preview */}
-          <div className="max-w-xs mx-auto">
-            <BingoCardPreview 
-              cardNumber={selectedNumber} 
-              numbers={bingoCard!} 
-              size="small" 
-            />
-          </div>
-
-          {/* Card Combination Details */}
+         
         
         </motion.div>
       )}
