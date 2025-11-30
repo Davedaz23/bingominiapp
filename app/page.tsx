@@ -70,18 +70,6 @@ export default function Home() {
   const [showGameView, setShowGameView] = useState<boolean>(false);
   const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
 
-  // NEW: Auto-join when card selection time reaches 0
-  useEffect(() => {
-    if (cardSelectionStatus.timeRemaining <= 0 && 
-        cardSelectionStatus.isSelectionActive && 
-        selectedNumber && 
-        walletBalance >= 10) {
-      
-      console.log('⏰ Card selection time ended - Auto-joining game...');
-      handleAutoJoinGame();
-    }
-  }, [cardSelectionStatus.timeRemaining, cardSelectionStatus.isSelectionActive, selectedNumber, walletBalance]);
-
   // Admin control handlers (keep existing)
   const handleStartGame = async () => {
     if (hasPermission('manage_games')) {
@@ -347,7 +335,7 @@ export default function Home() {
         restartCountdown={restartCountdown}
         selectedNumber={selectedNumber}
         walletBalance={walletBalance}
-        shouldEnableCardSelection={shouldEnableCardSelection()} // CALL THE FUNCTION
+  shouldEnableCardSelection={shouldEnableCardSelection()} // CALL THE FUNCTION
         autoStartTimeRemaining={autoStartTimeRemaining}
         hasAutoStartTimer={hasAutoStartTimer}
       />
@@ -381,13 +369,180 @@ export default function Home() {
             }`}>
               {hasAutoStartTimer 
                 ? `${Math.ceil(autoStartTimeRemaining / 1000)}s to start`
-                : cardSelectionStatus.timeRemaining <= 0 
-                  ? 'Joining game...' 
-                  : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
+                : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
               }
             </p>
           </div>
-          
+          // Add this diagnostic section to your page component
+{/* AUTO-JOIN DIAGNOSTIC PANEL */}
+<div className="bg-purple-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-purple-500/30">
+  <h3 className="text-purple-300 font-bold mb-3 text-center">🔍 Auto-Join Diagnostics</h3>
+  
+  <div className="grid grid-cols-2 gap-3 text-sm">
+    {/* Condition 1: Card Selection Time */}
+    <div className={`p-2 rounded-lg ${
+      cardSelectionStatus.timeRemaining <= 0 
+        ? 'bg-green-500/30 border border-green-400' 
+        : 'bg-yellow-500/30 border border-yellow-400'
+    }`}>
+      <div className="flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${
+          cardSelectionStatus.timeRemaining <= 0 ? 'bg-green-400' : 'bg-yellow-400'
+        }`} />
+        <span className="font-medium">Time Remaining</span>
+      </div>
+      <p className="text-xs mt-1">
+        {cardSelectionStatus.timeRemaining <= 0 
+          ? '✅ Ready to join!' 
+          : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
+        }
+      </p>
+    </div>
+
+    {/* Condition 2: Card Selection Active */}
+    <div className={`p-2 rounded-lg ${
+      cardSelectionStatus.isSelectionActive 
+        ? 'bg-green-500/30 border border-green-400' 
+        : 'bg-red-500/30 border border-red-400'
+    }`}>
+      <div className="flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${
+          cardSelectionStatus.isSelectionActive ? 'bg-green-400' : 'bg-red-400'
+        }`} />
+        <span className="font-medium">Selection Active</span>
+      </div>
+      <p className="text-xs mt-1">
+        {cardSelectionStatus.isSelectionActive 
+          ? '✅ Active' 
+          : '❌ Not active'
+        }
+      </p>
+    </div>
+
+    {/* Condition 3: Card Selected */}
+    <div className={`p-2 rounded-lg ${
+      selectedNumber 
+        ? 'bg-green-500/30 border border-green-400' 
+        : 'bg-red-500/30 border border-red-400'
+    }`}>
+      <div className="flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${
+          selectedNumber ? 'bg-green-400' : 'bg-red-400'
+        }`} />
+        <span className="font-medium">Card Selected</span>
+      </div>
+      <p className="text-xs mt-1">
+        {selectedNumber 
+          ? `✅ Card #${selectedNumber}` 
+          : '❌ No card selected'
+        }
+      </p>
+    </div>
+
+    {/* Condition 4: Sufficient Balance */}
+    <div className={`p-2 rounded-lg ${
+      walletBalance >= 10 
+        ? 'bg-green-500/30 border border-green-400' 
+        : 'bg-red-500/30 border border-red-400'
+    }`}>
+      <div className="flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${
+          walletBalance >= 10 ? 'bg-green-400' : 'bg-red-400'
+        }`} />
+        <span className="font-medium">Wallet Balance</span>
+      </div>
+      <p className="text-xs mt-1">
+        {walletBalance >= 10 
+          ? `✅ ${walletBalance} ብር` 
+          : `❌ ${walletBalance} ብር (Need 10+)`
+        }
+      </p>
+    </div>
+  </div>
+
+  {/* Overall Status */}
+  <div className={`mt-3 p-3 rounded-lg border ${
+    cardSelectionStatus.timeRemaining <= 0 && 
+    cardSelectionStatus.isSelectionActive && 
+    selectedNumber && 
+    walletBalance >= 10
+      ? 'bg-green-500/30 border-green-400' 
+      : 'bg-red-500/30 border-red-400'
+  }`}>
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <div className={`w-3 h-3 rounded-full ${
+          cardSelectionStatus.timeRemaining <= 0 && 
+          cardSelectionStatus.isSelectionActive && 
+          selectedNumber && 
+          walletBalance >= 10
+            ? 'bg-green-400' 
+            : 'bg-red-400'
+        }`} />
+        <span className="font-bold">Auto-Join Status</span>
+      </div>
+      <span className={`text-sm font-medium ${
+        cardSelectionStatus.timeRemaining <= 0 && 
+        cardSelectionStatus.isSelectionActive && 
+        selectedNumber && 
+        walletBalance >= 10
+          ? 'text-green-300' 
+          : 'text-red-300'
+      }`}>
+        {cardSelectionStatus.timeRemaining <= 0 && 
+         cardSelectionStatus.isSelectionActive && 
+         selectedNumber && 
+         walletBalance >= 10
+          ? 'READY TO JOIN' 
+          : 'NOT READY'
+        }
+      </span>
+    </div>
+    
+    {/* Missing Conditions */}
+    {!(cardSelectionStatus.timeRemaining <= 0 && 
+       cardSelectionStatus.isSelectionActive && 
+       selectedNumber && 
+       walletBalance >= 10) && (
+      <div className="mt-2 text-xs text-red-200">
+        <p className="font-medium">Missing Conditions:</p>
+        <ul className="list-disc list-inside mt-1 space-y-1">
+          {cardSelectionStatus.timeRemaining > 0 && (
+            <li>Time remaining: {Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s</li>
+          )}
+          {!cardSelectionStatus.isSelectionActive && (
+            <li>Card selection is not active</li>
+          )}
+          {!selectedNumber && (
+            <li>No card selected</li>
+          )}
+          {walletBalance < 10 && (
+            <li>Insufficient balance: {walletBalance}/10 ብር</li>
+          )}
+        </ul>
+      </div>
+    )}
+  </div>
+
+  {/* Manual Trigger for Testing */}
+  {isAdmin && (
+    <div className="mt-3 pt-3 border-t border-purple-400/30">
+      <button
+        onClick={handleAutoJoinGame}
+        disabled={!selectedNumber || walletBalance < 10}
+        className="w-full bg-purple-500 hover:bg-purple-600 disabled:bg-gray-500 text-white py-2 rounded-lg text-sm font-medium"
+      >
+        {selectedNumber && walletBalance >= 10 
+          ? `Test Auto-Join (Card #${selectedNumber})` 
+          : 'Cannot Test - Missing Requirements'
+        }
+      </button>
+      <p className="text-purple-200 text-xs text-center mt-2">
+        Admin test button - checks current conditions
+      </p>
+    </div>
+  )}
+</div>
           {/* AUTO-START PROGRESS */}
           {hasAutoStartTimer && (
             <div className="mt-2">
@@ -410,25 +565,14 @@ export default function Home() {
           {!hasAutoStartTimer && (
             <div className="mt-2">
               <div className="flex justify-between text-xs text-green-200 mb-1">
-                <span>
-                  {cardSelectionStatus.timeRemaining <= 0 
-                    ? 'Joining game automatically...' 
-                    : 'Choose your card number to join the game'
-                  }
-                </span>
+                <span>Choose your card number to join the game</span>
                 <span>{takenCards.length}/400 cards taken</span>
               </div>
               <div className="w-full bg-green-400/20 rounded-full h-2">
                 <div 
-                  className={`h-2 rounded-full transition-all duration-1000 ${
-                    cardSelectionStatus.timeRemaining <= 0
-                      ? 'bg-gradient-to-r from-green-400 to-teal-400 w-full'
-                      : 'bg-gradient-to-r from-green-400 to-cyan-400'
-                  }`}
+                  className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
                   style={{ 
-                    width: cardSelectionStatus.timeRemaining <= 0 
-                      ? '100%' 
-                      : `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
+                    width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
                   }}
                 />
               </div>
@@ -439,22 +583,6 @@ export default function Home() {
             <p className="text-red-300 text-xs mt-2 text-center">
               {cardSelectionError}
             </p>
-          )}
-
-          {/* AUTO-JOIN MESSAGE WHEN TIME IS UP */}
-          {cardSelectionStatus.timeRemaining <= 0 && selectedNumber && walletBalance >= 10 && (
-            <motion.div 
-              className="mt-3 bg-green-500/30 rounded-lg p-3 border border-green-400/50"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-            >
-              <div className="flex items-center justify-center gap-2">
-                <Play className="w-4 h-4 text-green-200" />
-                <p className="text-green-200 text-sm font-medium text-center">
-                  Auto-joining game with Card #{selectedNumber}...
-                </p>
-              </div>
-            </motion.div>
           )}
         </motion.div>
       )}
@@ -587,10 +715,7 @@ export default function Home() {
             <>
               {gameStatus === 'WAITING' && (
                 <p className="text-blue-300 text-sm text-center">
-                  {cardSelectionStatus.timeRemaining <= 0 
-                    ? '🚀 Auto-joining game...' 
-                    : '⏳ Ready! Game will start when enough players join'
-                  }
+                  ⏳ Ready! Game will start when enough players join
                 </p>
               )}
               {gameStatus === 'ACTIVE' && (
