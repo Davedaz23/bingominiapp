@@ -373,7 +373,25 @@ export default function Home() {
               }
             </p>
           </div>
-          // Add this diagnostic section to your page component
+          
+          {/* AUTO-START PROGRESS */}
+          {hasAutoStartTimer && (
+            <div className="mt-2">
+              <div className="flex justify-between text-xs text-orange-200 mb-1">
+                <span>Game will start automatically</span>
+                <span>{currentPlayers}/2 players ready</span>
+              </div>
+              <div className="w-full bg-orange-400/20 rounded-full h-2">
+                <div 
+                  className="bg-gradient-to-r from-orange-400 to-red-400 h-2 rounded-full transition-all duration-1000"
+                  style={{ 
+                    width: `${((30000 - autoStartTimeRemaining) / 30000) * 100}%` 
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          // Add this diagnostic section to your page component - ENHANCED VERSION
 {/* AUTO-JOIN DIAGNOSTIC PANEL */}
 <div className="bg-purple-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-purple-500/30">
   <h3 className="text-purple-300 font-bold mb-3 text-center">🔍 Auto-Join Diagnostics</h3>
@@ -458,6 +476,32 @@ export default function Home() {
         }
       </p>
     </div>
+
+    {/* NEW: Selection Time Progress */}
+    <div className="col-span-2 p-2 rounded-lg bg-blue-500/30 border border-blue-400">
+      <div className="flex items-center gap-2 mb-2">
+        <Clock className="w-3 h-3 text-blue-300" />
+        <span className="font-medium">Selection Time Progress</span>
+      </div>
+      <div className="w-full bg-blue-400/20 rounded-full h-2 mb-1">
+        <div 
+          className="bg-gradient-to-r from-blue-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
+          style={{ 
+            width: `${Math.max(0, ((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100)}%` 
+          }}
+        />
+      </div>
+      <div className="flex justify-between text-xs text-blue-200">
+        <span>Started</span>
+        <span>
+          {cardSelectionStatus.timeRemaining > 0 
+            ? `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s left` 
+            : 'Time\'s up!'
+          }
+        </span>
+        <span>30s total</span>
+      </div>
+    </div>
   </div>
 
   {/* Overall Status */}
@@ -522,6 +566,24 @@ export default function Home() {
         </ul>
       </div>
     )}
+
+    {/* Auto-Join Countdown */}
+    {cardSelectionStatus.timeRemaining > 0 && cardSelectionStatus.isSelectionActive && selectedNumber && walletBalance >= 10 && (
+      <div className="mt-2 p-2 bg-blue-500/20 rounded border border-blue-400/50">
+        <div className="flex items-center justify-between text-blue-200 text-xs">
+          <span>Auto-join will trigger in:</span>
+          <span className="font-bold">{Math.ceil(cardSelectionStatus.timeRemaining / 1000)} seconds</span>
+        </div>
+        <div className="w-full bg-blue-400/20 rounded-full h-1 mt-1">
+          <div 
+            className="bg-blue-400 h-1 rounded-full transition-all duration-1000"
+            style={{ 
+              width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
+            }}
+          />
+        </div>
+      </div>
+    )}
   </div>
 
   {/* Manual Trigger for Testing */}
@@ -543,24 +605,6 @@ export default function Home() {
     </div>
   )}
 </div>
-          {/* AUTO-START PROGRESS */}
-          {hasAutoStartTimer && (
-            <div className="mt-2">
-              <div className="flex justify-between text-xs text-orange-200 mb-1">
-                <span>Game will start automatically</span>
-                <span>{currentPlayers}/2 players ready</span>
-              </div>
-              <div className="w-full bg-orange-400/20 rounded-full h-2">
-                <div 
-                  className="bg-gradient-to-r from-orange-400 to-red-400 h-2 rounded-full transition-all duration-1000"
-                  style={{ 
-                    width: `${((30000 - autoStartTimeRemaining) / 30000) * 100}%` 
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          
           {/* REGULAR CARD SELECTION PROGRESS */}
           {!hasAutoStartTimer && (
             <div className="mt-2">
