@@ -335,13 +335,13 @@ export default function Home() {
         restartCountdown={restartCountdown}
         selectedNumber={selectedNumber}
         walletBalance={walletBalance}
-  shouldEnableCardSelection={shouldEnableCardSelection()} // CALL THE FUNCTION
+  shouldEnableCardSelection={shouldEnableCardSelection} // CALL THE FUNCTION
         autoStartTimeRemaining={autoStartTimeRemaining}
         hasAutoStartTimer={hasAutoStartTimer}
       />
 
       {/* Card Selection Status - UPDATED WITH AUTO-START */}
-      {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
+      {shouldEnableCardSelection && cardSelectionStatus.isSelectionActive && (
         <motion.div 
           className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
             hasAutoStartTimer 

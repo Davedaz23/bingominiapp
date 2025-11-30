@@ -1,5 +1,5 @@
-// app/hooks/useCardSelection.ts - FIXED VERSION
-import { useState, useEffect, useCallback, useMemo } from 'react';
+// app/hooks/useCardSelection.ts - UPDATED WITH REAL-TIME FUNCTIONALITY
+import { useState, useEffect, useCallback } from 'react';
 import { gameAPI } from '../services/api';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { useAccountStorage } from './useAccountStorage';
@@ -73,11 +73,6 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     return card;
   };
 
-  // FIX: Change back to function
-//   const shouldEnableCardSelection = () => {
-//     return !selectedNumber && !!gameData?._id && walletBalance >= 10;
-//   };
-
   const shouldEnableCardSelection = () => {
     if (!gameData?._id) {
       return false;
@@ -137,6 +132,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     }
   };
 
+  // Enhanced handleCardSelect with real-time updates
   const handleCardSelect = async (cardNumber: number) => {
     if (!gameData?._id || !user?.id) return;
 
@@ -294,21 +290,21 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       gameStatus,
       walletBalance,
       userId: user?.id,
-      shouldEnableCardSelection: shouldEnableCardSelection() // FIX: Call the function
+      shouldEnable: shouldEnableCardSelection()
     });
 
-    if (gameData?._id && shouldEnableCardSelection() && user?.id) { // FIX: Call the function
+    if (gameData?._id && shouldEnableCardSelection() && user?.id) {
       console.log('🚀 Fetching available cards...');
       fetchAvailableCards();
       checkCardSelectionStatus();
     } else {
       console.log('⏸️ Skipping card fetch - conditions not met:', {
         hasGameId: !!gameData?._id,
-        shouldEnableCardSelection: shouldEnableCardSelection(), // FIX: Call the function
+        shouldEnable: shouldEnableCardSelection(),
         hasUserId: !!user?.id
       });
     }
-  }, [gameData, gameStatus, walletBalance, user, selectedNumber]); // ADD: selectedNumber to dependencies
+  }, [gameData, gameStatus, walletBalance, user]);
 
   // Check card selection status periodically
   useEffect(() => {
@@ -333,12 +329,12 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     takenCards,
     cardSelectionStatus,
     cardSelectionError,
-    shouldEnableCardSelection, // This is now a function
+    shouldEnableCardSelection: shouldEnableCardSelection(),
     handleCardSelect,
     handleCardRelease,
     fetchAvailableCards,
     checkCardSelectionStatus,
     setCardSelectionError,
-    fetchTakenCards
+    fetchTakenCards // Export for manual refreshing if needed
   };
 };
