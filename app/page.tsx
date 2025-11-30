@@ -1,4 +1,4 @@
-// app/page.tsx - UPDATE THE COMPONENT
+// app/page.tsx - UPDATED WITH CARD RELEASE FUNCTIONALITY
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -20,7 +20,7 @@ import { GameControls } from '../components/game/GameControls';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
 import { useAccountStorage } from '../hooks/useAccountStorage';
-import { Clock, Play, Check, Rocket } from 'lucide-react';
+import { Clock, Play, Check, Rocket, X, RotateCcw } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -69,6 +69,20 @@ export default function Home() {
   const [joinError, setJoinError] = useState<string>('');
   const [showGameView, setShowGameView] = useState<boolean>(false);
   const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
+
+  // ADD: Handle card release with confirmation
+  const handleReleaseCard = async () => {
+    if (!selectedNumber) return;
+    
+    try {
+      await handleCardRelease();
+      setCardSelectionError(''); // Clear any errors
+      console.log('✅ Card released successfully');
+    } catch (error: any) {
+      console.error('❌ Card release error:', error);
+      setCardSelectionError('Failed to release card. Please try again.');
+    }
+  };
 
   // Admin control handlers (keep existing)
   const handleStartGame = async () => {
@@ -335,7 +349,7 @@ export default function Home() {
         restartCountdown={restartCountdown}
         selectedNumber={selectedNumber}
         walletBalance={walletBalance}
-  shouldEnableCardSelection={shouldEnableCardSelection()} // CALL THE FUNCTION
+        shouldEnableCardSelection={shouldEnableCardSelection()}
         autoStartTimeRemaining={autoStartTimeRemaining}
         hasAutoStartTimer={hasAutoStartTimer}
       />
@@ -428,7 +442,7 @@ export default function Home() {
         onCardSelect={handleCardSelect}
       />
 
-      {/* Selected Card Preview - Show below the grid when a card is selected */}
+      {/* Selected Card Preview - UPDATED WITH RELEASE BUTTON */}
       {selectedNumber && (
         <motion.div
           className="mb-6"
@@ -436,14 +450,26 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
         >
-          {/* Selection Header */}
-         <motion.div 
+          {/* Selection Header with Release Button */}
+          <motion.div 
             className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
           >
-            <h3 className="text-white font-bold text-sm mb-3 text-center">Card Combination Details</h3>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-white font-bold text-sm">Card #{selectedNumber} Selected</h3>
+              {/* ADD: Release Card Button */}
+              <motion.button
+                onClick={handleReleaseCard}
+                className="flex items-center gap-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 px-3 py-1 rounded-lg text-xs font-medium transition-all border border-red-500/30 hover:border-red-500/50"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <X className="w-3 h-3" />
+                Release Card
+              </motion.button>
+            </div>
             
             {/* Column-wise breakdown */}
             <div className="grid grid-cols-5 gap-2 mb-4">
@@ -488,6 +514,40 @@ export default function Home() {
                 FREE Space: 1
               </div>
             </div>
+          </motion.div>
+
+          {/* ADD: Quick Action Buttons */}
+          <motion.div 
+            className="flex gap-2 mt-3"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+          >
+            <button
+              onClick={handleJoinGame}
+              disabled={joining}
+              className="flex-1 bg-telegram-button hover:bg-blue-600 text-white py-2 rounded-lg font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {joining ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Joining...
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  Join Game Now
+                </>
+              )}
+            </button>
+            
+            <button
+              onClick={handleReleaseCard}
+              className="px-4 bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 py-2 rounded-lg font-medium transition-all border border-red-500/30 hover:border-red-500/50 flex items-center justify-center gap-2"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Change
+            </button>
           </motion.div>
         </motion.div>
       )}
