@@ -91,21 +91,39 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   };
 
   // Real-time polling for taken cards
-  const fetchTakenCards = useCallback(async () => {
-    if (!gameData?._id) return;
+const fetchTakenCards = useCallback(async () => {
+  if (!gameData?._id) return;
 
-    try {
-      console.log('🔄 Polling for taken cards...');
-      const response = await gameAPI.getTakenCards(gameData._id);
+  try {
+    console.log('🔄 Polling for taken cards...');
+    const response = await gameAPI.getTakenCards(gameData._id);
+    
+    if (response.data.success) {
+      // Merge with current user's selection to avoid flickering
+      setTakenCards(prev => {
+        const backendCards = response.data.takenCards;
+        
+        // If user has a selected card, ensure it's included
+        if (selectedNumber && user?.id) {
+          const userCardExists = backendCards.some(card => 
+            card.cardNumber === selectedNumber && card.userId === user.id
+          );
+          
+          if (!userCardExists) {
+            // Add user's current selection to the backend data
+            return [...backendCards, { cardNumber: selectedNumber, userId: user.id }];
+          }
+        }
+        
+        return backendCards;
+      });
       
-      if (response.data.success) {
-        setTakenCards(response.data.takenCards);
-        console.log('✅ Taken cards updated:', response.data.takenCards.length, 'cards taken');
-      }
-    } catch (error: any) {
-      console.error('❌ Error fetching taken cards:', error.message);
+      console.log('✅ Taken cards updated:', response.data.takenCards.length, 'cards taken');
     }
-  }, [gameData?._id]);
+  } catch (error: any) {
+    console.error('❌ Error fetching taken cards:', error.message);
+  }
+}, [gameData?._id, selectedNumber, user?.id]); // ADD dependencies
 
   const fetchAvailableCards = async () => {
     try {
