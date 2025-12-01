@@ -436,29 +436,15 @@ export default function GamePage() {
         {/* Left: Called Numbers - Simplified Display */}
 <div className="col-span-2">
   <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 border border-white/20">
-    <div className="flex justify-between items-center mb-3">
+    {/* <div className="flex justify-between items-center mb-3">
       <h3 className="text-white font-bold text-lg">Called Numbers</h3>
       <span className="text-white/70 text-sm bg-white/10 px-2 py-1 rounded-full">
         {allCalledNumbers.length}/75
       </span>
     </div>
-    
+     */}
     {/* Current Number Display - Compact */}
-    {currentCalledNumber && (
-      <div className="flex items-center justify-center mb-4">
-        <div className={`transition-all duration-300 ${isAnimating ? 'scale-105' : 'scale-100'}`}>
-          <div className="flex items-center justify-center">
-            <span className="text-3xl font-bold text-white mr-2">
-              {currentCalledNumber.letter}
-            </span>
-            <span className="text-4xl font-bold text-yellow-300">
-              {currentCalledNumber.number}
-            </span>
-          </div>
-        </div>
-      </div>
-    )}
-    
+
     {/* BINGO Header */}
     <div className="grid grid-cols-5 gap-1 mb-2">
       {['B', 'I', 'N', 'G', 'O'].map((letter) => (
