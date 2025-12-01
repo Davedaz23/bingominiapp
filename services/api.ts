@@ -97,7 +97,13 @@ export interface AvailableCardsResponse {
   }>;
   count: number;
 }
-
+export interface CallNumberResponse {
+  success: boolean;
+  number: number;
+  calledNumbers: number[];
+  totalCalled: number;
+  letter?: string;
+}
 export interface CardSelectionStatusResponse {
   success: boolean;
   gameId: string;
@@ -186,9 +192,10 @@ export const gameAPI = {
   startGame: (gameId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${gameId}/start`),
   
-  callNumber: (gameId: string) =>
-    api.post<{ success: boolean; number: number; calledNumbers: number[]; totalCalled: number }>(`/games/${gameId}/call-number`),
-  
+  // callNumber: (gameId: string) =>
+  //   api.post<{ success: boolean; number: number; calledNumbers: number[]; totalCalled: number }>(`/games/${gameId}/call-number`),
+   callNumber: (gameId: string) =>
+    api.post<CallNumberResponse>(`/games/${gameId}/call-number`),
   markNumber: (gameId: string, userId: string, number: number) =>
     api.post<{ success: boolean; bingoCard: BingoCard; isWinner: boolean; isSpectator?: boolean }>(`/games/${gameId}/mark-number`, { userId, number }),
   
@@ -249,7 +256,6 @@ export const gameAPI = {
   checkAutoStart: (gameId: string) =>
     api.post<{ success: boolean; gameStarted: boolean; game?: Game }>(`/games/${gameId}/check-auto-start`),
 
-  
   // ==================== GAMES HEALTH CHECK ====================
   gamesHealthCheck: () =>
     api.get<{ success: boolean; status: string; activeGames: number; waitingGames: number; timestamp: string }>('/games/health/status')

@@ -1,4 +1,4 @@
-// hooks/useGame.ts - FIXED VERSION
+// hooks/useGame.ts - COMPLETE FIXED VERSION
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Game, BingoCard, GameState } from '../types';
 import { gameAPI } from '../services/api';
@@ -12,6 +12,7 @@ interface ApiError {
   message?: string;
 }
 
+// Update the interface to include callNumber
 interface UseGameReturn {
   // State
   game: Game | null;
@@ -26,6 +27,7 @@ interface UseGameReturn {
   markNumber: (number: number) => Promise<boolean>;
   refreshGame: () => void;
   manualCallNumber: () => Promise<number>;
+  callNumber: () => Promise<number>; // Add this
   getWinnerInfo: () => Promise<any>;
   
   // User info
@@ -320,6 +322,32 @@ export const useGame = (gameId: string): UseGameReturn => {
     }
   }, [gameId, fetchGame]);
 
+  // Add the callNumber function (similar to manualCallNumber but for general use)
+  const callNumber = useCallback(async (): Promise<number> => {
+    try {
+      console.log(`🎲 Calling next number for game ${gameId}`);
+      const response = await gameAPI.callNumber(gameId);
+      
+      // Update state immediately for better UX
+      setGameState(prev => ({
+        ...prev,
+        currentNumber: response.data.number,
+        calledNumbers: response.data.calledNumbers,
+      }));
+      
+      // Refresh full game state after a short delay
+      setTimeout(() => fetchGame(true), 500);
+      
+      console.log(`✅ Called number: ${response.data.number}, Total called: ${response.data.totalCalled || response.data.calledNumbers?.length || 0}`);
+      
+      return response.data.number;
+    } catch (err) {
+      console.error('Error calling number:', err);
+      const apiError = err as ApiError;
+      throw new Error(apiError.response?.data?.error || apiError.message || 'Failed to call number');
+    }
+  }, [gameId, fetchGame]);
+
   // Get winner information
   const getWinnerInfo = useCallback(async () => {
     try {
@@ -402,6 +430,7 @@ export const useGame = (gameId: string): UseGameReturn => {
     markNumber,
     refreshGame: () => fetchGame(false),
     manualCallNumber,
+    callNumber, // Add this to the return object
     getWinnerInfo,
     
     // User info
