@@ -1,4 +1,4 @@
-// app/game/[id]/page.tsx - COMPLETE ENHANCED VERSION
+// app/game/[id]/page.tsx - UPDATED WITH WINNER MODAL
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -27,6 +27,19 @@ interface LocalBingoCard {
   selected?: boolean[][];
 }
 
+interface WinnerInfo {
+  winner: {
+    _id: string;
+    username: string;
+    firstName: string;
+    telegramId?: string;
+  };
+  gameCode: string;
+  endedAt: string;
+  totalPlayers: number;
+  numbersCalled: number;
+}
+
 export default function GamePage() {
   const params = useParams();
   const router = useRouter();
@@ -41,6 +54,8 @@ export default function GamePage() {
     isLoading,
     error: gameError,
     manualCallNumber,
+    getWinnerInfo,
+    refreshGame,
   } = useGame(id);
   
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -60,9 +75,17 @@ export default function GamePage() {
   const [isCallingNumber, setIsCallingNumber] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   
+  // NEW: Winner modal state
+  const [showWinnerModal, setShowWinnerModal] = useState(false);
+  const [winnerInfo, setWinnerInfo] = useState<WinnerInfo | null>(null);
+  const [isWinnerLoading, setIsWinnerLoading] = useState(false);
+  const [isUserWinner, setIsUserWinner] = useState(false);
+  const [winningAmount, setWinningAmount] = useState(0);
+  
   // Refs for tracking
   const autoMarkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const gameEndedCheckRef = useRef(false);
 
   // Initialize game and load card
   useEffect(() => {
@@ -178,9 +201,78 @@ export default function GamePage() {
     }
   }, [game]);
 
+  // NEW: Check if game ended and show winner modal
+  useEffect(() => {
+    const checkGameEnded = async () => {
+      if (!game || gameEndedCheckRef.current) return;
+      
+      if (game.status === 'FINISHED' && game.winner && !showWinnerModal) {
+        console.log('🏁 Game finished! Fetching winner info...');
+        gameEndedCheckRef.current = true;
+        
+        try {
+          setIsWinnerLoading(true);
+          
+          // Fetch winner information
+          const winnerData = await getWinnerInfo();
+          if (winnerData) {
+            setWinnerInfo(winnerData);
+            
+            // Check if current user is the winner
+            const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+            if (userId) {
+              const isWinner = winnerData.winner.telegramId === userId || 
+                              winnerData.winner._id.toString() === userId;
+              setIsUserWinner(isWinner);
+              
+              // Calculate winning amount (90% of total pot)
+              const totalPot = (game.currentPlayers || 0) * 10; // $10 entry fee
+              const platformFee = totalPot * 0.1;
+              const winnerPrize = totalPot - platformFee;
+              setWinningAmount(winnerPrize);
+              
+              console.log(`🏆 Winner detected: ${winnerData.winner.username}, Prize: $${winnerPrize}`);
+              
+              // Update wallet balance if user is winner
+              if (isWinner) {
+                setTimeout(async () => {
+                  try {
+                    const walletResponse = await walletAPIAuto.getBalance();
+                    if (walletResponse.data.success) {
+                      setWalletBalance(walletResponse.data.balance);
+                    }
+                  } catch (error) {
+                    console.warn('Could not update wallet balance:', error);
+                  }
+                }, 1000);
+              }
+            }
+          }
+          
+          // Show winner modal after a short delay
+          setTimeout(() => {
+            setShowWinnerModal(true);
+            setIsWinnerLoading(false);
+          }, 1500);
+          
+        } catch (error) {
+          console.error('Failed to fetch winner info:', error);
+          setIsWinnerLoading(false);
+        }
+      }
+    };
+    
+    checkGameEnded();
+    
+    // Cleanup function
+    return () => {
+      gameEndedCheckRef.current = false;
+    };
+  }, [game, getWinnerInfo, showWinnerModal]);
+
   // NEW: Function to call next number
   const handleCallNumber = async () => {
-    if (isCallingNumber || !id) return;
+    if (isCallingNumber || !id || game?.status !== 'ACTIVE') return;
     
     try {
       setIsCallingNumber(true);
@@ -210,8 +302,9 @@ export default function GamePage() {
         
         console.log(`✅ Called number: ${letter}${data.number}`);
         
-        // Reset animation after 1.5 seconds
+        // Refresh game state after a short delay
         setTimeout(() => {
+          refreshGame();
           setIsAnimating(false);
         }, 1500);
       }
@@ -261,7 +354,7 @@ export default function GamePage() {
   }, [localBingoCard, game]);
 
   const handleMarkNumber = async (number: number) => {
-    if (isMarking || !allCalledNumbers.includes(number)) return;
+    if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
     
     try {
       setIsMarking(true);
@@ -272,12 +365,35 @@ export default function GamePage() {
       if (success) {
         console.log(`✅ Successfully marked number: ${number}`);
         setSelectedNumber(number);
+        
+        // Refresh game state after marking
+        setTimeout(() => {
+          refreshGame();
+        }, 500);
       }
     } catch (error) {
       console.error('Failed to mark number:', error);
     } finally {
       setIsMarking(false);
     }
+  };
+
+  // NEW: Function to handle returning to lobby
+  const handleReturnToLobby = () => {
+    console.log('🚀 Returning to lobby...');
+    setShowWinnerModal(false);
+    router.push('/');
+  };
+
+  // NEW: Function to play again
+  const handlePlayAgain = () => {
+    console.log('🔄 Playing again...');
+    setShowWinnerModal(false);
+    gameEndedCheckRef.current = false;
+    setWinnerInfo(null);
+    setIsUserWinner(false);
+    setWinningAmount(0);
+    refreshGame();
   };
 
   // Clean up timeouts on unmount
@@ -327,7 +443,97 @@ export default function GamePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
+      {/* Winner Modal */}
+      {showWinnerModal && winnerInfo && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-purple-700 to-blue-800 rounded-2xl p-6 max-w-md w-full border-2 border-yellow-400 shadow-2xl">
+            <div className="text-center">
+              {/* Trophy Icon */}
+              <div className="mb-4">
+                <div className="text-6xl mb-2">🏆</div>
+                <h2 className="text-2xl font-bold text-white mb-1">Game Over!</h2>
+                <p className="text-white/70 text-sm">Game Code: {winnerInfo.gameCode}</p>
+              </div>
+              
+              {/* Winner Info */}
+              <div className="bg-white/10 rounded-xl p-4 mb-4 border border-white/20">
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
+                    <span className="text-xl font-bold">👑</span>
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-white font-bold text-lg">
+                      {winnerInfo.winner.firstName} {winnerInfo.winner.username ? `(@${winnerInfo.winner.username})` : ''}
+                    </h3>
+                    <p className="text-white/70 text-sm">Is the Winner!</p>
+                  </div>
+                </div>
+                
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="bg-white/5 rounded-lg p-2">
+                    <p className="text-white/70 text-xs">Players</p>
+                    <p className="text-white font-bold">{winnerInfo.totalPlayers}</p>
+                  </div>
+                  <div className="bg-white/5 rounded-lg p-2">
+                    <p className="text-white/70 text-xs">Numbers Called</p>
+                    <p className="text-white font-bold">{winnerInfo.numbersCalled}/75</p>
+                  </div>
+                </div>
+                
+                {/* Winning Amount */}
+                {isUserWinner && winningAmount > 0 && (
+                  <div className="bg-gradient-to-r from-green-500/20 to-emerald-600/20 rounded-lg p-3 mb-3 border border-green-500/30">
+                    <p className="text-white/80 text-sm mb-1">You won!</p>
+                    <p className="text-2xl font-bold text-yellow-300">${winningAmount} ብር</p>
+                    <p className="text-white/60 text-xs mt-1">Has been added to your wallet</p>
+                  </div>
+                )}
+                
+                {!isUserWinner && (
+                  <div className="bg-white/5 rounded-lg p-3 mb-3">
+                    <p className="text-white/70 text-sm">
+                      Better luck next time! You'll get them next game.
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              {/* Actions */}
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handlePlayAgain}
+                  className="bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3 rounded-xl font-bold hover:from-green-600 hover:to-emerald-700 transition-all"
+                >
+                  Play Another Game
+                </button>
+                <button
+                  onClick={handleReturnToLobby}
+                  className="bg-white/20 text-white py-3 rounded-xl font-bold hover:bg-white/30 transition-all"
+                >
+                  Return to Lobby
+                </button>
+              </div>
+              
+              <p className="text-white/50 text-xs mt-4">
+                A new game will start automatically in 30 seconds
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Loading overlay for winner info */}
+      {isWinnerLoading && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40">
+          <div className="bg-gradient-to-br from-purple-700 to-blue-800 rounded-2xl p-8 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-white font-medium">Loading winner information...</p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="grid grid-cols-6 gap-4 text-center">
@@ -387,252 +593,139 @@ export default function GamePage() {
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        {/* Left: Called Numbers - More space (col-span-2) */}
+        {/* Left: Called Numbers */}
         <div className="col-span-2">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 h-full flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-white font-bold text-lg">Called Numbers</h3>
-              <div className="flex items-center gap-2">
-                <span className="text-white/70 text-sm bg-white/10 px-3 py-1 rounded-full">
-                  {allCalledNumbers.length}/75
-                </span>
-              </div>
-            </div>
-            
-            {/* Current Number Display - Enhanced with Animation */}
-            <div className={`flex items-center justify-center mb-6 transition-all duration-300 ${isAnimating ? 'scale-110' : 'scale-100'}`}>
-              {currentCalledNumber ? (
-                <div className="text-center">
-                  {/* Current Number with Animation */}
-                  <div className={`transition-all duration-500 ${isAnimating ? 'animate-bounce' : ''}`}>
-                    <div className="flex items-center justify-center">
-                      <span className="text-5xl font-bold text-white mr-3">
-                        {currentCalledNumber.letter}
-                      </span>
-                      <span className="text-6xl font-bold text-yellow-300 drop-shadow-lg">
-                        {currentCalledNumber.number}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {/* Called Count */}
-                  <div className="mt-2 text-white/70 text-sm">
-                    {allCalledNumbers.length} of 75 numbers called
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-white/50">
-                    No number called yet
-                  </div>
-                  <div className="mt-2 text-white/70 text-sm">
-                    Waiting for first number...
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            {/* Called Numbers Grid - 75 Numbers with Red Highlighting */}
-        {/* Left: Called Numbers - Simplified Display */}
-<div className="col-span-2">
-  <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
-    {/* <div className="flex justify-between items-center mb-3">
-      <h3 className="text-white font-bold text-lg">Called Numbers</h3>
-      <span className="text-white/70 text-sm bg-white/10 px-2 py-1 rounded-full">
-        {allCalledNumbers.length}/75
-      </span>
-    </div>
-     */}
-    {/* Current Number Display - Compact */}
-
-    {/* BINGO Header */}
-    <div className="grid grid-cols-5 gap-1 mb-2">
-      {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-        <div 
-          key={letter}
-          className="h-8 rounded flex items-center justify-center font-bold text-md text-white bg-gradient-to-b from-purple-600/70 to-blue-700/70"
-        >
-          {letter}
-        </div>
-      ))}
-    </div>
-    
-    {/* Called Numbers Grid - Organized by BINGO Columns */}
-    <div className="grid grid-cols-5 gap-1">
-      {[
-        {letter: 'B', range: {start: 1, end: 15}},
-        {letter: 'I', range: {start: 16, end: 30}},
-        {letter: 'N', range: {start: 31, end: 45}},
-        {letter: 'G', range: {start: 46, end: 60}},
-        {letter: 'O', range: {start: 61, end: 75}}
-      ].map((column) => {
-        const numbersInColumn = Array.from(
-          { length: column.range.end - column.range.start + 1 }, 
-          (_, i) => column.range.start + i
-        );
-        
-        return (
-          <div key={column.letter} className="flex flex-col gap-1">
-            {numbersInColumn.map((number: number) => {
-              const isCalled = allCalledNumbers.includes(number);
-              const isCurrent = currentCalledNumber?.number === number;
-              
-              return (
-                <div
-                  key={number}
-                  className={`
-                    aspect-square rounded flex items-center justify-center 
-                    transition-all duration-200 cursor-pointer relative
-                    ${isCurrent
-                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-1 ring-yellow-400'
-                      : isCalled
-                      ? 'bg-gradient-to-br from-red-500 to-pink-600'
-                      : 'bg-white/10'
-                    }
-                  `}
-                  onClick={() => isCalled && handleMarkNumber(number)}
-                  title={`${column.letter}${number} ${isCurrent ? '(Current)' : isCalled ? '(Called)' : ''}`}
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
+            {/* BINGO Header */}
+            <div className="grid grid-cols-5 gap-1 mb-2">
+              {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                <div 
+                  key={letter}
+                  className="h-8 rounded flex items-center justify-center font-bold text-md text-white bg-gradient-to-b from-purple-600/70 to-blue-700/70"
                 >
-                  {/* Number */}
-                  <span className={`
-                    text-xs font-bold
-                    ${isCurrent ? 'text-white' : isCalled ? 'text-white' : 'text-white/70'}
-                  `}>
-                    {number}
-                  </span>
-                  
-                  {/* Current Indicator */}
-                  {isCurrent && (
-                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></div>
-                  )}
+                  {letter}
                 </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
-    
-    {/* Call Number Button - Simplified */}
-    {game.status === 'ACTIVE' && (
-      <div className="mt-3 pt-3 border-t border-white/20">
-        <button
-          onClick={handleCallNumber}
-          disabled={isCallingNumber}
-          className={`
-            w-full flex items-center justify-center gap-2 py-2 rounded font-medium text-sm
-            transition-all duration-200
-            ${isCallingNumber 
-              ? 'bg-gray-600/50 text-gray-300 cursor-not-allowed' 
-              : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white'
-            }
-          `}
-        >
-          {isCallingNumber ? (
-            <>
-              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-              Calling...
-            </>
-          ) : (
-            <>
-              <span>🎲</span>
-              Call Next Number
-            </>
-          )}
-        </button>
-      </div>
-    )}
-  </div>
-</div>
+              ))}
+            </div>
             
-            {/* Recent Called Numbers */}
-            {allCalledNumbers.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-white/20">
-                <div className="flex justify-between items-center mb-3">
-                  <p className="text-white/80 text-sm font-medium">Recently Called:</p>
-                  <span className="text-white/60 text-xs">
-                    Last {Math.min(allCalledNumbers.length, 10)} of {allCalledNumbers.length}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {allCalledNumbers.slice(-10).reverse().map((number, index) => {
-                    const letter = getNumberLetter(number);
-                    const isLatest = index === 0;
-                    
-                    return (
-                      <div 
-                        key={`recent-${number}-${index}`}
-                        className={`
-                          flex flex-col items-center justify-center px-2 py-1.5 rounded-lg 
-                          transition-all hover:scale-105 min-w-[45px] cursor-pointer
-                          ${isLatest 
-                            ? 'bg-gradient-to-br from-yellow-500/40 to-orange-500/40 ring-1 ring-yellow-400/50' 
-                            : 'bg-white/15 hover:bg-white/25'
-                          }
-                        `}
-                        onClick={() => handleMarkNumber(number)}
-                        title={`Click to mark ${letter}${number}`}
-                      >
-                        <div className="flex items-center gap-1">
+            {/* Called Numbers Grid - Organized by BINGO Columns */}
+            <div className="grid grid-cols-5 gap-1">
+              {[
+                {letter: 'B', range: {start: 1, end: 15}},
+                {letter: 'I', range: {start: 16, end: 30}},
+                {letter: 'N', range: {start: 31, end: 45}},
+                {letter: 'G', range: {start: 46, end: 60}},
+                {letter: 'O', range: {start: 61, end: 75}}
+              ].map((column) => {
+                const numbersInColumn = Array.from(
+                  { length: column.range.end - column.range.start + 1 }, 
+                  (_, i) => column.range.start + i
+                );
+                
+                return (
+                  <div key={column.letter} className="flex flex-col gap-1">
+                    {numbersInColumn.map((number: number) => {
+                      const isCalled = allCalledNumbers.includes(number);
+                      const isCurrent = currentCalledNumber?.number === number;
+                      
+                      return (
+                        <div
+                          key={number}
+                          className={`
+                            aspect-square rounded flex items-center justify-center 
+                            transition-all duration-200 cursor-pointer relative
+                            ${isCurrent
+                              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-1 ring-yellow-400'
+                              : isCalled
+                              ? 'bg-gradient-to-br from-red-500 to-pink-600'
+                              : 'bg-white/10'
+                            }
+                          `}
+                          onClick={() => isCalled && handleMarkNumber(number)}
+                          title={`${column.letter}${number} ${isCurrent ? '(Current)' : isCalled ? '(Called)' : ''}`}
+                        >
+                          {/* Number */}
                           <span className={`
                             text-xs font-bold
-                            ${isLatest ? 'text-yellow-300' : 'text-white/70'}
-                          `}>
-                            {letter}
-                          </span>
-                          <span className={`
-                            text-base font-bold
-                            ${isLatest ? 'text-yellow-300' : 'text-white'}
+                            ${isCurrent ? 'text-white' : isCalled ? 'text-white' : 'text-white/70'}
                           `}>
                             {number}
                           </span>
+                          
+                          {/* Current Indicator */}
+                          {isCurrent && (
+                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></div>
+                          )}
                         </div>
-                        {isLatest && (
-                          <span className="text-[9px] text-yellow-200/70 mt-0.5">LATEST</span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
             
             {/* Call Number Button */}
             {game.status === 'ACTIVE' && (
-              <div className="mt-4 pt-4 border-t border-white/20">
+              <div className="mt-3 pt-3 border-t border-white/20">
                 <button
                   onClick={handleCallNumber}
                   disabled={isCallingNumber}
                   className={`
-                    w-full flex items-center justify-center gap-2 py-3 rounded-lg font-medium
-                    transition-all duration-300
+                    w-full flex items-center justify-center gap-2 py-2 rounded font-medium text-sm
+                    transition-all duration-200
                     ${isCallingNumber 
-                      ? 'bg-gradient-to-r from-gray-600 to-gray-700 text-gray-300 cursor-not-allowed' 
-                      : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white hover:shadow-lg'
+                      ? 'bg-gray-600/50 text-gray-300 cursor-not-allowed' 
+                      : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white'
                     }
                   `}
                 >
                   {isCallingNumber ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Calling Next Number...
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                      Calling...
                     </>
                   ) : (
                     <>
-                      <span className="text-xl">🎲</span>
+                      <span>🎲</span>
                       Call Next Number
                     </>
                   )}
                 </button>
-                <p className="text-white/60 text-xs text-center mt-2">
-                  Click to call the next BINGO number
-                </p>
               </div>
             )}
           </div>
+          
+          {/* Current Number Display */}
+          <div className="mt-4 bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+            <h3 className="text-white font-bold mb-3">Current Number</h3>
+            <div className={`text-center transition-all duration-300 ${isAnimating ? 'scale-110' : 'scale-100'}`}>
+              {currentCalledNumber ? (
+                <div>
+                  <div className={`text-5xl font-bold mb-2 transition-all duration-500 ${isAnimating ? 'animate-bounce' : ''}`}>
+                    <span className="text-white mr-2">{currentCalledNumber.letter}</span>
+                    <span className="text-yellow-300">{currentCalledNumber.number}</span>
+                  </div>
+                  <p className="text-white/70 text-sm">
+                    Click on {currentCalledNumber.letter}{currentCalledNumber.number} to mark your card
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-2xl font-bold text-white/50 mb-2">
+                    No numbers called yet
+                  </p>
+                  <p className="text-white/60 text-sm">
+                    {game.status === 'ACTIVE' 
+                      ? 'Waiting for first number...' 
+                      : 'Game not active'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Right: Bingo Card - Less space (col-span-2) */}
+        {/* Right: Bingo Card */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <div className="flex justify-between items-center mb-4">
@@ -715,23 +808,6 @@ export default function GamePage() {
                     })
                   )}
                 </div>
-                
-                {/* Compact Stats Row */}
-                <div className="mt-3 flex items-center justify-between text-white/70 text-sm">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-3 h-3 rounded bg-green-600"></div>
-                      <span>Marked</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-3 h-3 rounded bg-yellow-500/40"></div>
-                      <span>Called</span>
-                    </div>
-                  </div>
-                  <div>
-                    Progress: <span className="text-white font-bold">{Math.round(((displayBingoCard.markedPositions?.length || 0) / 24) * 100)}%</span>
-                  </div>
-                </div>
               </div>
             ) : (
               <div className="text-center text-white/70 py-8">
@@ -747,9 +823,8 @@ export default function GamePage() {
             )}
           </div>
 
-          {/* Game Controls & Info - Reduced height */}
+          {/* Game Controls */}
           <div className="grid grid-cols-2 gap-3 mt-3">
-            {/* Game Status Card - Reduced */}
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
               <h4 className="text-white font-bold mb-2">Game Status</h4>
               <div className="space-y-1.5">
@@ -774,7 +849,6 @@ export default function GamePage() {
               </div>
             </div>
 
-            {/* Quick Actions - Reduced */}
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
               <h4 className="text-white font-bold mb-2">Actions</h4>
               <div className="space-y-1.5">
@@ -790,58 +864,9 @@ export default function GamePage() {
                 >
                   ← Back to Lobby
                 </button>
-                {process.env.NODE_ENV === 'development' && (
-                  <button
-                    onClick={handleCallNumber}
-                    className="w-full bg-yellow-500/20 text-yellow-300 py-1.5 rounded text-xs hover:bg-yellow-500/30 transition-all"
-                  >
-                    🎲 Call # (Dev)
-                  </button>
-                )}
               </div>
             </div>
           </div>
-
-          {/* Debug Info - Smaller */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="bg-yellow-500/10 backdrop-blur-lg rounded-xl p-3 mt-3 border border-yellow-500/20">
-              <h4 className="text-yellow-300 font-bold mb-2 text-sm">Debug Info</h4>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <p className="text-yellow-200/70 text-[10px]">Card:</p>
-                  <p className="text-yellow-200 text-xs">{displayBingoCard ? '✓' : '✗'}</p>
-                </div>
-                <div>
-                  <p className="text-yellow-200/70 text-[10px]">Card #:</p>
-                  <p className="text-yellow-200 text-xs">{selectedNumber || '-'}</p>
-                </div>
-                <div>
-                  <p className="text-yellow-200/70 text-[10px]">Marked:</p>
-                  <p className="text-yellow-200 text-xs">{displayBingoCard?.markedPositions?.length || 0}</p>
-                </div>
-              </div>
-              <div className="mt-2">
-                <p className="text-yellow-200/70 text-[10px]">Called Numbers:</p>
-                <p className="text-yellow-200 text-xs truncate">
-                  {allCalledNumbers.slice(-8).join(', ') || 'None'}
-                </p>
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <button
-                  onClick={handleCallNumber}
-                  className="bg-yellow-500/20 text-yellow-300 py-1 rounded text-xs hover:bg-yellow-500/30 transition-all"
-                >
-                  Test Call #
-                </button>
-                <button
-                  onClick={() => setAllCalledNumbers([])}
-                  className="bg-red-500/20 text-red-300 py-1 rounded text-xs hover:bg-red-500/30 transition-all"
-                >
-                  Clear Called #
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
