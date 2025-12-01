@@ -14,9 +14,9 @@ export const useGameState = () => {
   const [pageLoading, setPageLoading] = useState<boolean>(true);
   const [autoStartTimeRemaining, setAutoStartTimeRemaining] = useState<number>(0);
   const [hasAutoStartTimer, setHasAutoStartTimer] = useState<boolean>(false);
-  const [lastAutoStartCheck, setLastAutoStartCheck] = useState<number>(0);
+  const [playersWithCards, setPlayersWithCards] = useState<number>(0);
 
-  // Enhanced checkGameStatus with auto-start detection
+  // Main game status check
   const checkGameStatus = useCallback(async () => {
     try {
       console.log('🎮 Checking game status...');
@@ -44,18 +44,9 @@ export const useGameState = () => {
         setRestartCountdown(0);
         console.log('✅ Waiting game found:', game._id);
         
-        // Check if we should trigger auto-start - use players array length
-        const playerCount = game.players?.length || 0;
-        console.log('👥 Auto-start check:', { playerCount, gameId: game._id });
+        // Check auto-start status for waiting games
+        checkAutoStart(game._id);
         
-        if (playerCount >= 2) {
-          // Trigger auto-start immediately when conditions are met
-          console.log('🎯 Auto-start conditions met! Triggering auto-start...');
-          await triggerAutoStart(game._id);
-        } else {
-          setHasAutoStartTimer(false);
-          setAutoStartTimeRemaining(0);
-        }
       } else {
         setGameStatus('FINISHED');
         setRestartCountdown(30);
@@ -76,116 +67,121 @@ export const useGameState = () => {
     }
   }, []);
 
-  // NEW: Function to trigger auto-start
-  const triggerAutoStart = async (gameId: string) => {
+  // Auto-start check function
+  const checkAutoStart = useCallback(async (gameId: string) => {
     try {
-      console.log('🚀 Triggering auto-start for game:', gameId);
+      console.log('🔍 Checking auto-start for game:', gameId);
       
       const response = await gameAPI.checkAutoStart(gameId);
       console.log('📦 Auto-start response:', response.data);
       
-      if (response.data.success) {
-        if (response.data.gameStarted) {
-          console.log('✅ Game auto-started successfully!');
-          // Game was started, refresh the status
-          setTimeout(() => checkGameStatus(), 1000);
-        } else {
-          console.log('⏳ Auto-start initiated, waiting for game to start...');
-          // Show countdown timer
-          setHasAutoStartTimer(true);
-          setAutoStartTimeRemaining(30000); // 30 seconds countdown
+      if (response.data.success && response.data.autoStartInfo) {
+        const { willAutoStart, timeRemaining, playersWithCards } = response.data.autoStartInfo;
+        
+        setHasAutoStartTimer(willAutoStart);
+        setAutoStartTimeRemaining(timeRemaining);
+        setPlayersWithCards(playersWithCards);
+        
+        console.log('📊 Auto-start status:', {
+          willAutoStart,
+          timeRemaining: `${Math.floor(timeRemaining / 1000)}s`,
+          playersWithCards
+        });
+        
+        // If auto-start is scheduled, start countdown
+        if (willAutoStart && timeRemaining > 0) {
+          console.log('⏰ Auto-start scheduled, starting countdown...');
         }
+      } else if (response.data.success && response.data.gameStarted) {
+        console.log('✅ Game already started');
+        setHasAutoStartTimer(false);
+        setAutoStartTimeRemaining(0);
+        // Refresh game status since game is active
+        setTimeout(() => checkGameStatus(), 1000);
       } else {
-        console.log('❌ Auto-start failed:', response.data);
+        console.log('⏳ Auto-start not scheduled yet');
         setHasAutoStartTimer(false);
         setAutoStartTimeRemaining(0);
       }
     } catch (error: any) {
-      console.error('❌ Auto-start trigger failed:', error.message);
+      console.error('❌ Auto-start check failed:', error.message);
       setHasAutoStartTimer(false);
       setAutoStartTimeRemaining(0);
     }
-  };
-
-  // NEW: Enhanced auto-start polling for waiting games
-  const checkAutoStartConditions = useCallback(async () => {
-    if (!gameData?._id || gameStatus !== 'WAITING') return;
-
-    try {
-      console.log('🔍 Checking auto-start conditions...', {
-        gameId: gameData._id,
-        currentPlayers,
-        lastCheck: lastAutoStartCheck
-      });
-
-      // Get fresh game data to check current player count
-      const gameResponse = await gameAPI.getGame(gameData._id);
-      if (gameResponse.data.success) {
-        const freshGame = gameResponse.data.game;
-        const playerCount = freshGame.players?.length || 0;
-        
-        console.log('📊 Current game state:', {
-          playerCount,
-          required: 2,
-          shouldTrigger: playerCount >= 2
-        });
-
-        if (playerCount >= 2 && Date.now() - lastAutoStartCheck > 5000) {
-          setLastAutoStartCheck(Date.now());
-          await triggerAutoStart(gameData._id);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Auto-start conditions check failed:', error);
-    }
-  }, [gameData, gameStatus, currentPlayers, lastAutoStartCheck]);
+  }, []);
 
   // Auto-start timer countdown
   useEffect(() => {
     if (hasAutoStartTimer && autoStartTimeRemaining > 0) {
+      console.log('⏱️ Starting auto-start countdown:', autoStartTimeRemaining);
+      
       const interval = setInterval(() => {
         setAutoStartTimeRemaining(prev => {
           const newTime = prev - 1000;
+          
           if (newTime <= 0) {
+            console.log('🎯 Auto-start countdown complete!');
+            clearInterval(interval);
             setHasAutoStartTimer(false);
-            // When timer ends, check if game started
+            // Game should start automatically - refresh status
             setTimeout(() => checkGameStatus(), 1000);
             return 0;
           }
+          
+          // Update every second
+          if (newTime % 5000 === 0) {
+            console.log(`⏱️ Auto-start in ${Math.floor(newTime / 1000)}s`);
+          }
+          
           return newTime;
         });
       }, 1000);
 
-      return () => clearInterval(interval);
-    }
-  }, [hasAutoStartTimer, autoStartTimeRemaining, checkGameStatus]);
-
-  // Enhanced polling for auto-start conditions
-  useEffect(() => {
-    if (gameStatus === 'WAITING' && gameData?._id) {
-      console.log('⏰ Starting auto-start condition polling');
-      
-      const interval = setInterval(() => {
-        checkAutoStartConditions();
-      }, 3000); // Check every 3 seconds
-
       return () => {
-        console.log('🛑 Stopping auto-start condition polling');
+        console.log('🛑 Clearing auto-start interval');
         clearInterval(interval);
       };
     }
-  }, [gameStatus, gameData, checkAutoStartConditions]);
+  }, [hasAutoStartTimer, autoStartTimeRemaining, checkGameStatus]);
+
+  // Poll for auto-start updates when game is WAITING
+  useEffect(() => {
+    if (gameStatus === 'WAITING' && gameData?._id && !hasAutoStartTimer) {
+      console.log('🔄 Starting auto-start polling for waiting game');
+      
+      // Check auto-start every 5 seconds
+      const interval = setInterval(() => {
+        checkAutoStart(gameData._id);
+      }, 5000);
+
+      return () => {
+        console.log('🛑 Stopping auto-start polling');
+        clearInterval(interval);
+      };
+    }
+  }, [gameStatus, gameData, hasAutoStartTimer, checkAutoStart]);
+
+  // Initial auto-start check when game status changes to WAITING
+  useEffect(() => {
+    if (gameData?._id && gameStatus === 'WAITING') {
+      console.log('🔄 Initial auto-start check for waiting game');
+      checkAutoStart(gameData._id);
+    }
+  }, [gameData, gameStatus, checkAutoStart]);
 
   // Handle restart countdown
   useEffect(() => {
     let countdownInterval: NodeJS.Timeout;
 
     if (gameStatus === 'FINISHED' && restartCountdown > 0) {
+      console.log('🔄 Starting restart countdown:', restartCountdown);
+      
       countdownInterval = setInterval(() => {
         setRestartCountdown(prev => {
           if (prev <= 1) {
             clearInterval(countdownInterval);
             setGameStatus('RESTARTING');
+            console.log('🔄 Restarting game...');
             setTimeout(() => checkGameStatus(), 1000);
             return 0;
           }
@@ -195,30 +191,39 @@ export const useGameState = () => {
     }
 
     return () => {
-      if (countdownInterval) clearInterval(countdownInterval);
+      if (countdownInterval) {
+        console.log('🛑 Clearing restart countdown');
+        clearInterval(countdownInterval);
+      }
     };
   }, [gameStatus, restartCountdown, checkGameStatus]);
 
-  // Enhanced game status polling
+  // Game status polling
   useEffect(() => {
+    console.log('🔄 Starting game status polling');
+    
     const interval = setInterval(async () => {
       await checkGameStatus();
     }, 10000); // Check every 10 seconds
 
-    return () => clearInterval(interval);
+    return () => {
+      console.log('🛑 Stopping game status polling');
+      clearInterval(interval);
+    };
   }, [checkGameStatus]);
 
-  // NEW: Function to manually trigger auto-start (for testing)
+  // Manual trigger for testing
   const manualTriggerAutoStart = async () => {
     if (gameData?._id) {
       console.log('🔄 Manual auto-start trigger');
-      await triggerAutoStart(gameData._id);
+      await checkAutoStart(gameData._id);
     }
   };
 
   const initializeGameState = async () => {
     try {
       setPageLoading(true);
+      console.log('🚀 Initializing game state...');
       
       // Refresh wallet balance
       try {
@@ -250,10 +255,12 @@ export const useGameState = () => {
     pageLoading,
     autoStartTimeRemaining,
     hasAutoStartTimer,
+    playersWithCards,
     checkGameStatus,
     initializeGameState,
     setGameData,
     setGameStatus,
-    manualTriggerAutoStart // Add this for testing
+    manualTriggerAutoStart,
+    checkAutoStart // Export for external use
   };
 };

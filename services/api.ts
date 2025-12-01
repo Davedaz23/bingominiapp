@@ -253,9 +253,22 @@ export const gameAPI = {
   healthCheck: () =>
     api.get<{ status: string; timestamp: string; database: string }>('/health'),
   //====== auto check
-  checkAutoStart: (gameId: string) =>
-    api.post<{ success: boolean; gameStarted: boolean; game?: Game }>(`/games/${gameId}/check-auto-start`),
-
+  // checkAutoStart: (gameId: string) =>
+  //   api.post<{ success: boolean; gameStarted: boolean; game?: Game }>(`/games/${gameId}/check-auto-start`),
+ checkAutoStart: (gameId: string) =>
+    api.post<{ 
+      success: boolean; 
+      gameStarted: boolean; 
+      game?: Game;
+      autoStartInfo?: {
+        willAutoStart: boolean;
+        timeRemaining: number;
+        autoStartEndTime?: string;
+        playersWithCards: number;
+        minPlayersRequired: number;
+        playersNeeded?: number;
+      }
+    }>(`/games/${gameId}/check-auto-start`),
   // ==================== GAMES HEALTH CHECK ====================
   gamesHealthCheck: () =>
     api.get<{ success: boolean; status: string; activeGames: number; waitingGames: number; timestamp: string }>('/games/health/status')
