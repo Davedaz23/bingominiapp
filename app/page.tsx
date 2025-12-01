@@ -96,7 +96,41 @@ export default function Home() {
   }, [cardSelectionStatus.timeRemaining, cardSelectionStatus.isSelectionActive, selectedNumber, walletBalance]);
 
   // ==================== ENHANCED AUTO-JOIN FUNCTION ====================
+// Add this useEffect to check auto-start periodically
+useEffect(() => {
+  let intervalId: NodeJS.Timeout;
 
+  // Only check auto-start if game is waiting
+  if (gameStatus === 'WAITING' && gameData?._id) {
+    intervalId = setInterval(async () => {
+      try {
+        console.log('🔄 Checking auto-start conditions...');
+        
+        // Call the auto-start check API
+        const response = await gameAPI.checkAutoStart(gameData._id);
+        
+        if (response.data.success) {
+          console.log('🎮 Auto-start check response:', response.data);
+          
+          // If game started via auto-start, refresh game state
+          if (response.data.gameStarted) {
+            console.log('🚀 Game auto-started! Refreshing...');
+            await checkGameStatus();
+          } else if (response.data.autoStartInfo) {
+            console.log('⏳ Auto-start info:', response.data.autoStartInfo);
+            // Update UI with auto-start countdown if available
+          }
+        }
+      } catch (error) {
+        console.error('❌ Auto-start check failed:', error);
+      }
+    }, 5000); // Check every 5 seconds
+  }
+
+  return () => {
+    if (intervalId) clearInterval(intervalId);
+  };
+}, [gameStatus, gameData?._id, checkGameStatus]);
  // ==================== FIXED AUTO-JOIN FUNCTION ====================
   const handleAutoJoinGame = async () => {
     if (!selectedNumber || !user?.id) return;
