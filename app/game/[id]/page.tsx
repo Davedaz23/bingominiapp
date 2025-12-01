@@ -1,4 +1,4 @@
-// app/game/[id]/page.tsx - FIXED VERSION
+// app/game/[id]/page.tsx - UPDATED WITH ENHANCED NUMBER DISPLAY
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -24,17 +24,14 @@ export default function GamePage() {
   const searchParams = useSearchParams();
   const id = params.id as string;
   
-  // ✅ FIXED: removed the non-existent calledNumbers from destructuring
   const { 
     game, 
     bingoCard: gameBingoCard, 
-    gameState,  // calledNumbers is inside gameState.calledNumbers
+    gameState, 
     markNumber, 
     isLoading,
     error: gameError,
     manualCallNumber,
-    callNumber,  // function to manually call numbers
-    refreshGame  // added refreshGame
   } = useGame(id);
   
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -44,22 +41,19 @@ export default function GamePage() {
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
   const [lastCalledNumber, setLastCalledNumber] = useState<number | null>(null);
+  const [calledNumbersHistory, setCalledNumbersHistory] = useState<number[]>([]);
   const [currentNumberDisplay, setCurrentNumberDisplay] = useState<{
     number: number | null;
     letter: string | null;
   }>({ number: null, letter: null });
   
-  // State for called numbers with letters
+  // NEW: Add state for called numbers with letters
   const [calledNumbersWithLetters, setCalledNumbersWithLetters] = useState<
     Array<{ number: number; letter: string }>
   >([]);
   
-  // State for animation
+  // NEW: Add state for animation
   const [isAnimating, setIsAnimating] = useState(false);
-  
-  // NEW: Debug state for backend status
-  const [backendStatus, setBackendStatus] = useState<string>('Checking backend...');
-  const [debugInfo, setDebugInfo] = useState<any>({});
   
   // Refs for tracking
   const calledNumbersRef = useRef<number[]>([]);
@@ -161,7 +155,7 @@ export default function GamePage() {
     return 'O';
   };
 
-  // Enhanced function to update called numbers with animation
+  // NEW: Enhanced function to update called numbers with animation
   const updateCalledNumbersWithAnimation = useCallback((newNumber: number) => {
     const letter = getNumberLetter(newNumber);
     
@@ -170,6 +164,9 @@ export default function GamePage() {
     
     // Update current number display with animation
     setCurrentNumberDisplay({ number: newNumber, letter });
+    
+    // Add to called numbers history
+    setCalledNumbersHistory(prev => [...prev, newNumber]);
     
     // Update called numbers with letters
     setCalledNumbersWithLetters(prev => [...prev, { number: newNumber, letter }]);
@@ -191,57 +188,8 @@ export default function GamePage() {
     }
   }, [localBingoCard]);
 
-  // NEW: Function to check backend status directly
-  const checkBackendStatus = useCallback(async () => {
-    try {
-      console.log('🔍 Checking backend status...');
-      const response = await gameAPI.getGame(id);
-      
-      if (response.data.success) {
-        const gameData = response.data.game;
-        const calledNumbers = gameData.calledNumbers || [];
-        const status = gameData.status;
-        
-        setDebugInfo({
-          backendCalledNumbers: calledNumbers.length,
-          frontendCalledNumbers: gameState.calledNumbers.length,
-          gameStatus: status,
-          lastNumber: calledNumbers[calledNumbers.length - 1] || null,
-       
-          syncStatus: calledNumbers.length === gameState.calledNumbers.length ? 'SYNCED' : 'OUT OF SYNC'
-        });
-        
-        let statusMessage = '';
-        if (status === 'ACTIVE') {
-          if (calledNumbers.length > 0) {
-            const lastNumber = calledNumbers[calledNumbers.length - 1];
-            statusMessage = `✅ Backend working! Game ACTIVE, ${calledNumbers.length} numbers called. Last: ${lastNumber}`;
-            
-            // If backend has more numbers than frontend, force update
-            if (calledNumbers.length > gameState.calledNumbers.length) {
-              console.log('🔄 Backend has newer numbers, forcing refresh');
-              refreshGame();
-            }
-          } else {
-            statusMessage = '⚠️ Game ACTIVE but no numbers called yet (should start soon)';
-          }
-        } else if (status === 'WAITING') {
-          statusMessage = '⏳ Game WAITING for players';
-        } else if (status === 'FINISHED') {
-          statusMessage = '🏁 Game FINISHED';
-        }
-        
-        setBackendStatus(statusMessage);
-      }
-    } catch (error) {
-      console.error('❌ Error checking backend:', error);
-      setBackendStatus(`❌ Error: ${error}`);
-    }
-  }, [id, gameState.calledNumbers.length, refreshGame]);
-
   // Update called numbers when gameState changes
   useEffect(() => {
-    // ✅ Access calledNumbers from gameState.calledNumbers
     if (gameState.calledNumbers && gameState.calledNumbers.length > 0) {
       const newCalledNumbers = gameState.calledNumbers;
       
@@ -307,7 +255,6 @@ export default function GamePage() {
       setIsMarking(true);
       console.log(`🎯 Attempting to mark number: ${number}`);
       
-      // ✅ Check if number is called using gameState.calledNumbers
       if (!gameState.calledNumbers.includes(number)) {
         console.log(`❌ Number ${number} hasn't been called yet`);
         return;
@@ -339,9 +286,12 @@ export default function GamePage() {
     }
   };
 
-  // Check backend status manually
-  const handleCheckBackendStatus = async () => {
-    await checkBackendStatus();
+  // NEW: Function to clear all called numbers (for testing)
+  const handleClearCalledNumbers = () => {
+    setCalledNumbersHistory([]);
+    setCalledNumbersWithLetters([]);
+    setCurrentNumberDisplay({ number: null, letter: null });
+    console.log('🧹 Cleared called numbers display');
   };
 
   // Use local card if available, otherwise use the one from useGame hook
@@ -358,31 +308,6 @@ export default function GamePage() {
       }
     };
   }, []);
-
-  // NEW: Debug effect to monitor game state
-  useEffect(() => {
-    console.log('🎮 GAME DEBUG:', {
-      gameId: id,
-      gameStatus: game?.status,
-      frontendCalledNumbers: gameState.calledNumbers.length,
-      frontendCurrentNumber: gameState.currentNumber,
-      backendStatus: backendStatus,
-      isLoading: isLoading,
-      lastCalled: lastCalledNumber
-    });
-    
-    // If game is active but we have no numbers, check backend
-    if (game?.status === 'ACTIVE' && gameState.calledNumbers.length === 0) {
-      console.log('⚠️ Game ACTIVE but no numbers on frontend. Checking backend...');
-      setTimeout(checkBackendStatus, 1000);
-    }
-    
-    // Auto-check backend every 10 seconds in development
-    if (process.env.NODE_ENV === 'development' && game?.status === 'ACTIVE') {
-      const interval = setInterval(checkBackendStatus, 10000);
-      return () => clearInterval(interval);
-    }
-  }, [id, game?.status, gameState.calledNumbers, gameState.currentNumber, backendStatus, isLoading, checkBackendStatus]);
 
   if (isLoading || isLoadingCard) {
     return (
@@ -443,7 +368,7 @@ export default function GamePage() {
             <p className="text-white/60 text-xs">Your Card</p>
           </div>
           <div>
-            <p className="text-white font-bold text-lg">{gameState.calledNumbers.length}/75</p>
+            <p className="text-white font-bold text-lg">{calledNumbersHistory.length}/75</p>
             <p className="text-white/60 text-xs">Called</p>
           </div>
         </div>
@@ -483,115 +408,60 @@ export default function GamePage() {
               <h3 className="text-white font-bold text-lg">Called Numbers</h3>
               <div className="flex items-center gap-2">
                 <span className="text-white/70 text-sm bg-white/10 px-3 py-1 rounded-full">
-                  {gameState.calledNumbers.length}/75
+                  {calledNumbersHistory.length}/75
                 </span>
-                <button
-                  onClick={handleCheckBackendStatus}
-                  className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded hover:bg-blue-500/30 transition-all"
-                  title="Check backend status"
-                >
-                  🔍 Backend
-                </button>
+                {process.env.NODE_ENV === 'development' && (
+                  <button
+                    onClick={handleClearCalledNumbers}
+                    className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded hover:bg-red-500/30 transition-all"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
             
             {/* Current Number Display - Enhanced with Animation */}
-            <div className="mb-5 p-4 bg-gradient-to-r from-purple-500/30 to-blue-500/30 rounded-xl border border-white/30 shadow-lg">
-              <p className="text-white/90 text-sm mb-2 text-center">Current Number</p>
-              <div className={`flex items-center justify-center mb-2 transition-all duration-300 ${
-                isAnimating ? 'scale-110' : 'scale-100'
-              }`}>
-                {currentNumberDisplay.number ? (
-                  <>
-                    <div className={`mr-4 transition-all duration-500 ${
-                      isAnimating ? 'animate-pulse' : ''
-                    }`}>
-                      <span className="text-6xl font-bold text-white">
-                        {currentNumberDisplay.letter}
-                      </span>
-                    </div>
-                    <div className={`transition-all duration-500 ${
-                      isAnimating ? 'animate-bounce' : ''
-                    }`}>
-                      <span className="text-7xl font-bold text-yellow-300 drop-shadow-lg">
-                        {currentNumberDisplay.number}
-                      </span>
-                    </div>
-                  </>
-                ) : gameState.currentNumber ? (
-                  // Show current number from gameState if available
-                  <>
-                    <div className="mr-4">
-                      <span className="text-6xl font-bold text-white">
-                        {getNumberLetter(gameState.currentNumber)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-7xl font-bold text-yellow-300 drop-shadow-lg">
-                        {gameState.currentNumber}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center py-4">
-                    <span className="text-3xl font-bold text-white/50">
-                      No numbers called yet
-                    </span>
-                    {game.status === 'ACTIVE' && (
-                      <div className="mt-2">
-                        <p className="text-white/70 text-sm">Backend auto-calling should start soon...</p>
-                        <button
-                          onClick={checkBackendStatus}
-                          className="mt-2 text-xs bg-yellow-500/20 text-yellow-300 px-3 py-1 rounded hover:bg-yellow-500/30"
-                        >
-                          Check Backend Now
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              {/* Backend Status Display */}
-              <div className="mt-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                <p className="text-white/80 text-sm mb-2 font-medium">Backend Status:</p>
-                <p className={`text-sm ${
-                  backendStatus.includes('✅') ? 'text-green-300' :
-                  backendStatus.includes('⚠️') ? 'text-yellow-300' :
-                  backendStatus.includes('❌') ? 'text-red-300' :
-                  'text-white/70'
-                }`}>
-                  {backendStatus}
-                </p>
-                {process.env.NODE_ENV === 'development' && (
-                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-white/60">Backend called:</span>
-                      <span className="text-white ml-1">{debugInfo.backendCalledNumbers || 0}</span>
-                    </div>
-                    <div>
-                      <span className="text-white/60">Frontend has:</span>
-                      <span className="text-white ml-1">{gameState.calledNumbers.length}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <p className="text-white/70 text-xs text-center mt-3">
-                {currentNumberDisplay.number || gameState.currentNumber ? (
-                  `Click on ${getNumberLetter(currentNumberDisplay.number || gameState.currentNumber!)}${currentNumberDisplay.number || gameState.currentNumber} below to mark your card`
-                ) : (
-                  'Click on numbers below when they are called'
-                )}
-              </p>
-            </div>
+ 
+<div className={`flex items-center justify-center mb-2 transition-all duration-300 ${
+  isAnimating ? 'scale-110' : 'scale-100'
+}`}>
+  {currentNumberDisplay.number ? (
+    <>
+      <div className={`mr-4 transition-all duration-500 ${
+        isAnimating ? 'animate-pulse' : ''
+      }`}>
+        <span className="text-6xl font-bold text-white">
+          {currentNumberDisplay.letter}
+        </span>
+      </div>
+      <div className={`transition-all duration-500 ${
+        isAnimating ? 'animate-bounce' : ''
+      }`}>
+        <span className="text-7xl font-bold text-yellow-300 drop-shadow-lg">
+          {currentNumberDisplay.number}
+        </span>
+      </div>
+    </>
+  ) : (
+    <div className="text-center py-4">
+      <span className="text-3xl font-bold text-white/50">
+        No numbers called yet
+      </span>
+      {game.status === 'ACTIVE' && (
+        <p className="text-white/70 text-sm mt-2">
+          Numbers will appear automatically...
+        </p>
+      )}
+    </div>
+  )}
+</div>
             
             {/* Called Numbers Grid - WITH LETTERS */}
             <div className="grid grid-cols-10 gap-1.5 flex-grow overflow-y-auto pr-1 pb-2 max-h-[400px]">
               {Array.from({ length: 75 }, (_, i) => i + 1).map((number: number) => {
-                // ✅ Access called numbers from gameState.calledNumbers
                 const isCalled = gameState.calledNumbers.includes(number);
-                const isCurrent = number === (currentNumberDisplay.number || gameState.currentNumber);
+                const isCurrent = number === currentNumberDisplay.number;
                 const letter = getNumberLetter(number);
                 
                 return (
@@ -709,33 +579,25 @@ export default function GamePage() {
                   }`}></div>
                   <span className="text-white/70 text-sm">
                     {game.status === 'ACTIVE' 
-                      ? `Auto-calling active • ${gameState.calledNumbers.length} numbers called` 
+                      ? 'Auto-calling numbers every 5-8 seconds' 
                       : 'Auto-call paused (game not active)'}
                   </span>
                 </div>
-                <div className="flex gap-2">
+                {process.env.NODE_ENV === 'development' && (
                   <button
-                    onClick={refreshGame}
-                    className="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded hover:bg-purple-500/30 transition-all"
-                    title="Force refresh game state"
+                    onClick={handleManualCallNumber}
+                    className="text-sm bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-3 py-1.5 rounded hover:from-purple-500/40 hover:to-blue-500/40 transition-all"
                   >
-                    🔄 Refresh
+                    🎲 Call Next Number
                   </button>
-                  {process.env.NODE_ENV === 'development' && (
-                    <button
-                      onClick={handleManualCallNumber}
-                      className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded hover:bg-yellow-500/30 transition-all"
-                    >
-                      🎲 Call #
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
           </div>
         </div>
 
         {/* Right: Bingo Card - Less space (col-span-2) */}
+        {/* ... (rest of your bingo card code remains the same) ... */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <div className="flex justify-between items-center mb-4">
@@ -772,7 +634,6 @@ export default function GamePage() {
                     row.map((number: number | string, colIndex: number) => {
                       const flatIndex = rowIndex * 5 + colIndex;
                       const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
-                      // ✅ Check if number is called using gameState.calledNumbers
                       const isCalled = gameState.calledNumbers.includes(number as number);
                       const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
@@ -851,90 +712,87 @@ export default function GamePage() {
             )}
           </div>
 
-          {/* Debug Panel - Always visible in development */}
-          <div className="bg-yellow-500/10 backdrop-blur-lg rounded-xl p-4 mt-4 border border-yellow-500/20">
-            <h4 className="text-yellow-300 font-bold mb-3 text-sm">🚨 Debug Panel</h4>
-            
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="bg-black/20 p-2 rounded">
-                  <p className="text-yellow-200/70 text-[10px]">Frontend Called:</p>
-                  <p className="text-yellow-200">{gameState.calledNumbers.length}</p>
-                </div>
-                <div className="bg-black/20 p-2 rounded">
-                  <p className="text-yellow-200/70 text-[10px]">Current Number:</p>
-                  <p className="text-yellow-200">{gameState.currentNumber || 'None'}</p>
-                </div>
-                <div className="bg-black/20 p-2 rounded">
-                  <p className="text-yellow-200/70 text-[10px]">Game Status:</p>
-                  <p className={`text-yellow-200 ${
-                    game.status === 'ACTIVE' ? 'text-green-300' :
-                    game.status === 'WAITING' ? 'text-yellow-300' :
-                    'text-red-300'
+          {/* Game Controls & Info - Reduced height */}
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            {/* Game Status Card - Reduced */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
+              <h4 className="text-white font-bold mb-2">Game Status</h4>
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-white/70 text-xs">Status:</span>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    game.status === 'ACTIVE' ? 'bg-green-500/30 text-green-300' :
+                    game.status === 'WAITING' ? 'bg-yellow-500/30 text-yellow-300' :
+                    'bg-red-500/30 text-red-300'
                   }`}>
                     {game.status}
-                  </p>
+                  </span>
                 </div>
-                <div className="bg-black/20 p-2 rounded">
-                  <p className="text-yellow-200/70 text-[10px]">Polling:</p>
-                  <p className="text-yellow-200">Active</p>
+                <div className="flex justify-between">
+                  <span className="text-white/70 text-xs">Players:</span>
+                  <span className="text-white text-xs font-medium">{game.currentPlayers || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/70 text-xs">Called:</span>
+                  <span className="text-white text-xs font-medium">{calledNumbersHistory.length}/75</span>
                 </div>
               </div>
-              
-              <div>
-                <p className="text-yellow-200/70 text-xs mb-1">Actions:</p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={refreshGame}
-                    className="px-3 py-1.5 bg-purple-500/20 text-purple-300 rounded text-xs hover:bg-purple-500/30"
-                  >
-                    🔄 Force Refresh
-                  </button>
-                  <button
-                    onClick={checkBackendStatus}
-                    className="px-3 py-1.5 bg-blue-500/20 text-blue-300 rounded text-xs hover:bg-blue-500/30"
-                  >
-                    🔍 Check Backend
-                  </button>
+            </div>
+
+            {/* Quick Actions - Reduced */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
+              <h4 className="text-white font-bold mb-2">Actions</h4>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => router.refresh()}
+                  className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all"
+                >
+                  ↻ Refresh
+                </button>
+                <button
+                  onClick={() => router.push('/')}
+                  className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all"
+                >
+                  ← Lobby
+                </button>
+                {process.env.NODE_ENV === 'development' && (
                   <button
                     onClick={handleManualCallNumber}
-                    className="px-3 py-1.5 bg-yellow-500/20 text-yellow-300 rounded text-xs hover:bg-yellow-500/30"
+                    className="w-full bg-yellow-500/20 text-yellow-300 py-1.5 rounded text-xs hover:bg-yellow-500/30 transition-all"
                   >
-                    🎲 Manual Call
+                    🎲 Call # (Dev)
                   </button>
-                  <button
-                    onClick={() => {
-                      console.log('🎮 Full Debug Info:', {
-                        gameState,
-                        game,
-                        debugInfo,
-                        backendStatus
-                      });
-                    }}
-                    className="px-3 py-1.5 bg-green-500/20 text-green-300 rounded text-xs hover:bg-green-500/30"
-                  >
-                    📋 Log State
-                  </button>
-                </div>
+                )}
               </div>
-              
-              {process.env.NODE_ENV === 'development' && (
-                <div>
-                  <p className="text-yellow-200/70 text-xs mb-1">Debug Info:</p>
-                  <div className="bg-black/30 p-2 rounded text-xs overflow-auto max-h-24">
-                    <pre className="text-yellow-200 text-xs">
-                      {JSON.stringify({
-                        calledNumbers: gameState.calledNumbers.slice(-5),
-                        syncStatus: debugInfo.syncStatus,
-                        backendTotal: debugInfo.backendCalledNumbers,
-                        frontendTotal: gameState.calledNumbers.length
-                      }, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
+
+          {/* Debug Info - Smaller */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="bg-yellow-500/10 backdrop-blur-lg rounded-xl p-3 mt-3 border border-yellow-500/20">
+              <h4 className="text-yellow-300 font-bold mb-2 text-sm">Debug Info</h4>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <p className="text-yellow-200/70 text-[10px]">Card:</p>
+                  <p className="text-yellow-200 text-xs">{displayBingoCard ? '✓' : '✗'}</p>
+                </div>
+                <div>
+                  <p className="text-yellow-200/70 text-[10px]">Card #:</p>
+                  <p className="text-yellow-200 text-xs">{selectedNumber || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-yellow-200/70 text-[10px]">Marked:</p>
+                  <p className="text-yellow-200 text-xs">{displayBingoCard?.markedPositions?.length || 0}</p>
+                </div>
+              </div>
+              <div className="mt-2">
+                <p className="text-yellow-200/70 text-[10px]">Called Numbers:</p>
+                <p className="text-yellow-200 text-xs truncate">
+                  {calledNumbersHistory.slice(-8).join(', ')}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
