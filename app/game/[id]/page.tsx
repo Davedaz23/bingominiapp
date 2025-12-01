@@ -1,4 +1,4 @@
-// app/game/[id]/page.tsx - ENHANCED WITH BACKEND CALLING DEBUG
+// app/game/[id]/page.tsx - FIXED VERSION
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -24,16 +24,17 @@ export default function GamePage() {
   const searchParams = useSearchParams();
   const id = params.id as string;
   
+  // ✅ FIXED: removed the non-existent calledNumbers from destructuring
   const { 
     game, 
     bingoCard: gameBingoCard, 
-    gameState,
+    gameState,  // calledNumbers is inside gameState.calledNumbers
     markNumber, 
     isLoading,
     error: gameError,
     manualCallNumber,
-    callNumber,
-    refreshGame
+    callNumber,  // function to manually call numbers
+    refreshGame  // added refreshGame
   } = useGame(id);
   
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -43,28 +44,27 @@ export default function GamePage() {
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
   const [lastCalledNumber, setLastCalledNumber] = useState<number | null>(null);
-  const [calledNumbersHistory, setCalledNumbersHistory] = useState<number[]>([]);
   const [currentNumberDisplay, setCurrentNumberDisplay] = useState<{
     number: number | null;
     letter: string | null;
   }>({ number: null, letter: null });
   
+  // State for called numbers with letters
   const [calledNumbersWithLetters, setCalledNumbersWithLetters] = useState<
     Array<{ number: number; letter: string }>
   >([]);
   
+  // State for animation
   const [isAnimating, setIsAnimating] = useState(false);
   
-  // NEW: Debug state for auto-calling
-  const [backendCallingStatus, setBackendCallingStatus] = useState<string>('Checking...');
-  const [lastFetchTime, setLastFetchTime] = useState<Date | null>(null);
-  const [fetchCount, setFetchCount] = useState<number>(0);
+  // NEW: Debug state for backend status
+  const [backendStatus, setBackendStatus] = useState<string>('Checking backend...');
+  const [debugInfo, setDebugInfo] = useState<any>({});
   
   // Refs for tracking
   const calledNumbersRef = useRef<number[]>([]);
   const autoMarkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const debugIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize game and load card
   useEffect(() => {
@@ -83,6 +83,7 @@ export default function GamePage() {
           console.warn('⚠️ Could not load wallet balance:', walletError);
         }
 
+        // Try to get card data from URL parameters first
         const cardParam = searchParams.get('card');
         if (cardParam) {
           try {
@@ -103,7 +104,7 @@ export default function GamePage() {
           }
         }
 
-        // Fetch from API
+        // If no card in URL, try to fetch from API
         console.log('🔄 Fetching card from API...');
         try {
           const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
@@ -160,63 +161,20 @@ export default function GamePage() {
     return 'O';
   };
 
-  // NEW: Enhanced debug function to check backend auto-calling
-  const checkBackendCallingStatus = useCallback(async () => {
-    try {
-      console.log('🔍 Checking backend auto-calling status...');
-      
-      // Check game status directly from API
-      const gameResponse = await gameAPI.getGame(id);
-      const gameData = gameResponse.data.game;
-      
-      const status = gameData.status;
-      const calledNumbers = gameData.calledNumbers || [];
-      // const lastCalledAt = gameData.last;
-      
-      let statusMessage = '';
-      
-      if (status === 'ACTIVE') {
-        if (calledNumbers.length > 0) {
-          const lastNumber = calledNumbers[calledNumbers.length - 1];
-          // const timeAgo = lastCalledAt 
-          //   ? `${Math.floor((Date.now() - new Date(lastCalledAt).getTime()) / 1000)} seconds ago`
-          //   : 'unknown time';
-          
-          // statusMessage = `✅ BACKEND AUTO-CALLING IS WORKING! Last number: ${lastNumber} (${timeAgo}), Total: ${calledNumbers.length}`;
-          
-          // If our local state doesn't match, force update
-          if (calledNumbers.length > gameState.calledNumbers.length) {
-            console.log('🔄 Backend has new numbers, forcing refresh...');
-            refreshGame();
-          }
-        } else {
-          statusMessage = '⏳ Backend ready but no numbers called yet (should start soon)';
-        }
-      } else if (status === 'WAITING') {
-        statusMessage = '⏸️ Backend waiting for game to start (needs players)';
-      } else if (status === 'FINISHED') {
-        statusMessage = '🏁 Game finished on backend';
-      }
-      
-      setBackendCallingStatus(statusMessage);
-      setLastFetchTime(new Date());
-      setFetchCount(prev => prev + 1);
-      
-    } catch (error) {
-      console.error('❌ Failed to check backend status:', error);
-      setBackendCallingStatus(`❌ Error checking backend: ${error}`);
-    }
-  }, [id, gameState.calledNumbers.length, refreshGame]);
-
-  // Update called numbers with animation
+  // Enhanced function to update called numbers with animation
   const updateCalledNumbersWithAnimation = useCallback((newNumber: number) => {
     const letter = getNumberLetter(newNumber);
     
+    // Trigger animation
     setIsAnimating(true);
+    
+    // Update current number display with animation
     setCurrentNumberDisplay({ number: newNumber, letter });
-    setCalledNumbersHistory(prev => [...prev, newNumber]);
+    
+    // Update called numbers with letters
     setCalledNumbersWithLetters(prev => [...prev, { number: newNumber, letter }]);
     
+    // Reset animation after 1 second
     if (animationTimeoutRef.current) {
       clearTimeout(animationTimeoutRef.current);
     }
@@ -227,13 +185,63 @@ export default function GamePage() {
     
     console.log(`🔢 New number called: ${letter}${newNumber}`);
     
+    // Auto-mark on card
     if (localBingoCard) {
       autoMarkNumberOnCard(newNumber);
     }
   }, [localBingoCard]);
 
+  // NEW: Function to check backend status directly
+  const checkBackendStatus = useCallback(async () => {
+    try {
+      console.log('🔍 Checking backend status...');
+      const response = await gameAPI.getGame(id);
+      
+      if (response.data.success) {
+        const gameData = response.data.game;
+        const calledNumbers = gameData.calledNumbers || [];
+        const status = gameData.status;
+        
+        setDebugInfo({
+          backendCalledNumbers: calledNumbers.length,
+          frontendCalledNumbers: gameState.calledNumbers.length,
+          gameStatus: status,
+          lastNumber: calledNumbers[calledNumbers.length - 1] || null,
+       
+          syncStatus: calledNumbers.length === gameState.calledNumbers.length ? 'SYNCED' : 'OUT OF SYNC'
+        });
+        
+        let statusMessage = '';
+        if (status === 'ACTIVE') {
+          if (calledNumbers.length > 0) {
+            const lastNumber = calledNumbers[calledNumbers.length - 1];
+            statusMessage = `✅ Backend working! Game ACTIVE, ${calledNumbers.length} numbers called. Last: ${lastNumber}`;
+            
+            // If backend has more numbers than frontend, force update
+            if (calledNumbers.length > gameState.calledNumbers.length) {
+              console.log('🔄 Backend has newer numbers, forcing refresh');
+              refreshGame();
+            }
+          } else {
+            statusMessage = '⚠️ Game ACTIVE but no numbers called yet (should start soon)';
+          }
+        } else if (status === 'WAITING') {
+          statusMessage = '⏳ Game WAITING for players';
+        } else if (status === 'FINISHED') {
+          statusMessage = '🏁 Game FINISHED';
+        }
+        
+        setBackendStatus(statusMessage);
+      }
+    } catch (error) {
+      console.error('❌ Error checking backend:', error);
+      setBackendStatus(`❌ Error: ${error}`);
+    }
+  }, [id, gameState.calledNumbers.length, refreshGame]);
+
   // Update called numbers when gameState changes
   useEffect(() => {
+    // ✅ Access calledNumbers from gameState.calledNumbers
     if (gameState.calledNumbers && gameState.calledNumbers.length > 0) {
       const newCalledNumbers = gameState.calledNumbers;
       
@@ -258,7 +266,7 @@ export default function GamePage() {
     }
   }, [gameState.calledNumbers, updateCalledNumbersWithAnimation]);
 
-  // Auto-mark number on card
+  // Auto-mark number on card when it's called
   const autoMarkNumberOnCard = useCallback((number: number) => {
     if (!localBingoCard || !number) return;
     
@@ -299,6 +307,7 @@ export default function GamePage() {
       setIsMarking(true);
       console.log(`🎯 Attempting to mark number: ${number}`);
       
+      // ✅ Check if number is called using gameState.calledNumbers
       if (!gameState.calledNumbers.includes(number)) {
         console.log(`❌ Number ${number} hasn't been called yet`);
         return;
@@ -317,7 +326,7 @@ export default function GamePage() {
     }
   };
 
-  // Handle manual number calling
+  // Handle manual number calling (for testing/debugging)
   const handleManualCallNumber = async () => {
     try {
       console.log('🎲 Manually calling next number...');
@@ -330,29 +339,13 @@ export default function GamePage() {
     }
   };
 
-  // Handle backend status check
+  // Check backend status manually
   const handleCheckBackendStatus = async () => {
-    await checkBackendCallingStatus();
+    await checkBackendStatus();
   };
 
-  // Start debug interval to check backend status
-  useEffect(() => {
-    if (game?.status === 'ACTIVE') {
-      // Check backend status every 5 seconds
-      debugIntervalRef.current = setInterval(() => {
-        checkBackendCallingStatus();
-      }, 5000);
-      
-      // Initial check
-      checkBackendCallingStatus();
-      
-      return () => {
-        if (debugIntervalRef.current) {
-          clearInterval(debugIntervalRef.current);
-        }
-      };
-    }
-  }, [game?.status, checkBackendCallingStatus]);
+  // Use local card if available, otherwise use the one from useGame hook
+  const displayBingoCard = localBingoCard || gameBingoCard;
 
   // Clean up timeouts on unmount
   useEffect(() => {
@@ -363,32 +356,33 @@ export default function GamePage() {
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
       }
-      if (debugIntervalRef.current) {
-        clearInterval(debugIntervalRef.current);
-      }
     };
   }, []);
 
-  // Use local card if available
-  const displayBingoCard = localBingoCard || gameBingoCard;
-
-  // DEBUG: Enhanced logging
+  // NEW: Debug effect to monitor game state
   useEffect(() => {
-    console.log('🎮 DEBUG - Game State:', {
+    console.log('🎮 GAME DEBUG:', {
+      gameId: id,
       gameStatus: game?.status,
-      calledNumbers: gameState.calledNumbers,
-      currentNumber: gameState.currentNumber,
-      totalCalled: gameState.calledNumbers.length,
-      isLoading,
-      lastFetch: lastFetchTime?.toLocaleTimeString()
+      frontendCalledNumbers: gameState.calledNumbers.length,
+      frontendCurrentNumber: gameState.currentNumber,
+      backendStatus: backendStatus,
+      isLoading: isLoading,
+      lastCalled: lastCalledNumber
     });
     
-    // If game is ACTIVE but no numbers, check backend
+    // If game is active but we have no numbers, check backend
     if (game?.status === 'ACTIVE' && gameState.calledNumbers.length === 0) {
-      console.log('⚠️ Game is ACTIVE but no called numbers. Checking backend...');
-      setTimeout(() => checkBackendCallingStatus(), 1000);
+      console.log('⚠️ Game ACTIVE but no numbers on frontend. Checking backend...');
+      setTimeout(checkBackendStatus, 1000);
     }
-  }, [game?.status, gameState.calledNumbers, gameState.currentNumber, isLoading, lastFetchTime]);
+    
+    // Auto-check backend every 10 seconds in development
+    if (process.env.NODE_ENV === 'development' && game?.status === 'ACTIVE') {
+      const interval = setInterval(checkBackendStatus, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [id, game?.status, gameState.calledNumbers, gameState.currentNumber, backendStatus, isLoading, checkBackendStatus]);
 
   if (isLoading || isLoadingCard) {
     return (
@@ -482,7 +476,7 @@ export default function GamePage() {
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        {/* Left: Called Numbers */}
+        {/* Left: Called Numbers - More space (col-span-2) */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 h-full flex flex-col">
             <div className="flex justify-between items-center mb-4">
@@ -494,14 +488,14 @@ export default function GamePage() {
                 <button
                   onClick={handleCheckBackendStatus}
                   className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded hover:bg-blue-500/30 transition-all"
-                  title="Check backend auto-calling status"
+                  title="Check backend status"
                 >
-                  🔍 Check Backend
+                  🔍 Backend
                 </button>
               </div>
             </div>
             
-            {/* Current Number Display */}
+            {/* Current Number Display - Enhanced with Animation */}
             <div className="mb-5 p-4 bg-gradient-to-r from-purple-500/30 to-blue-500/30 rounded-xl border border-white/30 shadow-lg">
               <p className="text-white/90 text-sm mb-2 text-center">Current Number</p>
               <div className={`flex items-center justify-center mb-2 transition-all duration-300 ${
@@ -525,6 +519,7 @@ export default function GamePage() {
                     </div>
                   </>
                 ) : gameState.currentNumber ? (
+                  // Show current number from gameState if available
                   <>
                     <div className="mr-4">
                       <span className="text-6xl font-bold text-white">
@@ -543,9 +538,15 @@ export default function GamePage() {
                       No numbers called yet
                     </span>
                     {game.status === 'ACTIVE' && (
-                      <p className="text-white/70 text-sm mt-2">
-                        Backend auto-calling should start soon...
-                      </p>
+                      <div className="mt-2">
+                        <p className="text-white/70 text-sm">Backend auto-calling should start soon...</p>
+                        <button
+                          onClick={checkBackendStatus}
+                          className="mt-2 text-xs bg-yellow-500/20 text-yellow-300 px-3 py-1 rounded hover:bg-yellow-500/30"
+                        >
+                          Check Backend Now
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -553,40 +554,27 @@ export default function GamePage() {
               
               {/* Backend Status Display */}
               <div className="mt-4 p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-white/80 text-sm font-medium">Backend Auto-Calling Status:</p>
-                  <span className="text-white/60 text-xs">
-                    Check #{fetchCount} • {lastFetchTime ? lastFetchTime.toLocaleTimeString() : 'Never'}
-                  </span>
-                </div>
+                <p className="text-white/80 text-sm mb-2 font-medium">Backend Status:</p>
                 <p className={`text-sm ${
-                  backendCallingStatus.includes('✅') ? 'text-green-300' :
-                  backendCallingStatus.includes('⚠️') ? 'text-yellow-300' :
-                  backendCallingStatus.includes('❌') ? 'text-red-300' :
+                  backendStatus.includes('✅') ? 'text-green-300' :
+                  backendStatus.includes('⚠️') ? 'text-yellow-300' :
+                  backendStatus.includes('❌') ? 'text-red-300' :
                   'text-white/70'
                 }`}>
-                  {backendCallingStatus}
+                  {backendStatus}
                 </p>
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={handleCheckBackendStatus}
-                    className="text-xs bg-blue-500/30 text-blue-300 px-3 py-1 rounded hover:bg-blue-500/40 transition-all"
-                  >
-                    Refresh Status
-                  </button>
-                  <button
-                    onClick={handleManualCallNumber}
-                    className="text-xs bg-yellow-500/30 text-yellow-300 px-3 py-1 rounded hover:bg-yellow-500/40 transition-all"
-                  >
-                    🎲 Call Number (Test)
-                  </button>
-                  <button
-                    onClick={refreshGame}
-                    className="text-xs bg-green-500/30 text-green-300 px-3 py-1 rounded hover:bg-green-500/40 transition-all"
-                  >
-                    🔄 Force Refresh
-                  </button>
-                </div>
+                {process.env.NODE_ENV === 'development' && (
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-white/60">Backend called:</span>
+                      <span className="text-white ml-1">{debugInfo.backendCalledNumbers || 0}</span>
+                    </div>
+                    <div>
+                      <span className="text-white/60">Frontend has:</span>
+                      <span className="text-white ml-1">{gameState.calledNumbers.length}</span>
+                    </div>
+                  </div>
+                )}
               </div>
               
               <p className="text-white/70 text-xs text-center mt-3">
@@ -598,9 +586,10 @@ export default function GamePage() {
               </p>
             </div>
             
-            {/* Called Numbers Grid */}
+            {/* Called Numbers Grid - WITH LETTERS */}
             <div className="grid grid-cols-10 gap-1.5 flex-grow overflow-y-auto pr-1 pb-2 max-h-[400px]">
               {Array.from({ length: 75 }, (_, i) => i + 1).map((number: number) => {
+                // ✅ Access called numbers from gameState.calledNumbers
                 const isCalled = gameState.calledNumbers.includes(number);
                 const isCurrent = number === (currentNumberDisplay.number || gameState.currentNumber);
                 const letter = getNumberLetter(number);
@@ -625,6 +614,7 @@ export default function GamePage() {
                       `${letter}${number} - Not called yet`
                     }
                   >
+                    {/* Letter Badge */}
                     <div className={`
                       absolute top-1 left-1 text-[9px] font-bold px-1 py-0.5 rounded
                       ${isCurrent 
@@ -637,6 +627,7 @@ export default function GamePage() {
                       {letter}
                     </div>
                     
+                    {/* Number */}
                     <span className={`
                       text-sm font-bold mt-1
                       ${isCurrent ? 'text-white' : isCalled ? 'text-white' : 'text-white/70'}
@@ -644,12 +635,14 @@ export default function GamePage() {
                       {number}
                     </span>
                     
+                    {/* Called Indicator */}
                     {isCalled && (
                       <div className="absolute bottom-1 right-1 text-[8px] opacity-90">
                         ✓
                       </div>
                     )}
                     
+                    {/* Hover Tooltip */}
                     <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                       {letter}{number}
                     </div>
@@ -658,7 +651,7 @@ export default function GamePage() {
               })}
             </div>
             
-            {/* Recent Called Numbers */}
+            {/* Recent Called Numbers with Letters */}
             {calledNumbersWithLetters.length > 0 && (
               <div className="mt-4 pt-4 border-t border-white/20">
                 <div className="flex justify-between items-center mb-3">
@@ -716,16 +709,33 @@ export default function GamePage() {
                   }`}></div>
                   <span className="text-white/70 text-sm">
                     {game.status === 'ACTIVE' 
-                      ? `Frontend polling: ${fetchCount} checks, ${gameState.calledNumbers.length} numbers` 
+                      ? `Auto-calling active • ${gameState.calledNumbers.length} numbers called` 
                       : 'Auto-call paused (game not active)'}
                   </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={refreshGame}
+                    className="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded hover:bg-purple-500/30 transition-all"
+                    title="Force refresh game state"
+                  >
+                    🔄 Refresh
+                  </button>
+                  {process.env.NODE_ENV === 'development' && (
+                    <button
+                      onClick={handleManualCallNumber}
+                      className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded hover:bg-yellow-500/30 transition-all"
+                    >
+                      🎲 Call #
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right: Bingo Card */}
+        {/* Right: Bingo Card - Less space (col-span-2) */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <div className="flex justify-between items-center mb-4">
@@ -744,6 +754,7 @@ export default function GamePage() {
             
             {displayBingoCard ? (
               <div className="mb-4">
+                {/* BINGO Header */}
                 <div className="grid grid-cols-5 gap-1 mb-2">
                   {['B', 'I', 'N', 'G', 'O'].map((letter) => (
                     <div 
@@ -755,11 +766,13 @@ export default function GamePage() {
                   ))}
                 </div>
                 
+                {/* Card Numbers */}
                 <div className="grid grid-cols-5 gap-1">
                   {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
                     row.map((number: number | string, colIndex: number) => {
                       const flatIndex = rowIndex * 5 + colIndex;
                       const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
+                      // ✅ Check if number is called using gameState.calledNumbers
                       const isCalled = gameState.calledNumbers.includes(number as number);
                       const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
@@ -807,6 +820,7 @@ export default function GamePage() {
                   )}
                 </div>
                 
+                {/* Compact Stats Row */}
                 <div className="mt-3 flex items-center justify-between text-white/70 text-sm">
                   <div className="flex items-center gap-4">
                     <div className="flex items-center gap-1.5">
@@ -837,22 +851,33 @@ export default function GamePage() {
             )}
           </div>
 
-          {/* Debug Panel - Always show in development */}
+          {/* Debug Panel - Always visible in development */}
           <div className="bg-yellow-500/10 backdrop-blur-lg rounded-xl p-4 mt-4 border border-yellow-500/20">
-            <h4 className="text-yellow-300 font-bold mb-3 text-sm">🚨 Backend Auto-Calling Debug</h4>
+            <h4 className="text-yellow-300 font-bold mb-3 text-sm">🚨 Debug Panel</h4>
             
             <div className="space-y-3">
-              <div>
-                <p className="text-yellow-200/70 text-xs mb-1">Game Status Check:</p>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-black/20 p-2 rounded">
-                    <p className="text-yellow-200/70 text-[10px]">Frontend Status:</p>
-                    <p className="text-yellow-200">{game?.status || 'Unknown'}</p>
-                  </div>
-                  <div className="bg-black/20 p-2 rounded">
-                    <p className="text-yellow-200/70 text-[10px]">Called Numbers:</p>
-                    <p className="text-yellow-200">{gameState.calledNumbers.length}</p>
-                  </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-black/20 p-2 rounded">
+                  <p className="text-yellow-200/70 text-[10px]">Frontend Called:</p>
+                  <p className="text-yellow-200">{gameState.calledNumbers.length}</p>
+                </div>
+                <div className="bg-black/20 p-2 rounded">
+                  <p className="text-yellow-200/70 text-[10px]">Current Number:</p>
+                  <p className="text-yellow-200">{gameState.currentNumber || 'None'}</p>
+                </div>
+                <div className="bg-black/20 p-2 rounded">
+                  <p className="text-yellow-200/70 text-[10px]">Game Status:</p>
+                  <p className={`text-yellow-200 ${
+                    game.status === 'ACTIVE' ? 'text-green-300' :
+                    game.status === 'WAITING' ? 'text-yellow-300' :
+                    'text-red-300'
+                  }`}>
+                    {game.status}
+                  </p>
+                </div>
+                <div className="bg-black/20 p-2 rounded">
+                  <p className="text-yellow-200/70 text-[10px]">Polling:</p>
+                  <p className="text-yellow-200">Active</p>
                 </div>
               </div>
               
@@ -860,7 +885,13 @@ export default function GamePage() {
                 <p className="text-yellow-200/70 text-xs mb-1">Actions:</p>
                 <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={handleCheckBackendStatus}
+                    onClick={refreshGame}
+                    className="px-3 py-1.5 bg-purple-500/20 text-purple-300 rounded text-xs hover:bg-purple-500/30"
+                  >
+                    🔄 Force Refresh
+                  </button>
+                  <button
+                    onClick={checkBackendStatus}
                     className="px-3 py-1.5 bg-blue-500/20 text-blue-300 rounded text-xs hover:bg-blue-500/30"
                   >
                     🔍 Check Backend
@@ -869,40 +900,39 @@ export default function GamePage() {
                     onClick={handleManualCallNumber}
                     className="px-3 py-1.5 bg-yellow-500/20 text-yellow-300 rounded text-xs hover:bg-yellow-500/30"
                   >
-                    🎲 Test Call #
-                  </button>
-                  <button
-                    onClick={refreshGame}
-                    className="px-3 py-1.5 bg-green-500/20 text-green-300 rounded text-xs hover:bg-green-500/30"
-                  >
-                    🔄 Force Refresh
+                    🎲 Manual Call
                   </button>
                   <button
                     onClick={() => {
-                      console.log('🎮 Full Game State:', game);
-                      console.log('🎮 GameState:', gameState);
-                      console.log('🎮 Backend Status:', backendCallingStatus);
+                      console.log('🎮 Full Debug Info:', {
+                        gameState,
+                        game,
+                        debugInfo,
+                        backendStatus
+                      });
                     }}
-                    className="px-3 py-1.5 bg-purple-500/20 text-purple-300 rounded text-xs hover:bg-purple-500/30"
+                    className="px-3 py-1.5 bg-green-500/20 text-green-300 rounded text-xs hover:bg-green-500/30"
                   >
                     📋 Log State
                   </button>
                 </div>
               </div>
               
-              <div>
-                <p className="text-yellow-200/70 text-xs mb-1">Diagnostics:</p>
-                <div className="bg-black/30 p-2 rounded text-xs">
-                  <p className="text-yellow-200/70 mb-1">Backend Status:</p>
-                  <p className="text-yellow-200 text-xs break-words">{backendCallingStatus}</p>
+              {process.env.NODE_ENV === 'development' && (
+                <div>
+                  <p className="text-yellow-200/70 text-xs mb-1">Debug Info:</p>
+                  <div className="bg-black/30 p-2 rounded text-xs overflow-auto max-h-24">
+                    <pre className="text-yellow-200 text-xs">
+                      {JSON.stringify({
+                        calledNumbers: gameState.calledNumbers.slice(-5),
+                        syncStatus: debugInfo.syncStatus,
+                        backendTotal: debugInfo.backendCalledNumbers,
+                        frontendTotal: gameState.calledNumbers.length
+                      }, null, 2)}
+                    </pre>
+                  </div>
                 </div>
-              </div>
-              
-              <div className="text-xs">
-                <p className="text-yellow-200/70">Last Check: {lastFetchTime ? lastFetchTime.toLocaleTimeString() : 'Never'}</p>
-                <p className="text-yellow-200/70">Total Checks: {fetchCount}</p>
-                <p className="text-yellow-200/70">Numbers in State: {gameState.calledNumbers.slice(-5).join(', ')}</p>
-              </div>
+              )}
             </div>
           </div>
         </div>
