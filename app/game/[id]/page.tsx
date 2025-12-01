@@ -1,10 +1,19 @@
-// app/game/[id]/page.tsx - UPDATED WITH ENHANCED NUMBER DISPLAY
+// app/game/[id]/page.tsx - COMPLETE ENHANCED VERSION
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
+
+// Interface for CallNumberResponse from API
+interface CallNumberResponse {
+  success: boolean;
+  number: number;
+  calledNumbers: number[];
+  totalCalled: number;
+  letter?: string;
+}
 
 interface CardData {
   cardNumber: number;
@@ -40,23 +49,18 @@ export default function GamePage() {
   const [isLoadingCard, setIsLoadingCard] = useState<boolean>(true);
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
-  const [lastCalledNumber, setLastCalledNumber] = useState<number | null>(null);
-  const [calledNumbersHistory, setCalledNumbersHistory] = useState<number[]>([]);
-  const [currentNumberDisplay, setCurrentNumberDisplay] = useState<{
-    number: number | null;
-    letter: string | null;
-  }>({ number: null, letter: null });
   
-  // NEW: Add state for called numbers with letters
-  const [calledNumbersWithLetters, setCalledNumbersWithLetters] = useState<
-    Array<{ number: number; letter: string }>
-  >([]);
+  // NEW: Enhanced state for called numbers
+  const [currentCalledNumber, setCurrentCalledNumber] = useState<{
+    number: number;
+    letter: string;
+  } | null>(null);
   
-  // NEW: Add state for animation
+  const [allCalledNumbers, setAllCalledNumbers] = useState<number[]>([]);
+  const [isCallingNumber, setIsCallingNumber] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   
   // Refs for tracking
-  const calledNumbersRef = useRef<number[]>([]);
   const autoMarkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -155,75 +159,82 @@ export default function GamePage() {
     return 'O';
   };
 
-  // NEW: Enhanced function to update called numbers with animation
-  const updateCalledNumbersWithAnimation = useCallback((newNumber: number) => {
-    const letter = getNumberLetter(newNumber);
-    
-    // Trigger animation
-    setIsAnimating(true);
-    
-    // Update current number display with animation
-    setCurrentNumberDisplay({ number: newNumber, letter });
-    
-    // Add to called numbers history
-    setCalledNumbersHistory(prev => [...prev, newNumber]);
-    
-    // Update called numbers with letters
-    setCalledNumbersWithLetters(prev => [...prev, { number: newNumber, letter }]);
-    
-    // Reset animation after 1 second
-    if (animationTimeoutRef.current) {
-      clearTimeout(animationTimeoutRef.current);
-    }
-    
-    animationTimeoutRef.current = setTimeout(() => {
-      setIsAnimating(false);
-    }, 1000);
-    
-    console.log(`🔢 New number called: ${letter}${newNumber}`);
-    
-    // Auto-mark on card
-    if (localBingoCard) {
-      autoMarkNumberOnCard(newNumber);
-    }
-  }, [localBingoCard]);
-
-  // Update called numbers when gameState changes
+  // Load existing called numbers when game loads
   useEffect(() => {
-    if (gameState.calledNumbers && gameState.calledNumbers.length > 0) {
-      const newCalledNumbers = gameState.calledNumbers;
+    if (game && game.numbersCalled && game.numbersCalled.length > 0) {
+      // Set all called numbers
+      setAllCalledNumbers(game.numbersCalled);
       
-      // Check if there are new numbers
-      if (newCalledNumbers.length > calledNumbersRef.current.length) {
-        const latestNumber = newCalledNumbers[newCalledNumbers.length - 1];
-        
-        if (latestNumber && latestNumber !== lastCalledNumber) {
-          setLastCalledNumber(latestNumber);
-          updateCalledNumbersWithAnimation(latestNumber);
-        }
-        
-        // Update all called numbers with letters
-        const numbersWithLetters = newCalledNumbers.map(num => ({
-          number: num,
-          letter: getNumberLetter(num)
-        }));
-        setCalledNumbersWithLetters(numbersWithLetters);
+      // Set current called number (last one)
+      const lastNumber = game.numbersCalled[game.numbersCalled.length - 1];
+      if (lastNumber) {
+        setCurrentCalledNumber({
+          number: lastNumber,
+          letter: getNumberLetter(lastNumber)
+        });
       }
       
-      calledNumbersRef.current = newCalledNumbers;
+      console.log(`📊 Loaded ${game.numbersCalled.length} existing called numbers`);
     }
-  }, [gameState.calledNumbers, updateCalledNumbersWithAnimation]);
+  }, [game]);
+
+  // NEW: Function to call next number
+  const handleCallNumber = async () => {
+    if (isCallingNumber || !id) return;
+    
+    try {
+      setIsCallingNumber(true);
+      console.log('🎲 Calling next number...');
+      
+      const response = await gameAPI.callNumber(id);
+      const data: CallNumberResponse = response.data;
+      
+      if (data.success) {
+        // Update current called number with animation
+        const letter = getNumberLetter(data.number);
+        setCurrentCalledNumber({
+          number: data.number,
+          letter: letter
+        });
+        
+        // Update all called numbers
+        setAllCalledNumbers(data.calledNumbers);
+        
+        // Trigger animation
+        setIsAnimating(true);
+        
+        // Auto-mark on user's card if they have one
+        if (localBingoCard) {
+          autoMarkNumberOnCard(data.number);
+        }
+        
+        console.log(`✅ Called number: ${letter}${data.number}`);
+        
+        // Reset animation after 1.5 seconds
+        setTimeout(() => {
+          setIsAnimating(false);
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('❌ Failed to call number:', error);
+    } finally {
+      setIsCallingNumber(false);
+    }
+  };
 
   // Auto-mark number on card when it's called
   const autoMarkNumberOnCard = useCallback((number: number) => {
     if (!localBingoCard || !number) return;
     
+    console.log(`🎯 Auto-marking ${number} on bingo card...`);
+    
     if (autoMarkTimeoutRef.current) {
       clearTimeout(autoMarkTimeoutRef.current);
     }
     
-    autoMarkTimeoutRef.current = setTimeout(async () => {
+    autoMarkTimeoutRef.current = setTimeout(() => {
       try {
+        // Find position in bingo card
         const flatNumbers = localBingoCard.numbers.flat();
         const position = flatNumbers.indexOf(number);
         
@@ -238,8 +249,9 @@ export default function GamePage() {
             };
           });
           
+          // Also mark via API if game is active
           if (game?.status === 'ACTIVE') {
-            await handleMarkNumber(number);
+            handleMarkNumber(number);
           }
         }
       } catch (error) {
@@ -249,16 +261,11 @@ export default function GamePage() {
   }, [localBingoCard, game]);
 
   const handleMarkNumber = async (number: number) => {
-    if (isMarking) return;
+    if (isMarking || !allCalledNumbers.includes(number)) return;
     
     try {
       setIsMarking(true);
       console.log(`🎯 Attempting to mark number: ${number}`);
-      
-      if (!gameState.calledNumbers.includes(number)) {
-        console.log(`❌ Number ${number} hasn't been called yet`);
-        return;
-      }
       
       const success = await markNumber(number);
       
@@ -273,30 +280,6 @@ export default function GamePage() {
     }
   };
 
-  // Handle manual number calling (for testing/debugging)
-  const handleManualCallNumber = async () => {
-    try {
-      console.log('🎲 Manually calling next number...');
-      const number = await manualCallNumber();
-      if (number) {
-        updateCalledNumbersWithAnimation(number);
-      }
-    } catch (error) {
-      console.error('Failed to manually call number:', error);
-    }
-  };
-
-  // NEW: Function to clear all called numbers (for testing)
-  const handleClearCalledNumbers = () => {
-    setCalledNumbersHistory([]);
-    setCalledNumbersWithLetters([]);
-    setCurrentNumberDisplay({ number: null, letter: null });
-    console.log('🧹 Cleared called numbers display');
-  };
-
-  // Use local card if available, otherwise use the one from useGame hook
-  const displayBingoCard = localBingoCard || gameBingoCard;
-
   // Clean up timeouts on unmount
   useEffect(() => {
     return () => {
@@ -308,6 +291,9 @@ export default function GamePage() {
       }
     };
   }, []);
+
+  // Use local card if available, otherwise use the one from useGame hook
+  const displayBingoCard = localBingoCard || gameBingoCard;
 
   if (isLoading || isLoadingCard) {
     return (
@@ -368,7 +354,7 @@ export default function GamePage() {
             <p className="text-white/60 text-xs">Your Card</p>
           </div>
           <div>
-            <p className="text-white font-bold text-lg">{calledNumbersHistory.length}/75</p>
+            <p className="text-white font-bold text-lg">{allCalledNumbers.length}/75</p>
             <p className="text-white/60 text-xs">Called</p>
           </div>
         </div>
@@ -408,60 +394,49 @@ export default function GamePage() {
               <h3 className="text-white font-bold text-lg">Called Numbers</h3>
               <div className="flex items-center gap-2">
                 <span className="text-white/70 text-sm bg-white/10 px-3 py-1 rounded-full">
-                  {calledNumbersHistory.length}/75
+                  {allCalledNumbers.length}/75
                 </span>
-                {process.env.NODE_ENV === 'development' && (
-                  <button
-                    onClick={handleClearCalledNumbers}
-                    className="text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded hover:bg-red-500/30 transition-all"
-                  >
-                    Clear
-                  </button>
-                )}
               </div>
             </div>
             
             {/* Current Number Display - Enhanced with Animation */}
- 
-<div className={`flex items-center justify-center mb-2 transition-all duration-300 ${
-  isAnimating ? 'scale-110' : 'scale-100'
-}`}>
-  {currentNumberDisplay.number ? (
-    <>
-      <div className={`mr-4 transition-all duration-500 ${
-        isAnimating ? 'animate-pulse' : ''
-      }`}>
-        <span className="text-6xl font-bold text-white">
-          {currentNumberDisplay.letter}
-        </span>
-      </div>
-      <div className={`transition-all duration-500 ${
-        isAnimating ? 'animate-bounce' : ''
-      }`}>
-        <span className="text-7xl font-bold text-yellow-300 drop-shadow-lg">
-          {currentNumberDisplay.number}
-        </span>
-      </div>
-    </>
-  ) : (
-    <div className="text-center py-4">
-      <span className="text-3xl font-bold text-white/50">
-       {gameState.currentNumber} Called
-      </span>
-      {game.status === 'ACTIVE' && (
-        <p className="text-white/70 text-sm mt-2">
-          Numbers will appear automatically...
-        </p>
-      )}
-    </div>
-  )}
-</div>
+            <div className={`flex items-center justify-center mb-6 transition-all duration-300 ${isAnimating ? 'scale-110' : 'scale-100'}`}>
+              {currentCalledNumber ? (
+                <div className="text-center">
+                  {/* Current Number with Animation */}
+                  <div className={`transition-all duration-500 ${isAnimating ? 'animate-bounce' : ''}`}>
+                    <div className="flex items-center justify-center">
+                      <span className="text-5xl font-bold text-white mr-3">
+                        {currentCalledNumber.letter}
+                      </span>
+                      <span className="text-6xl font-bold text-yellow-300 drop-shadow-lg">
+                        {currentCalledNumber.number}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Called Count */}
+                  <div className="mt-2 text-white/70 text-sm">
+                    {allCalledNumbers.length} of 75 numbers called
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-white/50">
+                    No number called yet
+                  </div>
+                  <div className="mt-2 text-white/70 text-sm">
+                    Waiting for first number...
+                  </div>
+                </div>
+              )}
+            </div>
             
-            {/* Called Numbers Grid - WITH LETTERS */}
+            {/* Called Numbers Grid - 75 Numbers with Red Highlighting */}
             <div className="grid grid-cols-10 gap-1.5 flex-grow overflow-y-auto pr-1 pb-2 max-h-[400px]">
               {Array.from({ length: 75 }, (_, i) => i + 1).map((number: number) => {
-                const isCalled = gameState.calledNumbers.includes(number);
-                const isCurrent = number === currentNumberDisplay.number;
+                const isCalled = allCalledNumbers.includes(number);
+                const isCurrent = currentCalledNumber?.number === number;
                 const letter = getNumberLetter(number);
                 
                 return (
@@ -469,18 +444,18 @@ export default function GamePage() {
                     key={number}
                     className={`
                       aspect-square rounded-lg flex flex-col items-center justify-center 
-                      transition-all duration-200 cursor-pointer relative group
+                      transition-all duration-300 cursor-pointer relative group
                       ${isCurrent
-                        ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-2 ring-yellow-400 shadow-lg'
+                        ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-2 ring-yellow-400 shadow-lg animate-pulse'
                         : isCalled
-                        ? 'bg-gradient-to-br from-green-500/90 to-emerald-600/90 hover:scale-105 hover:shadow-md'
+                        ? 'bg-gradient-to-br from-red-500 to-pink-600 hover:scale-105 hover:shadow-md'
                         : 'bg-white/15 hover:bg-white/25'
                       }
                     `}
                     onClick={() => isCalled && handleMarkNumber(number)}
                     title={
                       isCurrent ? `Current: ${letter}${number}` :
-                      isCalled ? `Click to mark ${letter}${number}` :
+                      isCalled ? `Called: ${letter}${number} - Click to mark` :
                       `${letter}${number} - Not called yet`
                     }
                   >
@@ -506,62 +481,72 @@ export default function GamePage() {
                     </span>
                     
                     {/* Called Indicator */}
-                    {isCalled && (
+                    {isCalled && !isCurrent && (
                       <div className="absolute bottom-1 right-1 text-[8px] opacity-90">
                         ✓
                       </div>
                     )}
                     
+                    {/* Current Indicator */}
+                    {isCurrent && (
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center animate-ping">
+                        <div className="w-2 h-2 bg-yellow-300 rounded-full"></div>
+                      </div>
+                    )}
+                    
                     {/* Hover Tooltip */}
                     <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                      {letter}{number}
+                      {letter}{number} {isCurrent ? '(Current)' : isCalled ? '(Called)' : '(Not called)'}
                     </div>
                   </div>
                 );
               })}
             </div>
             
-            {/* Recent Called Numbers with Letters */}
-            {calledNumbersWithLetters.length > 0 && (
+            {/* Recent Called Numbers */}
+            {allCalledNumbers.length > 0 && (
               <div className="mt-4 pt-4 border-t border-white/20">
                 <div className="flex justify-between items-center mb-3">
                   <p className="text-white/80 text-sm font-medium">Recently Called:</p>
                   <span className="text-white/60 text-xs">
-                    Last {Math.min(calledNumbersWithLetters.length, 15)} of {calledNumbersWithLetters.length}
+                    Last {Math.min(allCalledNumbers.length, 10)} of {allCalledNumbers.length}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {[...calledNumbersWithLetters].reverse().slice(0, 15).map((item, index) => {
+                  {allCalledNumbers.slice(-10).reverse().map((number, index) => {
+                    const letter = getNumberLetter(number);
                     const isLatest = index === 0;
+                    
                     return (
                       <div 
-                        key={`recent-${item.number}-${index}`}
+                        key={`recent-${number}-${index}`}
                         className={`
-                          flex flex-col items-center justify-center px-3 py-2 rounded-lg 
-                          transition-all hover:scale-105 min-w-[50px]
+                          flex flex-col items-center justify-center px-2 py-1.5 rounded-lg 
+                          transition-all hover:scale-105 min-w-[45px] cursor-pointer
                           ${isLatest 
-                            ? 'bg-gradient-to-br from-yellow-500/30 to-orange-500/30 ring-1 ring-yellow-400/50' 
-                            : 'bg-white/15'
+                            ? 'bg-gradient-to-br from-yellow-500/40 to-orange-500/40 ring-1 ring-yellow-400/50' 
+                            : 'bg-white/15 hover:bg-white/25'
                           }
                         `}
-                        onClick={() => handleMarkNumber(item.number)}
+                        onClick={() => handleMarkNumber(number)}
+                        title={`Click to mark ${letter}${number}`}
                       >
                         <div className="flex items-center gap-1">
                           <span className={`
                             text-xs font-bold
                             ${isLatest ? 'text-yellow-300' : 'text-white/70'}
                           `}>
-                            {item.letter}
+                            {letter}
                           </span>
                           <span className={`
                             text-base font-bold
                             ${isLatest ? 'text-yellow-300' : 'text-white'}
                           `}>
-                            {item.number}
+                            {number}
                           </span>
                         </div>
                         {isLatest && (
-                          <span className="text-[10px] text-yellow-200/70 mt-1">LATEST</span>
+                          <span className="text-[9px] text-yellow-200/70 mt-0.5">LATEST</span>
                         )}
                       </div>
                     );
@@ -570,34 +555,42 @@ export default function GamePage() {
               </div>
             )}
             
-            {/* Auto-call Status */}
-            <div className="mt-4 pt-4 border-t border-white/20">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    game.status === 'ACTIVE' ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
-                  }`}></div>
-                  <span className="text-white/70 text-sm">
-                    {game.status === 'ACTIVE' 
-                      ? 'Auto-calling numbers every 5-8 seconds' 
-                      : 'Auto-call paused (game not active)'}
-                  </span>
-                </div>
-                {process.env.NODE_ENV === 'development' && (
-                  <button
-                    onClick={handleManualCallNumber}
-                    className="text-sm bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-3 py-1.5 rounded hover:from-purple-500/40 hover:to-blue-500/40 transition-all"
-                  >
-                    🎲 Call Next Number
-                  </button>
-                )}
+            {/* Call Number Button */}
+            {game.status === 'ACTIVE' && (
+              <div className="mt-4 pt-4 border-t border-white/20">
+                <button
+                  onClick={handleCallNumber}
+                  disabled={isCallingNumber}
+                  className={`
+                    w-full flex items-center justify-center gap-2 py-3 rounded-lg font-medium
+                    transition-all duration-300
+                    ${isCallingNumber 
+                      ? 'bg-gradient-to-r from-gray-600 to-gray-700 text-gray-300 cursor-not-allowed' 
+                      : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white hover:shadow-lg'
+                    }
+                  `}
+                >
+                  {isCallingNumber ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Calling Next Number...
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xl">🎲</span>
+                      Call Next Number
+                    </>
+                  )}
+                </button>
+                <p className="text-white/60 text-xs text-center mt-2">
+                  Click to call the next BINGO number
+                </p>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
         {/* Right: Bingo Card - Less space (col-span-2) */}
-        {/* ... (rest of your bingo card code remains the same) ... */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <div className="flex justify-between items-center mb-4">
@@ -634,7 +627,7 @@ export default function GamePage() {
                     row.map((number: number | string, colIndex: number) => {
                       const flatIndex = rowIndex * 5 + colIndex;
                       const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
-                      const isCalled = gameState.calledNumbers.includes(number as number);
+                      const isCalled = allCalledNumbers.includes(number as number);
                       const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
                       return (
@@ -734,7 +727,7 @@ export default function GamePage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/70 text-xs">Called:</span>
-                  <span className="text-white text-xs font-medium">{calledNumbersHistory.length}/75</span>
+                  <span className="text-white text-xs font-medium">{allCalledNumbers.length}/75</span>
                 </div>
               </div>
             </div>
@@ -747,17 +740,17 @@ export default function GamePage() {
                   onClick={() => router.refresh()}
                   className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all"
                 >
-                  ↻ Refresh
+                  ↻ Refresh Game
                 </button>
                 <button
                   onClick={() => router.push('/')}
                   className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all"
                 >
-                  ← Lobby
+                  ← Back to Lobby
                 </button>
                 {process.env.NODE_ENV === 'development' && (
                   <button
-                    onClick={handleManualCallNumber}
+                    onClick={handleCallNumber}
                     className="w-full bg-yellow-500/20 text-yellow-300 py-1.5 rounded text-xs hover:bg-yellow-500/30 transition-all"
                   >
                     🎲 Call # (Dev)
@@ -788,8 +781,22 @@ export default function GamePage() {
               <div className="mt-2">
                 <p className="text-yellow-200/70 text-[10px]">Called Numbers:</p>
                 <p className="text-yellow-200 text-xs truncate">
-                  {calledNumbersHistory.slice(-8).join(', ')}
+                  {allCalledNumbers.slice(-8).join(', ') || 'None'}
                 </p>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleCallNumber}
+                  className="bg-yellow-500/20 text-yellow-300 py-1 rounded text-xs hover:bg-yellow-500/30 transition-all"
+                >
+                  Test Call #
+                </button>
+                <button
+                  onClick={() => setAllCalledNumbers([])}
+                  className="bg-red-500/20 text-red-300 py-1 rounded text-xs hover:bg-red-500/30 transition-all"
+                >
+                  Clear Called #
+                </button>
               </div>
             </div>
           )}
