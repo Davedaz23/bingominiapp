@@ -225,42 +225,42 @@ export const useGame = (gameId: string): UseGameReturn => {
   }, [gameId, fetchBingoCard, updateGameState]);
 
   // Adaptive polling system with error-based backoff (internal function)
-  const startPolling = useCallback(() => {
-    // Clear existing interval
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
+ // In useGame.ts - Update the startPolling function
+const startPolling = useCallback(() => {
+  // Clear existing interval
+  if (pollingIntervalRef.current) {
+    clearInterval(pollingIntervalRef.current);
+    pollingIntervalRef.current = null;
+  }
 
-    const currentGame = gameRef.current;
-    if (!currentGame) return;
+  const currentGame = gameRef.current;
+  if (!currentGame) return;
 
-    // Determine polling interval based on game status, activity, and error count
-    let baseInterval = 10000; // Default: 10 seconds
-    
-    if (currentGame.status === 'ACTIVE') {
-      // Faster polling for active games
-      baseInterval = 5000; // 5 seconds for active games
-    } else if (currentGame.status === 'WAITING') {
-      baseInterval = 8000; // 8 seconds for waiting games
-    } else if (currentGame.status === 'FINISHED') {
-      baseInterval = 15000; // 15 seconds for finished games
-    }
+  // DETERMINE POLLING INTERVAL BASED ON GAME STATUS
+  let baseInterval = 10000; // Default: 10 seconds
+  
+  if (currentGame.status === 'ACTIVE') {
+    // MUCH FASTER POLLING FOR ACTIVE GAMES - to see called numbers
+    baseInterval = 2000; // 2 seconds for active games
+  } else if (currentGame.status === 'WAITING') {
+    baseInterval = 8000; // 8 seconds for waiting games
+  } else if (currentGame.status === 'FINISHED') {
+    baseInterval = 15000; // 15 seconds for finished games
+  }
 
-    // Apply error-based backoff
-    let finalInterval = baseInterval;
-    if (consecutiveErrorsRef.current > 0) {
-      finalInterval = Math.min(baseInterval * Math.pow(2, consecutiveErrorsRef.current), 60000); // Max 60 seconds
-      console.log(`⚠️ Applying error backoff: ${finalInterval}ms due to ${consecutiveErrorsRef.current} errors`);
-    }
+  // Apply error-based backoff
+  let finalInterval = baseInterval;
+  if (consecutiveErrorsRef.current > 0) {
+    finalInterval = Math.min(baseInterval * Math.pow(2, consecutiveErrorsRef.current), 60000);
+  }
 
-    console.log(`🔄 Starting polling every ${finalInterval}ms for game status: ${currentGame.status}`);
-    
-    pollingIntervalRef.current = setInterval(() => {
-      fetchGame(true);
-    }, finalInterval);
+  console.log(`🔄 Starting polling every ${finalInterval}ms for game status: ${currentGame.status}`);
+  
+  pollingIntervalRef.current = setInterval(() => {
+    fetchGame(true);
+  }, finalInterval);
 
-  }, [fetchGame]);
+}, [fetchGame]);
 
   // Enhanced mark number function with better error handling
   const markNumber = useCallback(async (number: number): Promise<boolean> => {

@@ -358,72 +358,98 @@ export default function GamePage() {
             </div>
             
             {/* Current Number Display */}
-            {currentNumberDisplay.number && (
-              <div className="mb-4 p-3 bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-xl border border-white/20">
-                <p className="text-white/80 text-xs mb-1 text-center">Current Number</p>
-                <div className="flex items-center justify-center">
-                  <span className="text-4xl font-bold text-white mr-2">
-                    {currentNumberDisplay.letter}
-                  </span>
-                  <span className="text-5xl font-bold text-yellow-300">
-                    {currentNumberDisplay.number}
-                  </span>
-                </div>
-                <p className="text-white/60 text-xs text-center mt-1">
-                  Click on called numbers to mark your card
-                </p>
-              </div>
-            )}
+       {currentNumberDisplay.number && (
+    <div className="mb-4 p-4 bg-gradient-to-r from-purple-500/30 to-blue-500/30 rounded-xl border border-white/20 animate-pulse-slow">
+      <p className="text-white/80 text-xs mb-1 text-center">CURRENT NUMBER</p>
+      <div className="flex items-center justify-center gap-4">
+        <div className="text-center">
+          <span className="text-6xl font-bold text-yellow-300 block leading-none">
+            {currentNumberDisplay.number}
+          </span>
+          <span className="text-white/60 text-xs mt-1 block">Number</span>
+        </div>
+        <div className="text-center">
+          <span className="text-4xl font-bold text-white block leading-none">
+            {currentNumberDisplay.letter}
+          </span>
+          <span className="text-white/60 text-xs mt-1 block">Letter</span>
+        </div>
+      </div>
+      <p className="text-white/60 text-xs text-center mt-3">
+        Next number in: ~5-8 seconds
+      </p>
+    </div>
+  )}
             
             {/* Called Numbers Grid */}
-            <div className="grid grid-cols-5 gap-2 max-h-[50vh] overflow-y-auto p-2">
-              {Array.from({ length: 75 }, (_, i) => i + 1).map((number: number) => {
-                const isCalled = gameState.calledNumbers.includes(number);
-                const isCurrent = number === currentNumberDisplay.number;
-                const letter = getNumberLetter(number);
-                
-                return (
-                  <div
-                    key={number}
-                    className={`
-                      aspect-square rounded-lg flex flex-col items-center justify-center 
-                      font-bold text-xs transition-all duration-200 cursor-pointer
-                      ${isCurrent
-                        ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white scale-110 ring-2 ring-yellow-400'
-                        : isCalled
-                        ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white hover:scale-105'
-                        : 'bg-white/10 text-white/60 hover:bg-white/20'
-                      }
-                    `}
-                    onClick={() => isCalled && handleMarkNumber(number)}
-                    title={isCalled ? `Click to mark ${letter}${number} on your card` : 'Not called yet'}
-                  >
-                    <div className="text-xs opacity-70">{letter}</div>
-                    <div className="text-sm">{number}</div>
-                    {isCalled && (
-                      <div className="text-[8px] mt-0.5 opacity-80">✓</div>
-                    )}
-                  </div>
-                );
-              })}
+              <div className="grid grid-cols-10 gap-1.5 max-h-[50vh] overflow-y-auto p-2 bg-black/20 rounded-lg">
+    {Array.from({ length: 75 }, (_, i) => i + 1).map((number: number) => {
+      const isCalled = gameState.calledNumbers.includes(number);
+      const isCurrent = number === currentNumberDisplay.number;
+      const letter = getNumberLetter(number);
+      
+      return (
+        <div
+          key={number}
+          className={`
+            aspect-square rounded-lg flex items-center justify-center 
+            font-bold text-sm transition-all duration-300 cursor-pointer
+            hover:scale-110 hover:z-10
+            ${isCurrent
+              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white scale-125 ring-3 ring-yellow-400 shadow-lg animate-pulse'
+              : isCalled
+              ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white'
+              : 'bg-white/15 text-white/70 hover:bg-white/25'
+            }
+          `}
+          onClick={() => isCalled && handleMarkNumber(number)}
+          title={isCalled ? `${letter}${number} - Click to mark` : 'Not called yet'}
+        >
+          {/* REMOVE LETTER - SHOW ONLY NUMBER */}
+          <div className="text-center">
+            <div className={`${isCurrent ? 'text-2xl' : 'text-base'} font-bold`}>
+              {number}
             </div>
+            {isCalled && !isCurrent && (
+              <div className="text-[8px] mt-0.5 opacity-70">✓</div>
+            )}
+          </div>
+        </div>
+      );
+    })}
+  </div>
             
             {/* Last Called Numbers List */}
-            {calledNumbersHistory.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-white/10">
-                <p className="text-white/80 text-xs mb-2">Recently Called:</p>
-                <div className="flex flex-wrap gap-1">
-                  {[...calledNumbersHistory].reverse().slice(0, 10).map((num, index) => (
-                    <div 
-                      key={`recent-${num}`}
-                      className="px-2 py-1 bg-white/10 rounded text-xs text-white"
-                    >
-                      {getNumberLetter(num)}{num}
-                    </div>
-                  ))}
-                </div>
+          {calledNumbersHistory.length > 0 && (
+    <div className="mt-4 pt-3 border-t border-white/10">
+      <p className="text-white/80 text-xs mb-2">Recently Called:</p>
+      <div className="flex flex-wrap gap-2">
+        {[...calledNumbersHistory].reverse().slice(0, 12).map((num, index) => {
+          const isLatest = index === 0;
+          return (
+            <div 
+              key={`recent-${num}`}
+              className={`
+                px-3 py-1.5 rounded-lg flex flex-col items-center justify-center
+                transition-all duration-300
+                ${isLatest 
+                  ? 'bg-gradient-to-r from-yellow-500/30 to-orange-500/30 border border-yellow-500/50' 
+                  : 'bg-white/10'
+                }
+              `}
+            >
+              <div className={`${isLatest ? 'text-yellow-300' : 'text-white/60'} text-xs`}>
+                {getNumberLetter(num)}
               </div>
-            )}
+              <div className={`${isLatest ? 'text-white font-bold text-lg' : 'text-white font-medium'}`}>
+                {num}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  )}
           </div>
         </div>
 
