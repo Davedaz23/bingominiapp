@@ -433,220 +433,130 @@ export default function GamePage() {
             </div>
             
             {/* Called Numbers Grid - 75 Numbers with Red Highlighting */}
-        // Replace the Called Numbers Grid section (lines 196-277) with this improved version:
-<div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 h-full flex flex-col">
-  <div className="flex justify-between items-center mb-4">
-    <h3 className="text-white font-bold text-lg">Called Numbers</h3>
-    <div className="flex items-center gap-2">
-      <span className="text-white/70 text-sm bg-white/10 px-3 py-1 rounded-full">
+        {/* Left: Called Numbers - Simplified Display */}
+<div className="col-span-2">
+  <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 border border-white/20">
+    <div className="flex justify-between items-center mb-3">
+      <h3 className="text-white font-bold text-lg">Called Numbers</h3>
+      <span className="text-white/70 text-sm bg-white/10 px-2 py-1 rounded-full">
         {allCalledNumbers.length}/75
       </span>
     </div>
-  </div>
-  
-  {/* Current Number Display - Enhanced with Animation */}
-  <div className={`flex items-center justify-center mb-6 transition-all duration-300 ${isAnimating ? 'scale-110' : 'scale-100'}`}>
-    {currentCalledNumber ? (
-      <div className="text-center">
-        {/* Current Number with Animation */}
-        <div className={`transition-all duration-500 ${isAnimating ? 'animate-bounce' : ''}`}>
+    
+    {/* Current Number Display - Compact */}
+    {currentCalledNumber && (
+      <div className="flex items-center justify-center mb-4">
+        <div className={`transition-all duration-300 ${isAnimating ? 'scale-105' : 'scale-100'}`}>
           <div className="flex items-center justify-center">
-            <span className="text-5xl font-bold text-white mr-3">
+            <span className="text-3xl font-bold text-white mr-2">
               {currentCalledNumber.letter}
             </span>
-            <span className="text-6xl font-bold text-yellow-300 drop-shadow-lg">
+            <span className="text-4xl font-bold text-yellow-300">
               {currentCalledNumber.number}
             </span>
           </div>
         </div>
-        
-        {/* Called Count */}
-        <div className="mt-2 text-white/70 text-sm">
-          {allCalledNumbers.length} of 75 numbers called
-        </div>
       </div>
-    ) : (
-      <div className="text-center">
-        <div className="text-3xl font-bold text-white/50">
-          No number called yet
+    )}
+    
+    {/* BINGO Header */}
+    <div className="grid grid-cols-5 gap-1 mb-2">
+      {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+        <div 
+          key={letter}
+          className="h-8 rounded flex items-center justify-center font-bold text-md text-white bg-gradient-to-b from-purple-600/70 to-blue-700/70"
+        >
+          {letter}
         </div>
-        <div className="mt-2 text-white/70 text-sm">
-          Waiting for first number...
-        </div>
+      ))}
+    </div>
+    
+    {/* Called Numbers Grid - Organized by BINGO Columns */}
+    <div className="grid grid-cols-5 gap-1">
+      {[
+        {letter: 'B', range: {start: 1, end: 15}},
+        {letter: 'I', range: {start: 16, end: 30}},
+        {letter: 'N', range: {start: 31, end: 45}},
+        {letter: 'G', range: {start: 46, end: 60}},
+        {letter: 'O', range: {start: 61, end: 75}}
+      ].map((column) => {
+        const numbersInColumn = Array.from(
+          { length: column.range.end - column.range.start + 1 }, 
+          (_, i) => column.range.start + i
+        );
+        
+        return (
+          <div key={column.letter} className="flex flex-col gap-1">
+            {numbersInColumn.map((number: number) => {
+              const isCalled = allCalledNumbers.includes(number);
+              const isCurrent = currentCalledNumber?.number === number;
+              
+              return (
+                <div
+                  key={number}
+                  className={`
+                    aspect-square rounded flex items-center justify-center 
+                    transition-all duration-200 cursor-pointer relative
+                    ${isCurrent
+                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-1 ring-yellow-400'
+                      : isCalled
+                      ? 'bg-gradient-to-br from-red-500 to-pink-600'
+                      : 'bg-white/10'
+                    }
+                  `}
+                  onClick={() => isCalled && handleMarkNumber(number)}
+                  title={`${column.letter}${number} ${isCurrent ? '(Current)' : isCalled ? '(Called)' : ''}`}
+                >
+                  {/* Number */}
+                  <span className={`
+                    text-xs font-bold
+                    ${isCurrent ? 'text-white' : isCalled ? 'text-white' : 'text-white/70'}
+                  `}>
+                    {number}
+                  </span>
+                  
+                  {/* Current Indicator */}
+                  {isCurrent && (
+                    <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+    
+    {/* Call Number Button - Simplified */}
+    {game.status === 'ACTIVE' && (
+      <div className="mt-3 pt-3 border-t border-white/20">
+        <button
+          onClick={handleCallNumber}
+          disabled={isCallingNumber}
+          className={`
+            w-full flex items-center justify-center gap-2 py-2 rounded font-medium text-sm
+            transition-all duration-200
+            ${isCallingNumber 
+              ? 'bg-gray-600/50 text-gray-300 cursor-not-allowed' 
+              : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white'
+            }
+          `}
+        >
+          {isCallingNumber ? (
+            <>
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+              Calling...
+            </>
+          ) : (
+            <>
+              <span>🎲</span>
+              Call Next Number
+            </>
+          )}
+        </button>
       </div>
     )}
   </div>
-  
-  {/* BINGO Header for Called Numbers */}
-  <div className="grid grid-cols-5 gap-2 mb-3">
-    {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-      <div 
-        key={letter}
-        className="h-12 rounded-lg flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-600/70 to-blue-700/70 border border-white/20"
-      >
-        {letter}
-      </div>
-    ))}
-  </div>
-  
-  {/* Called Numbers Grid - Organized by BINGO Columns */}
-  <div className="grid grid-cols-5 gap-2 flex-grow overflow-y-auto pr-1 pb-2 max-h-[400px]">
-    {[
-      {letter: 'B', range: {start: 1, end: 15}},
-      {letter: 'I', range: {start: 16, end: 30}},
-      {letter: 'N', range: {start: 31, end: 45}},
-      {letter: 'G', range: {start: 46, end: 60}},
-      {letter: 'O', range: {start: 61, end: 75}}
-    ].map((column, colIndex) => {
-      const numbersInColumn = Array.from(
-        { length: column.range.end - column.range.start + 1 }, 
-        (_, i) => column.range.start + i
-      );
-      
-      return (
-        <div key={column.letter} className="flex flex-col gap-1.5">
-          {numbersInColumn.map((number: number) => {
-            const isCalled = allCalledNumbers.includes(number);
-            const isCurrent = currentCalledNumber?.number === number;
-            
-            return (
-              <div
-                key={number}
-                className={`
-                  aspect-square rounded-lg flex items-center justify-center 
-                  transition-all duration-300 cursor-pointer relative group
-                  ${isCurrent
-                    ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-2 ring-yellow-400 shadow-lg animate-pulse'
-                    : isCalled
-                    ? 'bg-gradient-to-br from-red-500 to-pink-600 hover:scale-105 hover:shadow-md'
-                    : 'bg-white/15 hover:bg-white/25'
-                  }
-                `}
-                onClick={() => isCalled && handleMarkNumber(number)}
-                title={
-                  isCurrent ? `Current: ${column.letter}${number}` :
-                  isCalled ? `Called: ${column.letter}${number} - Click to mark` :
-                  `${column.letter}${number} - Not called yet`
-                }
-              >
-                {/* Number */}
-                <span className={`
-                  text-sm font-bold
-                  ${isCurrent ? 'text-white' : isCalled ? 'text-white' : 'text-white/70'}
-                `}>
-                  {number}
-                </span>
-                
-                {/* Called Indicator */}
-                {isCalled && !isCurrent && (
-                  <div className="absolute bottom-1 right-1 text-[8px] opacity-90">
-                    ✓
-                  </div>
-                )}
-                
-                {/* Current Indicator */}
-                {isCurrent && (
-                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center animate-ping">
-                    <div className="w-2 h-2 bg-yellow-300 rounded-full"></div>
-                  </div>
-                )}
-                
-                {/* Hover Tooltip */}
-                <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black/90 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                  {column.letter}{number} {isCurrent ? '(Current)' : isCalled ? '(Called)' : '(Not called)'}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      );
-    })}
-  </div>
-  
-  {/* Recent Called Numbers */}
-  {allCalledNumbers.length > 0 && (
-    <div className="mt-4 pt-4 border-t border-white/20">
-      <div className="flex justify-between items-center mb-3">
-        <p className="text-white/80 text-sm font-medium">Recently Called:</p>
-        <span className="text-white/60 text-xs">
-          Last {Math.min(allCalledNumbers.length, 10)} of {allCalledNumbers.length}
-        </span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {allCalledNumbers.slice(-10).reverse().map((number, index) => {
-          const letter = getNumberLetter(number);
-          const isLatest = index === 0;
-          
-          return (
-            <div 
-              key={`recent-${number}-${index}`}
-              className={`
-                flex flex-col items-center justify-center px-2 py-1.5 rounded-lg 
-                transition-all hover:scale-105 min-w-[45px] cursor-pointer
-                ${isLatest 
-                  ? 'bg-gradient-to-br from-yellow-500/40 to-orange-500/40 ring-1 ring-yellow-400/50' 
-                  : 'bg-white/15 hover:bg-white/25'
-                }
-              `}
-              onClick={() => handleMarkNumber(number)}
-              title={`Click to mark ${letter}${number}`}
-            >
-              <div className="flex items-center gap-1">
-                <span className={`
-                  text-xs font-bold
-                  ${isLatest ? 'text-yellow-300' : 'text-white/70'}
-                `}>
-                  {letter}
-                </span>
-                <span className={`
-                  text-base font-bold
-                  ${isLatest ? 'text-yellow-300' : 'text-white'}
-                `}>
-                  {number}
-                </span>
-              </div>
-              {isLatest && (
-                <span className="text-[9px] text-yellow-200/70 mt-0.5">LATEST</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  )}
-  
-  {/* Call Number Button */}
-  {game.status === 'ACTIVE' && (
-    <div className="mt-4 pt-4 border-t border-white/20">
-      <button
-        onClick={handleCallNumber}
-        disabled={isCallingNumber}
-        className={`
-          w-full flex items-center justify-center gap-2 py-3 rounded-lg font-medium
-          transition-all duration-300
-          ${isCallingNumber 
-            ? 'bg-gradient-to-r from-gray-600 to-gray-700 text-gray-300 cursor-not-allowed' 
-            : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white hover:shadow-lg'
-          }
-        `}
-      >
-        {isCallingNumber ? (
-          <>
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-            Calling Next Number...
-          </>
-        ) : (
-          <>
-            <span className="text-xl">🎲</span>
-            Call Next Number
-          </>
-        )}
-      </button>
-      <p className="text-white/60 text-xs text-center mt-2">
-        Click to call the next BINGO number
-      </p>
-    </div>
-  )}
 </div>
             
             {/* Recent Called Numbers */}
