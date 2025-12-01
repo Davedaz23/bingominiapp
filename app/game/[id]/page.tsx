@@ -446,7 +446,7 @@ export default function GamePage() {
   ) : (
     <div className="text-center py-4">
       <span className="text-3xl font-bold text-white/50">
-        No numbers called yet
+       {gameState.currentNumber} Called
       </span>
       {game.status === 'ACTIVE' && (
         <p className="text-white/70 text-sm mt-2">
