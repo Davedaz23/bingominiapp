@@ -389,7 +389,7 @@ export default function GamePage() {
       <div className="grid grid-cols-4 gap-4">
         {/* Left: Called Numbers - More space (col-span-2) */}
         <div className="col-span-2">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 h-full flex flex-col">
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 h-full flex flex-col">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-white font-bold text-lg">Called Numbers</h3>
               <div className="flex items-center gap-2">
@@ -435,7 +435,7 @@ export default function GamePage() {
             {/* Called Numbers Grid - 75 Numbers with Red Highlighting */}
         {/* Left: Called Numbers - Simplified Display */}
 <div className="col-span-2">
-  <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 border border-white/20">
+  <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
     {/* <div className="flex justify-between items-center mb-3">
       <h3 className="text-white font-bold text-lg">Called Numbers</h3>
       <span className="text-white/70 text-sm bg-white/10 px-2 py-1 rounded-full">
