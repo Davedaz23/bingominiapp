@@ -1,4 +1,4 @@
-// app/game/[id]/page.tsx - COMPLETE FIXED VERSION
+// app/game/[id]/page.tsx - COMPLETE FIXED VERSION WITH REAL-TIME UPDATES
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -31,7 +31,8 @@ export default function GamePage() {
     markNumber, 
     isLoading,
     error: gameError,
-    manualCallNumber // Add this for testing
+    manualCallNumber,
+    refreshGame
   } = useGame(id);
   
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -46,10 +47,12 @@ export default function GamePage() {
     number: number | null;
     letter: string | null;
   }>({ number: null, letter: null });
+  const [nextNumberCountdown, setNextNumberCountdown] = useState<number>(8);
   
   // Refs for tracking
   const calledNumbersRef = useRef<number[]>([]);
   const autoMarkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize game and load card
   useEffect(() => {
@@ -157,6 +160,9 @@ export default function GamePage() {
           const letter = getNumberLetter(latestNumber);
           setCurrentNumberDisplay({ number: latestNumber, letter });
           
+          // Reset countdown when new number is called
+          setNextNumberCountdown(8);
+          
           console.log(`🔢 New number called: ${letter}${latestNumber}`);
           
           // Auto-mark this number on the user's card if they have it
@@ -167,6 +173,36 @@ export default function GamePage() {
       }
     }
   }, [gameState.calledNumbers, localBingoCard]);
+
+  // Start countdown for next number
+  useEffect(() => {
+    if (game?.status === 'ACTIVE') {
+      // Clear existing interval
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+      
+      // Start countdown from 8 seconds
+      setNextNumberCountdown(8);
+      
+      countdownIntervalRef.current = setInterval(() => {
+        setNextNumberCountdown(prev => {
+          if (prev <= 1) {
+            // When countdown reaches 0, refresh game to get new number
+            refreshGame();
+            return 8; // Reset to 8 seconds
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, [game?.status, refreshGame]);
 
   // Helper function to get BINGO letter for a number
   const getNumberLetter = (num: number): string => {
@@ -347,109 +383,151 @@ export default function GamePage() {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        {/* Left: Called Numbers */}
+        {/* Left: Called Numbers - ENHANCED */}
         <div className="col-span-1">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20 h-full flex flex-col">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-white font-bold">Called Numbers</h3>
-              <span className="text-white/60 text-sm">
-                {calledNumbersHistory.length}/75
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-white/60 text-sm">
+                  {calledNumbersHistory.length}/75
+                </span>
+                {game?.status === 'ACTIVE' && (
+                  <span className="text-green-300 text-xs bg-green-500/20 px-2 py-1 rounded-full animate-pulse">
+                    Live
+                  </span>
+                )}
+              </div>
             </div>
             
-            {/* Current Number Display */}
-       {currentNumberDisplay.number && (
-    <div className="mb-4 p-4 bg-gradient-to-r from-purple-500/30 to-blue-500/30 rounded-xl border border-white/20 animate-pulse-slow">
-      <p className="text-white/80 text-xs mb-1 text-center">CURRENT NUMBER</p>
-      <div className="flex items-center justify-center gap-4">
-        <div className="text-center">
-          <span className="text-6xl font-bold text-yellow-300 block leading-none">
-            {currentNumberDisplay.number}
-          </span>
-          <span className="text-white/60 text-xs mt-1 block">Number</span>
-        </div>
-        <div className="text-center">
-          <span className="text-4xl font-bold text-white block leading-none">
-            {currentNumberDisplay.letter}
-          </span>
-          <span className="text-white/60 text-xs mt-1 block">Letter</span>
-        </div>
-      </div>
-      <p className="text-white/60 text-xs text-center mt-3">
-        Next number in: ~5-8 seconds
-      </p>
-    </div>
-  )}
-            
-            {/* Called Numbers Grid */}
-              <div className="grid grid-cols-10 gap-1.5 max-h-[50vh] overflow-y-auto p-2 bg-black/20 rounded-lg">
-    {Array.from({ length: 75 }, (_, i) => i + 1).map((number: number) => {
-      const isCalled = gameState.calledNumbers.includes(number);
-      const isCurrent = number === currentNumberDisplay.number;
-      const letter = getNumberLetter(number);
-      
-      return (
-        <div
-          key={number}
-          className={`
-            aspect-square rounded-lg flex items-center justify-center 
-            font-bold text-sm transition-all duration-300 cursor-pointer
-            hover:scale-110 hover:z-10
-            ${isCurrent
-              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white scale-125 ring-3 ring-yellow-400 shadow-lg animate-pulse'
-              : isCalled
-              ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white'
-              : 'bg-white/15 text-white/70 hover:bg-white/25'
-            }
-          `}
-          onClick={() => isCalled && handleMarkNumber(number)}
-          title={isCalled ? `${letter}${number} - Click to mark` : 'Not called yet'}
-        >
-          {/* REMOVE LETTER - SHOW ONLY NUMBER */}
-          <div className="text-center">
-            <div className={`${isCurrent ? 'text-2xl' : 'text-base'} font-bold`}>
-              {number}
-            </div>
-            {isCalled && !isCurrent && (
-              <div className="text-[8px] mt-0.5 opacity-70">✓</div>
+            {/* Current Number Display - ENHANCED */}
+            {currentNumberDisplay.number && (
+              <div className="mb-4 p-4 bg-gradient-to-r from-purple-500/30 to-blue-500/30 rounded-xl border border-white/20 animate-pulse-slow">
+                <p className="text-white/80 text-xs mb-1 text-center uppercase tracking-wider">Current Number</p>
+                <div className="flex items-center justify-center gap-4">
+                  <div className="text-center">
+                    <span className="text-6xl font-bold text-yellow-300 block leading-none">
+                      {currentNumberDisplay.number}
+                    </span>
+                    <span className="text-white/60 text-xs mt-1 block">Number</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-4xl font-bold text-white block leading-none">
+                      {currentNumberDisplay.letter}
+                    </span>
+                    <span className="text-white/60 text-xs mt-1 block">Letter</span>
+                  </div>
+                </div>
+                {game?.status === 'ACTIVE' && (
+                  <div className="mt-3 text-center">
+                    <p className="text-white/60 text-xs">
+                      Next number in: <span className="text-yellow-300 font-bold">{nextNumberCountdown}s</span>
+                    </p>
+                    <div className="w-full bg-blue-400/20 rounded-full h-1.5 mt-1">
+                      <div 
+                        className="bg-gradient-to-r from-blue-400 to-cyan-400 h-1.5 rounded-full transition-all duration-1000"
+                        style={{ 
+                          width: `${((8 - nextNumberCountdown) / 8) * 100}%` 
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
-          </div>
-        </div>
-      );
-    })}
-  </div>
             
-            {/* Last Called Numbers List */}
-          {calledNumbersHistory.length > 0 && (
-    <div className="mt-4 pt-3 border-t border-white/10">
-      <p className="text-white/80 text-xs mb-2">Recently Called:</p>
-      <div className="flex flex-wrap gap-2">
-        {[...calledNumbersHistory].reverse().slice(0, 12).map((num, index) => {
-          const isLatest = index === 0;
-          return (
-            <div 
-              key={`recent-${num}`}
-              className={`
-                px-3 py-1.5 rounded-lg flex flex-col items-center justify-center
-                transition-all duration-300
-                ${isLatest 
-                  ? 'bg-gradient-to-r from-yellow-500/30 to-orange-500/30 border border-yellow-500/50' 
-                  : 'bg-white/10'
-                }
-              `}
-            >
-              <div className={`${isLatest ? 'text-yellow-300' : 'text-white/60'} text-xs`}>
-                {getNumberLetter(num)}
+            {/* 75 Numbers Grid - ENHANCED (Wider, no letters) */}
+            <div className="grid grid-cols-10 gap-1.5 flex-1 overflow-y-auto p-2 bg-black/20 rounded-lg">
+              {Array.from({ length: 75 }, (_, i) => i + 1).map((number: number) => {
+                const isCalled = gameState.calledNumbers.includes(number);
+                const isCurrent = number === currentNumberDisplay.number;
+                
+                return (
+                  <div
+                    key={number}
+                    className={`
+                      aspect-square rounded-lg flex items-center justify-center 
+                      font-bold text-sm transition-all duration-300 cursor-pointer
+                      hover:scale-110 hover:z-10 relative
+                      ${isCurrent
+                        ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white scale-125 ring-3 ring-yellow-400 shadow-lg animate-pulse'
+                        : isCalled
+                        ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white'
+                        : 'bg-white/15 text-white/70 hover:bg-white/25'
+                      }
+                    `}
+                    onClick={() => isCalled && handleMarkNumber(number)}
+                    title={isCalled ? `Click to mark ${getNumberLetter(number)}${number} on your card` : 'Not called yet'}
+                  >
+                    {/* Show only the number - NO LETTERS */}
+                    <div className="text-center">
+                      <div className={`${isCurrent ? 'text-lg font-bold' : 'text-base'} ${isCalled && !isCurrent ? 'font-medium' : ''}`}>
+                        {number}
+                      </div>
+                      {isCalled && !isCurrent && (
+                        <div className="absolute top-0.5 right-0.5 w-2 h-2 bg-green-300 rounded-full"></div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Last Called Numbers List - ENHANCED */}
+            {calledNumbersHistory.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-white/10">
+                <p className="text-white/80 text-xs mb-2">Recently Called:</p>
+                <div className="flex flex-wrap gap-2">
+                  {[...calledNumbersHistory].reverse().slice(0, 12).map((num, index) => {
+                    const isLatest = index === 0;
+                    return (
+                      <div 
+                        key={`recent-${num}`}
+                        className={`
+                          px-2.5 py-1.5 rounded-lg flex flex-col items-center justify-center min-w-[50px]
+                          transition-all duration-300
+                          ${isLatest 
+                            ? 'bg-gradient-to-r from-yellow-500/30 to-orange-500/30 border border-yellow-500/50' 
+                            : 'bg-white/10'
+                          }
+                        `}
+                      >
+                        <div className={`${isLatest ? 'text-yellow-300 text-xs' : 'text-white/60 text-xs'}`}>
+                          {getNumberLetter(num)}
+                        </div>
+                        <div className={`${isLatest ? 'text-white font-bold text-lg' : 'text-white font-medium text-base'}`}>
+                          {num}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className={`${isLatest ? 'text-white font-bold text-lg' : 'text-white font-medium'}`}>
-                {num}
+            )}
+            
+            {/* Game Status Info */}
+            <div className="mt-4 p-3 bg-black/20 rounded-lg">
+              <div className="grid grid-cols-3 gap-3 text-center text-xs">
+                <div>
+                  <p className="text-white font-medium">Numbers Called</p>
+                  <p className="text-white/80 text-sm font-bold">{calledNumbersHistory.length}/75</p>
+                </div>
+                <div>
+                  <p className="text-white font-medium">Next Number In</p>
+                  <p className="text-white/80 text-sm font-bold">{game?.status === 'ACTIVE' ? `${nextNumberCountdown}s` : '--'}</p>
+                </div>
+                <div>
+                  <p className="text-white font-medium">Game Status</p>
+                  <p className={`font-medium text-sm ${
+                    game?.status === 'ACTIVE' ? 'text-green-300' : 
+                    game?.status === 'WAITING' ? 'text-yellow-300' : 
+                    'text-red-300'
+                  }`}>
+                    {game?.status || 'Unknown'}
+                  </p>
+                </div>
               </div>
             </div>
-          );
-        })}
-      </div>
-    </div>
-  )}
           </div>
         </div>
 
@@ -499,7 +577,7 @@ export default function GamePage() {
                           key={`${rowIndex}-${colIndex}`}
                           className={`
                             aspect-square rounded-lg flex flex-col items-center justify-center 
-                            font-bold transition-all duration-200
+                            font-bold transition-all duration-200 relative
                             ${isMarked
                               ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white'
                               : isFreeSpace
@@ -536,6 +614,9 @@ export default function GamePage() {
                               )}
                             </>
                           )}
+                          {isCalled && !isMarked && !isFreeSpace && (
+                            <div className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></div>
+                          )}
                         </div>
                       );
                     })
@@ -545,10 +626,10 @@ export default function GamePage() {
                 {/* Card Stats */}
                 <div className="mt-3 flex justify-between items-center text-white/60 text-sm">
                   <div>
-                    {/* Status: {displayBingoCard.isWinner ? '🎉 WINNER!' : 'Playing...'} */}
+                    Matches: {displayBingoCard.markedPositions?.length || 0} numbers
                   </div>
                   <div>
-                    Matches: {displayBingoCard.markedPositions?.length || 0} numbers
+                    Total Called: {calledNumbersHistory.length} numbers
                   </div>
                 </div>
               </div>
@@ -568,7 +649,7 @@ export default function GamePage() {
 
           {/* Game Controls & Info */}
           <div className="grid grid-cols-2 gap-4 mt-4">
-            {/* Game Status Card */}
+            {/* Game Status Card - ENHANCED */}
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
               <h4 className="text-white font-bold mb-2">Game Status</h4>
               <div className="space-y-2">
@@ -592,47 +673,82 @@ export default function GamePage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-white/70 text-sm">Next Number In:</span>
-                  <span className="text-white text-sm">~5-8s</span>
+                  <span className="text-white text-sm">
+                    {game?.status === 'ACTIVE' ? `${nextNumberCountdown}s` : '--'}
+                  </span>
                 </div>
+                {game?.status === 'ACTIVE' && (
+                  <div className="pt-2 border-t border-white/10">
+                    <div className="flex justify-between text-xs text-white/60 mb-1">
+                      <span>Auto-calling active</span>
+                      <span>Every 5-8s</span>
+                    </div>
+                    <div className="w-full bg-green-400/20 rounded-full h-1.5">
+                      <div 
+                        className="bg-gradient-to-r from-green-400 to-cyan-400 h-1.5 rounded-full transition-all duration-1000"
+                        style={{ 
+                          width: `${((8 - nextNumberCountdown) / 8) * 100}%` 
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Quick Actions */}
+            {/* Quick Actions - ENHANCED */}
             <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
               <h4 className="text-white font-bold mb-2">Quick Actions</h4>
               <div className="space-y-2">
                 <button
-                  onClick={() => router.refresh()}
-                  className="w-full bg-white/20 text-white py-2 rounded-lg text-sm hover:bg-white/30 transition-colors"
+                  onClick={() => {
+                    console.log('🔄 Manual refresh triggered');
+                    refreshGame();
+                  }}
+                  className="w-full bg-blue-500/20 text-blue-300 py-2 rounded-lg text-sm hover:bg-blue-500/30 transition-colors flex items-center justify-center gap-2"
                 >
-                  ↻ Refresh Game
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh Game
                 </button>
                 <button
                   onClick={() => router.push('/')}
-                  className="w-full bg-white/20 text-white py-2 rounded-lg text-sm hover:bg-white/30 transition-colors"
+                  className="w-full bg-white/20 text-white py-2 rounded-lg text-sm hover:bg-white/30 transition-colors flex items-center justify-center gap-2"
                 >
-                  ← Back to Lobby
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Back to Lobby
                 </button>
                 {process.env.NODE_ENV === 'development' && (
                   <button
                     onClick={handleManualCallNumber}
-                    className="w-full bg-yellow-500/20 text-yellow-300 py-2 rounded-lg text-sm hover:bg-yellow-500/30 transition-colors"
+                    className="w-full bg-yellow-500/20 text-yellow-300 py-2 rounded-lg text-sm hover:bg-yellow-500/30 transition-colors flex items-center justify-center gap-2"
                   >
-                    🎲 Call Next Number (Dev)
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                    Call Next Number (Dev)
                   </button>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Debug Info */}
+          {/* Debug Info - ENHANCED */}
           {process.env.NODE_ENV === 'development' && (
             <div className="bg-yellow-500/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-yellow-500/20">
-              <h4 className="text-yellow-300 font-bold mb-2">Debug Info</h4>
+              <h4 className="text-yellow-300 font-bold mb-2 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                Debug Information
+              </h4>
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div>
-                  <p className="text-yellow-200/70">Card:</p>
-                  <p className="text-yellow-200">{displayBingoCard ? 'Loaded' : 'Missing'}</p>
+                  <p className="text-yellow-200/70">Card Status:</p>
+                  <p className="text-yellow-200">{displayBingoCard ? '✅ Loaded' : '❌ Missing'}</p>
                 </div>
                 <div>
                   <p className="text-yellow-200/70">Card #:</p>
@@ -651,15 +767,46 @@ export default function GamePage() {
                   <p className="text-yellow-200">{calledNumbersHistory.length}</p>
                 </div>
                 <div>
-                  <p className="text-yellow-200/70">Error:</p>
-                  <p className="text-yellow-200">{cardError || 'None'}</p>
+                  <p className="text-yellow-200/70">Polling:</p>
+                  <p className="text-yellow-200">
+                    {game?.status === 'ACTIVE' ? '2s' : 
+                     game?.status === 'WAITING' ? '8s' : 
+                     '15s'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 pt-2 border-t border-yellow-500/20">
+                <p className="text-yellow-200/70 text-xs mb-1">Called Numbers (Latest 10):</p>
+                <div className="flex flex-wrap gap-1">
+                  {calledNumbersHistory.slice(-10).map((num, index) => (
+                    <span key={`debug-${num}`} className="px-2 py-0.5 bg-yellow-500/20 text-yellow-200 rounded text-xs">
+                      {getNumberLetter(num)}{num}
+                    </span>
+                  ))}
                 </div>
               </div>
               <div className="mt-2">
-                <p className="text-yellow-200/70 text-xs">Called Numbers:</p>
-                <p className="text-yellow-200 text-xs">
-                  {calledNumbersHistory.slice(-10).join(', ')}
-                </p>
+                <p className="text-yellow-200/70 text-xs">Game ID:</p>
+                <p className="text-yellow-200 text-xs break-all">{id}</p>
+              </div>
+              
+              {/* Test buttons */}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    console.log('🎮 Manual game refresh');
+                    refreshGame();
+                  }}
+                  className="bg-blue-500/20 text-blue-300 py-1.5 rounded text-xs hover:bg-blue-500/30"
+                >
+                  Force Refresh
+                </button>
+                <button
+                  onClick={handleManualCallNumber}
+                  className="bg-green-500/20 text-green-300 py-1.5 rounded text-xs hover:bg-green-500/30"
+                >
+                  Test Call Number
+                </button>
               </div>
             </div>
           )}
