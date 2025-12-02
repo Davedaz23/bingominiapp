@@ -214,73 +214,81 @@ export default function GamePage() {
   }, [game]);
 
   // Check if game ended and show winner modal
-  useEffect(() => {
-    const checkGameEnded = async () => {
-      if (!game || gameEndedCheckRef.current) return;
+
+useEffect(() => {
+  const checkGameEnded = async () => {
+    if (!game || gameEndedCheckRef.current) return;
+    
+    if (game.status === 'FINISHED' && game.winner && !showWinnerModal) {
+      console.log('🏁 Game finished! Fetching winner info...');
+      gameEndedCheckRef.current = true;
       
-      if (game.status === 'FINISHED' && game.winner && !showWinnerModal) {
-        console.log('🏁 Game finished! Fetching winner info...');
-        gameEndedCheckRef.current = true;
+      try {
+        setIsWinnerLoading(true);
         
-        try {
-          setIsWinnerLoading(true);
+        // Fetch winner information
+        const winnerData = await getWinnerInfo();
+        if (winnerData) {
+          setWinnerInfo(winnerData);
           
-          // Fetch winner information
-          const winnerData = await getWinnerInfo();
-          if (winnerData) {
-            setWinnerInfo(winnerData);
+          // Check if current user is the winner
+          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+          if (userId) {
+            const isWinner = winnerData.winner.telegramId === userId || 
+                            winnerData.winner._id.toString() === userId;
+            setIsUserWinner(isWinner);
             
-            // Check if current user is the winner
-            const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-            if (userId) {
-              const isWinner = winnerData.winner.telegramId === userId || 
-                              winnerData.winner._id.toString() === userId;
-              setIsUserWinner(isWinner);
-              
-              // Calculate winning amount (90% of total pot)
-              const totalPot = (game.currentPlayers || 0) * 10; // $10 entry fee
-              const platformFee = totalPot * 0.1;
-              const winnerPrize = totalPot - platformFee;
-              setWinningAmount(winnerPrize);
-              
-              console.log(`🏆 Winner detected: ${winnerData.winner.username}, Prize: $${winnerPrize}`);
-              
-              // Update wallet balance if user is winner
-              if (isWinner) {
-                setTimeout(async () => {
-                  try {
-                    const walletResponse = await walletAPIAuto.getBalance();
-                    if (walletResponse.data.success) {
-                      setWalletBalance(walletResponse.data.balance);
-                    }
-                  } catch (error) {
-                    console.warn('Could not update wallet balance:', error);
+            // Calculate winning amount (90% of total pot)
+            const totalPot = (game.currentPlayers || 0) * 10; // $10 entry fee
+            const platformFee = totalPot * 0.1;
+            const winnerPrize = totalPot - platformFee;
+            setWinningAmount(winnerPrize);
+            
+            console.log(`🏆 Winner detected: ${winnerData.winner.username}, Prize: $${winnerPrize}`);
+            
+            // Update wallet balance if user is winner
+            if (isWinner) {
+              setTimeout(async () => {
+                try {
+                  const walletResponse = await walletAPIAuto.getBalance();
+                  if (walletResponse.data.success) {
+                    setWalletBalance(walletResponse.data.balance);
                   }
-                }, 1000);
-              }
+                } catch (error) {
+                  console.warn('Could not update wallet balance:', error);
+                }
+              }, 1000);
             }
           }
-          
-          // Show winner modal after a short delay
-          setTimeout(() => {
-            setShowWinnerModal(true);
-            setIsWinnerLoading(false);
-          }, 1500);
-          
-        } catch (error) {
-          console.error('Failed to fetch winner info:', error);
-          setIsWinnerLoading(false);
         }
+        
+        // Show winner modal after a short delay
+        setTimeout(() => {
+          setShowWinnerModal(true);
+          setIsWinnerLoading(false);
+        }, 1500);
+        
+        // Auto-return to lobby after 8 seconds (show modal for 8 seconds)
+        setTimeout(() => {
+          if (showWinnerModal) {
+            handleReturnToLobby();
+          }
+        }, 8000);
+        
+      } catch (error) {
+        console.error('Failed to fetch winner info:', error);
+        setIsWinnerLoading(false);
       }
-    };
-    
-    checkGameEnded();
-    
-    // Cleanup function
-    return () => {
-      gameEndedCheckRef.current = false;
-    };
-  }, [game, getWinnerInfo, showWinnerModal]);
+    }
+  };
+  
+  checkGameEnded();
+  
+  // Cleanup function
+  return () => {
+    gameEndedCheckRef.current = false;
+  };
+}, [game, getWinnerInfo, showWinnerModal]);
 
   // Function to call next number (MANUAL MARKING - NO AUTO-MARK)
   const handleCallNumber = async () => {
@@ -441,11 +449,23 @@ const handleMarkNumber = async (number: number) => {
   };
 
   // Function to handle returning to lobby
-  const handleReturnToLobby = () => {
-    console.log('🚀 Returning to lobby...');
-    setShowWinnerModal(false);
-    router.push('/');
-  };
+const handleReturnToLobby = () => {
+  
+  // Clear all game states
+  setShowWinnerModal(false);
+  setWinnerInfo(null);
+  setIsUserWinner(false);
+  setWinningAmount(0);
+  setCurrentCalledNumber(null);
+  setAllCalledNumbers([]);
+  setClaimResult(null);
+  
+  // Reset game ended check
+  gameEndedCheckRef.current = false;
+  
+  // Navigate to lobby
+  router.push('/');
+};
 
   // Function to play again
   const handlePlayAgain = () => {
@@ -505,83 +525,83 @@ const handleMarkNumber = async (number: number) => {
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
       {/* Winner Modal */}
       {showWinnerModal && winnerInfo && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-br from-purple-700 to-blue-800 rounded-2xl p-6 max-w-md w-full border-2 border-yellow-400 shadow-2xl">
-            <div className="text-center">
-              {/* Trophy Icon */}
-              <div className="mb-4">
-                <div className="text-6xl mb-2">🏆</div>
-                <h2 className="text-2xl font-bold text-white mb-1">Game Over!</h2>
-                <p className="text-white/70 text-sm">Game Code: {winnerInfo.gameCode}</p>
-              </div>
-              
-              {/* Winner Info */}
-              <div className="bg-white/10 rounded-xl p-4 mb-4 border border-white/20">
-                <div className="flex items-center justify-center gap-3 mb-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
-                    <span className="text-xl font-bold">👑</span>
-                  </div>
-                  <div className="text-left">
-                    <h3 className="text-white font-bold text-lg">
-                      {winnerInfo.winner.firstName} {winnerInfo.winner.username ? `(@${winnerInfo.winner.username})` : ''}
-                    </h3>
-                    <p className="text-white/70 text-sm">Is the Winner!</p>
-                  </div>
-                </div>
-                
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="bg-white/5 rounded-lg p-2">
-                    <p className="text-white/70 text-xs">Players</p>
-                    <p className="text-white font-bold">{winnerInfo.totalPlayers}</p>
-                  </div>
-                  <div className="bg-white/5 rounded-lg p-2">
-                    <p className="text-white/70 text-xs">Numbers Called</p>
-                    <p className="text-white font-bold">{winnerInfo.numbersCalled}/75</p>
-                  </div>
-                </div>
-                
-                {/* Winning Amount */}
-                {isUserWinner && winningAmount > 0 && (
-                  <div className="bg-gradient-to-r from-green-500/20 to-emerald-600/20 rounded-lg p-3 mb-3 border border-green-500/30">
-                    <p className="text-white/80 text-sm mb-1">You won!</p>
-                    <p className="text-2xl font-bold text-yellow-300">${winningAmount} ብር</p>
-                    <p className="text-white/60 text-xs mt-1">Has been added to your wallet</p>
-                  </div>
-                )}
-                
-                {!isUserWinner && (
-                  <div className="bg-white/5 rounded-lg p-3 mb-3">
-                    <p className="text-white/70 text-sm">
-                      Better luck next time! You'll get them next game.
-                    </p>
-                  </div>
-                )}
-              </div>
-              
-              {/* Actions */}
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={handlePlayAgain}
-                  className="bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3 rounded-xl font-bold hover:from-green-600 hover:to-emerald-700 transition-all"
-                >
-                  Play Another Game
-                </button>
-                <button
-                  onClick={handleReturnToLobby}
-                  className="bg-white/20 text-white py-3 rounded-xl font-bold hover:bg-white/30 transition-all"
-                >
-                  Return to Lobby
-                </button>
-              </div>
-              
-              <p className="text-white/50 text-xs mt-4">
-                A new game will start automatically in 60 seconds
-              </p>
+  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+    <div className="bg-gradient-to-br from-purple-700 to-blue-800 rounded-2xl p-6 max-w-md w-full border-2 border-yellow-400 shadow-2xl">
+      <div className="text-center">
+        {/* Trophy Icon */}
+        <div className="mb-4">
+          <div className="text-6xl mb-2">🏆</div>
+          <h2 className="text-2xl font-bold text-white mb-1">Game Over!</h2>
+          <p className="text-white/70 text-sm">Game Code: {winnerInfo.gameCode}</p>
+        </div>
+        
+        {/* Winner Info */}
+        <div className="bg-white/10 rounded-xl p-4 mb-4 border border-white/20">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
+              <span className="text-xl font-bold">👑</span>
+            </div>
+            <div className="text-left">
+              <h3 className="text-white font-bold text-lg">
+                {winnerInfo.winner.firstName} {winnerInfo.winner.username ? `(@${winnerInfo.winner.username})` : ''}
+              </h3>
+              <p className="text-white/70 text-sm">Is the Winner!</p>
             </div>
           </div>
+          
+          {/* Stats */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-white/5 rounded-lg p-2">
+              <p className="text-white/70 text-xs">Players</p>
+              <p className="text-white font-bold">{winnerInfo.totalPlayers}</p>
+            </div>
+            <div className="bg-white/5 rounded-lg p-2">
+              <p className="text-white/70 text-xs">Numbers Called</p>
+              <p className="text-white font-bold">{winnerInfo.numbersCalled}/75</p>
+            </div>
+          </div>
+          
+          {/* Winning Amount */}
+          {isUserWinner && winningAmount > 0 && (
+            <div className="bg-gradient-to-r from-green-500/20 to-emerald-600/20 rounded-lg p-3 mb-3 border border-green-500/30">
+              <p className="text-white/80 text-sm mb-1">You won!</p>
+              <p className="text-2xl font-bold text-yellow-300">${winningAmount} ብር</p>
+              <p className="text-white/60 text-xs mt-1">Has been added to your wallet</p>
+            </div>
+          )}
+          
+          {!isUserWinner && (
+            <div className="bg-white/5 rounded-lg p-3 mb-3">
+              <p className="text-white/70 text-sm">
+                Better luck next time! You'll get them next game.
+              </p>
+            </div>
+          )}
         </div>
-      )}
+        
+        {/* Actions */}
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={handlePlayAgain}
+            className="bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3 rounded-xl font-bold hover:from-green-600 hover:to-emerald-700 transition-all"
+          >
+            Play Another Game
+          </button>
+          <button
+            onClick={handleReturnToLobby}
+            className="bg-white/20 text-white py-3 rounded-xl font-bold hover:bg-white/30 transition-all"
+          >
+            Return to Lobby
+          </button>
+        </div>
+        
+        <p className="text-white/50 text-xs mt-4">
+          Auto-returning to lobby in <span className="text-yellow-300">8</span> seconds...
+        </p>
+      </div>
+    </div>
+  </div>
+)}
       
       {/* Loading overlay for winner info */}
       {isWinnerLoading && (
@@ -625,27 +645,19 @@ const handleMarkNumber = async (number: number) => {
         </div>
         
         {/* Game Status Badge */}
-        <div className="mt-3 flex justify-center">
-          <div className={`px-4 py-1 rounded-full text-sm font-medium ${
-            game.status === 'WAITING' ? 'bg-yellow-500/20 text-yellow-300' :
-            game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
-            'bg-red-500/20 text-red-300'
-          }`}>
-            {game.status === 'WAITING' ? '⏳ Waiting for players' :
-             game.status === 'ACTIVE' ? '🎮 Game Active - Manual Marking' :
-             '🏁 Game Ended'}
-          </div>
-        </div>
+      <div className="mt-3 flex justify-center">
+  <div className={`px-4 py-1 rounded-full text-sm font-medium ${
+    game.status === 'WAITING' ? 'bg-yellow-500/20 text-yellow-300' :
+    game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
+    'bg-red-500/20 text-red-300'
+  }`}>
+    {game.status === 'WAITING' ? '⏳ Waiting for players' :
+     game.status === 'ACTIVE' ? '🎮 Game Active' :
+     '🏁 Game Ended'}
+  </div>
+</div>
 
-        {/* Manual Marking Instructions Banner */}
-        <div className="mt-3 p-3 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg border border-yellow-400/30">
-          <div className="flex items-center justify-center gap-2">
-            <div className="text-yellow-300 text-lg">⚠️</div>
-            <p className="text-yellow-300 text-sm font-medium">
-              MANUAL MODE: Click called numbers on your card to mark them!
-            </p>
-          </div>
-        </div>
+       
 
         {/* Card Error Display */}
         {cardError && (
