@@ -883,14 +883,12 @@ const handleMarkNumber = async (number: number) => {
             h-12 rounded-lg flex items-center justify-center 
             font-bold transition-all duration-200 relative
             ${isMarked
-              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
+              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'  // Marked - Green
               : isFreeSpace
-              ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'
-              : isCalled
-              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white hover:scale-[1.02] cursor-pointer'
-              : 'bg-white/15 text-white'
+              ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'    // Free space - Purple
+              : 'bg-white/15 text-white'                                      // Not marked - Normal color
             }
-            ${isCalled && !isMarked && !isFreeSpace ? 'cursor-pointer hover:scale-[1.02]' : 'cursor-default'}
+            ${isCalled && !isMarked && !isFreeSpace ? 'cursor-pointer hover:scale-[1.02] hover:bg-white/25' : 'cursor-default'}
           `}
           onClick={() => {
             // Only allow clicking if:
@@ -900,6 +898,9 @@ const handleMarkNumber = async (number: number) => {
             // 4. Game is active
             if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
               handleMarkNumber(number as number);
+            } else if (isCalled && !isMarked && !isFreeSpace) {
+              // This is a called number that can be marked
+              // The hover effect already indicates it's clickable
             } else if (!isCalled) {
               // Show tooltip or message
               console.log(`Number ${number} hasn't been called yet`);
@@ -922,6 +923,10 @@ const handleMarkNumber = async (number: number) => {
               <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
                 {number}
               </span>
+              {/* Show called indicator (small dot) for called but unmarked numbers */}
+              {isCalled && !isMarked && (
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+              )}
               {isMarked && (
                 <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
               )}
