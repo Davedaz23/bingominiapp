@@ -307,7 +307,7 @@ export default function GamePage() {
       // Show notification that number was called
       console.log(`📢 ${letter}${data.number} called! Click it on your card to mark.`);
       
-      // Display notification to user
+      // Display notification to user (without reloading)
       const notification = document.createElement('div');
       notification.className = 'fixed top-4 right-4 bg-yellow-500 text-white px-4 py-2 rounded-lg z-50';
       notification.textContent = `${letter}${data.number} called! Click to mark.`;
@@ -320,8 +320,8 @@ export default function GamePage() {
       // Trigger animation
       setIsAnimating(true);
       
+      // Update game state without reloading
       setTimeout(() => {
-        refreshGame();
         setIsAnimating(false);
       }, 1500);
     }
@@ -331,40 +331,7 @@ export default function GamePage() {
     setIsCallingNumber(false);
   }
 };
-  // Manual mark number (user must click)
-  // Add this function to your component
-const manualMarkNumber = async (number: number) => {
-  const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-  if (!userId) {
-    alert('Please log in to mark numbers');
-    return;
-  }
-  
-  try {
-    const response = await gameAPI.markNumber(id, userId, number);
-    
-    if (response.data.success) {
-      // Update local state
-      if (displayBingoCard) {
-        const flatNumbers = displayBingoCard.numbers.flat();
-        const position = flatNumbers.indexOf(number);
-        
-        if (position !== -1) {
-          setLocalBingoCard({
-            ...displayBingoCard,
-            markedPositions: [...(displayBingoCard.markedPositions || []), position]
-          });
-        }
-      }
-      
-      return true;
-    }
-    return false;
-  } catch (error) {
-    console.error('Manual mark failed:', error);
-    return false;
-  }
-};
+
 // Manual mark number (user must click)
 const handleMarkNumber = async (number: number) => {
   if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
@@ -385,27 +352,41 @@ const handleMarkNumber = async (number: number) => {
       console.log(`✅ Successfully manually marked number: ${number}`);
       setSelectedNumber(number);
       
-      // Update local bingo card state
+      // Update local bingo card state WITHOUT reloading
       if (displayBingoCard) {
         const numbers = displayBingoCard.numbers.flat();
         const position = numbers.indexOf(number);
         
         if (position !== -1 && !displayBingoCard.markedPositions?.includes(position)) {
+          const updatedMarkedPositions = [...(displayBingoCard.markedPositions || []), position];
           setLocalBingoCard({
             ...displayBingoCard,
-            markedPositions: [...(displayBingoCard.markedPositions || []), position]
+            markedPositions: updatedMarkedPositions
           });
+          
+          // Show success feedback without reloading
+          const successMsg = document.createElement('div');
+          successMsg.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-lg z-50';
+          successMsg.textContent = `✓ Marked ${number}!`;
+          document.body.appendChild(successMsg);
+          
+          setTimeout(() => {
+            successMsg.remove();
+          }, 1500);
         }
       }
-      
-      // Refresh game state
-      setTimeout(() => {
-        refreshGame();
-      }, 500);
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to mark number:', error);
-    alert(`Failed to mark number: ${error}`);
+    // Show error without reloading
+    const errorMsg = document.createElement('div');
+    errorMsg.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg z-50';
+    errorMsg.textContent = error.response?.data?.error || 'Failed to mark number';
+    document.body.appendChild(errorMsg);
+    
+    setTimeout(() => {
+      errorMsg.remove();
+    }, 3000);
   } finally {
     setIsMarking(false);
   }
@@ -438,7 +419,7 @@ const handleMarkNumber = async (number: number) => {
         
         console.log('🎉 Bingo claim successful!');
         
-        // Refresh game state to show winner
+        // Update game state without full reload - just refresh game data
         setTimeout(() => {
           refreshGame();
         }, 2000);
@@ -679,22 +660,24 @@ const handleMarkNumber = async (number: number) => {
           </div>
         )}
       </div>
-{/* Add this notification component near the top of your JSX */}
-{currentCalledNumber && (
-  <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
-    <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-full shadow-lg">
-      <div className="flex items-center gap-3">
-        <span className="text-2xl">🔔</span>
-        <div>
-          <div className="font-bold text-lg">
-            {currentCalledNumber.letter}{currentCalledNumber.number} CALLED!
+
+      {/* Called Number Notification */}
+      {currentCalledNumber && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
+          <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-full shadow-lg">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🔔</span>
+              <div>
+                <div className="font-bold text-lg">
+                  {currentCalledNumber.letter}{currentCalledNumber.number} CALLED!
+                </div>
+                <div className="text-sm opacity-90">Click it on your card to mark</div>
+              </div>
+            </div>
           </div>
-          <div className="text-sm opacity-90">Click it on your card to mark</div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
+
       <div className="grid grid-cols-4 gap-4">
         {/* Left: Called Numbers */}
         <div className="col-span-2">
@@ -867,76 +850,69 @@ const handleMarkNumber = async (number: number) => {
                 </div>
                 
                 {/* Card Numbers */}
-        
-<div className="grid grid-cols-5 gap-1">
-  {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-    row.map((number: number | string, colIndex: number) => {
-      const flatIndex = rowIndex * 5 + colIndex;
-      const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
-      const isCalled = allCalledNumbers.includes(number as number);
-      const isFreeSpace = rowIndex === 2 && colIndex === 2;
+                <div className="grid grid-cols-5 gap-1">
+                  {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+                    row.map((number: number | string, colIndex: number) => {
+                      const flatIndex = rowIndex * 5 + colIndex;
+                      const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
+                      const isCalled = allCalledNumbers.includes(number as number);
+                      const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
-      return (
-        <div
-          key={`${rowIndex}-${colIndex}`}
-          className={`
-            h-12 rounded-lg flex items-center justify-center 
-            font-bold transition-all duration-200 relative
-            ${isMarked
-              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'  // Marked - Green
-              : isFreeSpace
-              ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'    // Free space - Purple
-              : 'bg-white/15 text-white'                                      // Not marked - Normal color
-            }
-            ${isCalled && !isMarked && !isFreeSpace ? 'cursor-pointer hover:scale-[1.02] hover:bg-white/25' : 'cursor-default'}
-          `}
-          onClick={() => {
-            // Only allow clicking if:
-            // 1. Number is called
-            // 2. Not already marked
-            // 3. Not free space (free space is always marked)
-            // 4. Game is active
-            if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
-              handleMarkNumber(number as number);
-            } else if (isCalled && !isMarked && !isFreeSpace) {
-              // This is a called number that can be marked
-              // The hover effect already indicates it's clickable
-            } else if (!isCalled) {
-              // Show tooltip or message
-              console.log(`Number ${number} hasn't been called yet`);
-            }
-          }}
-          title={
-            isFreeSpace ? 'FREE SPACE (Always marked)' :
-            isMarked ? `Marked: ${number}` :
-            isCalled ? `Click to mark ${number}` :
-            `${number} (Not called yet)`
-          }
-        >
-          {isFreeSpace ? (
-            <>
-              <span className="text-xs font-bold">FREE</span>
-              <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-            </>
-          ) : (
-            <>
-              <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
-                {number}
-              </span>
-              {/* Show called indicator (small dot) for called but unmarked numbers */}
-              {isCalled && !isMarked && (
-                <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-              )}
-              {isMarked && (
-                <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-              )}
-            </>
-          )}
-        </div>
-      );
-    })
-  )}
-</div>
+                      return (
+                        <div
+                          key={`${rowIndex}-${colIndex}`}
+                          className={`
+                            h-12 rounded-lg flex items-center justify-center 
+                            font-bold transition-all duration-200 relative
+                            ${isMarked
+                              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'  // Marked - Green
+                              : isFreeSpace
+                              ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white border-2 border-purple-400'    // Free space - Purple
+                              : 'bg-white/15 text-white'
+                            }
+                            ${isCalled && !isMarked && !isFreeSpace ? 'cursor-pointer hover:scale-[1.02] hover:bg-white/25' : 'cursor-default'}
+                          `}
+                          onClick={() => {
+                            // Only allow clicking if:
+                            // 1. Number is called
+                            // 2. Not already marked
+                            // 3. Not free space (free space is always marked)
+                            // 4. Game is active
+                            if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
+                              handleMarkNumber(number as number);
+                            }
+                          }}
+                          title={
+                            isFreeSpace ? 'FREE SPACE (Always marked)' :
+                            isMarked ? `Marked: ${number}` :
+                            isCalled ? `Click to mark ${number}` :
+                            `${number} (Not called yet)`
+                          }
+                        >
+                          {isFreeSpace ? (
+                            <>
+                              <span className="text-xs font-bold">FREE</span>
+                              <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                            </>
+                          ) : (
+                            <>
+                              <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
+                                {number}
+                              </span>
+                              {/* Show called indicator (small dot) for called but unmarked numbers */}
+                              {isCalled && !isMarked && (
+                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                              )}
+                              {isMarked && (
+                                <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             ) : (
               <div className="text-center text-white/70 py-8">
