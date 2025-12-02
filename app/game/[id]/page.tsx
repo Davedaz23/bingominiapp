@@ -87,6 +87,17 @@ export default function GamePage() {
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameEndedCheckRef = useRef(false);
 
+
+  // NEW: State for bingo claiming
+  const [isClaimingBingo, setIsClaimingBingo] = useState<boolean>(false);
+  const [claimResult, setClaimResult] = useState<{
+    success: boolean;
+    message: string;
+    patternType?: string;
+    prizeAmount?: number;
+  } | null>(null);
+
+
   // Initialize game and load card
   useEffect(() => {
     const initializeGame = async () => {
@@ -316,42 +327,16 @@ export default function GamePage() {
   };
 
   // Auto-mark number on card when it's called
-  const autoMarkNumberOnCard = useCallback((number: number) => {
-    if (!localBingoCard || !number) return;
+const autoMarkNumberOnCard = useCallback((number: number) => {
+  // REMOVE THIS FUNCTION - Don't auto-mark anymore
+  // Just notify the user that a number was called
+  if (localBingoCard && number) {
+    console.log(`📢 Number ${number} was called. Click it to mark!`);
     
-    console.log(`🎯 Auto-marking ${number} on bingo card...`);
-    
-    if (autoMarkTimeoutRef.current) {
-      clearTimeout(autoMarkTimeoutRef.current);
-    }
-    
-    autoMarkTimeoutRef.current = setTimeout(() => {
-      try {
-        // Find position in bingo card
-        const flatNumbers = localBingoCard.numbers.flat();
-        const position = flatNumbers.indexOf(number);
-        
-        if (position !== -1 && !localBingoCard.markedPositions.includes(position)) {
-          console.log(`✅ Auto-marking ${number} on card at position ${position}`);
-          
-          setLocalBingoCard(prev => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              markedPositions: [...prev.markedPositions, position]
-            };
-          });
-          
-          // Also mark via API if game is active
-          if (game?.status === 'ACTIVE') {
-            handleMarkNumber(number);
-          }
-        }
-      } catch (error) {
-        console.error('Error auto-marking number:', error);
-      }
-    }, 500);
-  }, [localBingoCard, game]);
+    // Optional: Show a notification toast instead of auto-marking
+    // toast(`Number ${number} called! Click it to mark.`);
+  }
+}, [localBingoCard]);
 
   const handleMarkNumber = async (number: number) => {
     if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
@@ -377,7 +362,52 @@ export default function GamePage() {
       setIsMarking(false);
     }
   };
-
+ const handleClaimBingo = async () => {
+    if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !displayBingoCard) return;
+    
+    try {
+      setIsClaimingBingo(true);
+      setClaimResult(null);
+      
+      console.log('🏆 Attempting to claim BINGO...');
+      
+      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+      if (!userId) {
+        throw new Error('User ID not found');
+      }
+      
+      const response = await gameAPI.claimBingo(id, userId, 'BINGO');
+      
+      if (response.data.success) {
+        setClaimResult({
+          success: true,
+          message: response.data.message || 'Bingo claimed successfully!',
+          patternType: response.data.patternType,
+          prizeAmount: response.data.prizeAmount
+        });
+        
+        console.log('🎉 Bingo claim successful!');
+        
+        // Refresh game state to show winner
+        setTimeout(() => {
+          refreshGame();
+        }, 2000);
+      } else {
+        setClaimResult({
+          success: false,
+          message: response.data.message || 'Failed to claim bingo'
+        });
+      }
+    } catch (error: any) {
+      console.error('❌ Bingo claim failed:', error);
+      setClaimResult({
+        success: false,
+        message: error.message || 'Failed to claim bingo'
+      });
+    } finally {
+      setIsClaimingBingo(false);
+    }
+  };
   // NEW: Function to handle returning to lobby
   const handleReturnToLobby = () => {
     console.log('🚀 Returning to lobby...');
@@ -517,7 +547,7 @@ export default function GamePage() {
               </div>
               
               <p className="text-white/50 text-xs mt-4">
-                A new game will start automatically in 30 seconds
+                A new game will start automatically in 60 seconds
               </p>
             </div>
           </div>
@@ -823,6 +853,7 @@ export default function GamePage() {
             )}
           </div>
 
+
           {/* Game Controls */}
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
@@ -868,6 +899,65 @@ export default function GamePage() {
             </div>
           </div>
         </div>
+        {game?.status === 'ACTIVE' && displayBingoCard && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10">
+          <button
+            onClick={handleClaimBingo}
+            disabled={isClaimingBingo}
+            className={`
+              bg-gradient-to-r from-yellow-500 to-orange-500 
+              text-white px-8 py-4 rounded-2xl font-bold text-lg
+              shadow-lg shadow-orange-500/30
+              hover:from-yellow-600 hover:to-orange-600
+              active:scale-95 transition-all duration-200
+              flex items-center gap-3
+              ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
+            `}
+          >
+            {isClaimingBingo ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                Verifying...
+              </>
+            ) : (
+              <>
+                <span className="text-2xl">🏆</span>
+                CLAIM BINGO
+                <span className="text-2xl">🏆</span>
+              </>
+            )}
+          </button>
+          
+          {/* Claim Result Message */}
+          {claimResult && (
+            <div className={`
+              mt-3 p-3 rounded-xl text-center text-sm font-medium
+              ${claimResult.success 
+                ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
+                : 'bg-red-500/20 text-red-300 border border-red-500/30'
+              }
+              animate-fadeIn
+            `}>
+              {claimResult.message}
+              {claimResult.patternType && (
+                <div className="text-xs mt-1">
+                  Pattern: {claimResult.patternType}
+                </div>
+              )}
+              {claimResult.prizeAmount && (
+                <div className="text-xs mt-1 font-bold">
+                  Prize: ${claimResult.prizeAmount} ብር
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Instructions */}
+          <div className="text-white/70 text-xs text-center mt-2 max-w-xs">
+            First player to claim with a valid bingo line wins!
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

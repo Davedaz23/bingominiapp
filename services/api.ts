@@ -254,6 +254,15 @@ export const gameAPI = {
     api.get<{ status: string; timestamp: string; database: string }>('/health'),
   //====== auto check
   // checkAutoStart: (gameId: string) =>
+claimBingo: (gameId: string, userId: string, patternType?: string) =>
+    api.post<{ 
+      success: boolean; 
+      message: string; 
+      patternType?: string;
+      winningPositions?: number[];
+      prizeAmount?: number;
+    }>(`/games/${gameId}/claim-bingo`, { userId, patternType }),
+
   //   api.post<{ success: boolean; gameStarted: boolean; game?: Game }>(`/games/${gameId}/check-auto-start`),
  checkAutoStart: (gameId: string) =>
     api.post<{ 
@@ -269,10 +278,12 @@ export const gameAPI = {
         playersNeeded?: number;
       }
     }>(`/games/${gameId}/check-auto-start`),
+    
   // ==================== GAMES HEALTH CHECK ====================
   gamesHealthCheck: () =>
     api.get<{ success: boolean; status: string; activeGames: number; waitingGames: number; timestamp: string }>('/games/health/status')
 
+  
 
 };
 
