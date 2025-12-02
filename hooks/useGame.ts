@@ -1,4 +1,4 @@
-// hooks/useGame.ts - COMPLETE FIXED VERSION
+// hooks/useGame.ts - COMPLETE FIXED VERSION (Manual Marking Only)
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Game, BingoCard, GameState } from '../types';
 import { gameAPI } from '../services/api';
@@ -9,6 +9,13 @@ interface ApiError {
       error?: string;
     };
   };
+  message?: string;
+}
+
+interface MarkNumberResponse {
+  success: boolean;
+  bingoCard: BingoCard;
+  markedCount: number;
   message?: string;
 }
 
@@ -27,8 +34,14 @@ interface UseGameReturn {
   markNumber: (number: number) => Promise<boolean>;
   refreshGame: () => void;
   manualCallNumber: () => Promise<number>;
-  callNumber: () => Promise<number>; // Add this
+  callNumber: () => Promise<number>;
   getWinnerInfo: () => Promise<any>;
+  claimBingo: () => Promise<{
+    success: boolean;
+    message: string;
+    patternType?: string;
+    prizeAmount?: number;
+  }>;
   
   // User info
   isUserInGame: boolean;
@@ -94,7 +107,7 @@ export const useGame = (gameId: string): UseGameReturn => {
   // Get current user ID
   const getCurrentUserId = (): string | null => {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem('user_id');
+    return localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
   };
 
   // Enhanced bingo card fetching with better error handling
@@ -225,44 +238,43 @@ export const useGame = (gameId: string): UseGameReturn => {
   }, [gameId, fetchBingoCard, updateGameState]);
 
   // Adaptive polling system with error-based backoff (internal function)
- // In useGame.ts - Update the startPolling function
-const startPolling = useCallback(() => {
-  // Clear existing interval
-  if (pollingIntervalRef.current) {
-    clearInterval(pollingIntervalRef.current);
-    pollingIntervalRef.current = null;
-  }
+  const startPolling = useCallback(() => {
+    // Clear existing interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
 
-  const currentGame = gameRef.current;
-  if (!currentGame) return;
+    const currentGame = gameRef.current;
+    if (!currentGame) return;
 
-  // DETERMINE POLLING INTERVAL BASED ON GAME STATUS
-  let baseInterval = 10000; // Default: 10 seconds
-  
-  if (currentGame.status === 'ACTIVE') {
-    // MUCH FASTER POLLING FOR ACTIVE GAMES - to see called numbers
-    baseInterval = 2000; // 2 seconds for active games
-  } else if (currentGame.status === 'WAITING') {
-    baseInterval = 8000; // 8 seconds for waiting games
-  } else if (currentGame.status === 'FINISHED') {
-    baseInterval = 15000; // 15 seconds for finished games
-  }
+    // DETERMINE POLLING INTERVAL BASED ON GAME STATUS
+    let baseInterval = 10000; // Default: 10 seconds
+    
+    if (currentGame.status === 'ACTIVE') {
+      // MUCH FASTER POLLING FOR ACTIVE GAMES - to see called numbers
+      baseInterval = 2000; // 2 seconds for active games
+    } else if (currentGame.status === 'WAITING') {
+      baseInterval = 8000; // 8 seconds for waiting games
+    } else if (currentGame.status === 'FINISHED') {
+      baseInterval = 15000; // 15 seconds for finished games
+    }
 
-  // Apply error-based backoff
-  let finalInterval = baseInterval;
-  if (consecutiveErrorsRef.current > 0) {
-    finalInterval = Math.min(baseInterval * Math.pow(2, consecutiveErrorsRef.current), 60000);
-  }
+    // Apply error-based backoff
+    let finalInterval = baseInterval;
+    if (consecutiveErrorsRef.current > 0) {
+      finalInterval = Math.min(baseInterval * Math.pow(2, consecutiveErrorsRef.current), 60000);
+    }
 
-  console.log(`🔄 Starting polling every ${finalInterval}ms for game status: ${currentGame.status}`);
-  
-  pollingIntervalRef.current = setInterval(() => {
-    fetchGame(true);
-  }, finalInterval);
+    console.log(`🔄 Starting polling every ${finalInterval}ms for game status: ${currentGame.status}`);
+    
+    pollingIntervalRef.current = setInterval(() => {
+      fetchGame(true);
+    }, finalInterval);
 
-}, [fetchGame]);
+  }, [fetchGame]);
 
-  // Enhanced mark number function with better error handling
+  // **FIXED: Manual mark number function (NO AUTO-WIN CHECKING)**
   const markNumber = useCallback(async (number: number): Promise<boolean> => {
     try {
       const userId = getCurrentUserId();
@@ -273,28 +285,61 @@ const startPolling = useCallback(() => {
       console.log(`🎯 Marking number: ${number}`);
       const response = await gameAPI.markNumber(gameId, userId, number);
       
-      // Update bingo card immediately with optimistic update
+      // MANUAL MODE: Just update the bingo card with the marked position
       const updatedCard = response.data.bingoCard;
       
-      // FIX: Always update the card to get the latest winner status
+      // Update the local bingo card
       setBingoCard(updatedCard);
       
-      if (response.data.isWinner) {
-        console.log('🎉 BINGO! User won!');
-        
-        // Refresh game to get final state
-        await fetchGame(true);
-        return true;
-      }
+      console.log(`✅ Number ${number} marked successfully. Marked count: ${updatedCard.markedPositions?.length || 0}`);
       
-      return false;
+      // In manual mode, markNumber should NEVER check for wins
+      // The user must click "CLAIM BINGO" separately
+      return false; // Always return false for manual mode
+      
     } catch (err) {
       console.error('Error marking number:', err);
       const apiError = err as ApiError;
       
-      // Enhanced error messages
       const errorMessage = apiError.response?.data?.error || apiError.message || 'Failed to mark number';
       throw new Error(errorMessage);
+    }
+  }, [gameId]);
+
+  // Manual Bingo claim function
+  const claimBingo = useCallback(async () => {
+    try {
+      const userId = getCurrentUserId();
+      if (!userId) {
+        throw new Error('No user ID found');
+      }
+
+      console.log(`🏆 Attempting to claim BINGO for user ${userId}`);
+      const response = await gameAPI.claimBingo(gameId, userId, 'BINGO');
+      
+      if (response.data.success) {
+        console.log('🎉 BINGO claim successful!');
+        
+        // Refresh game to show winner
+        setTimeout(() => fetchGame(true), 1000);
+        
+        return {
+          success: true,
+          message: response.data.message || 'Bingo claimed successfully!',
+          patternType: response.data.patternType,
+          prizeAmount: response.data.prizeAmount
+        };
+      } else {
+        throw new Error(response.data.message || 'Failed to claim bingo');
+      }
+    } catch (err) {
+      console.error('Error claiming bingo:', err);
+      const apiError = err as ApiError;
+      
+      return {
+        success: false,
+        message: apiError.response?.data?.error || apiError.message || 'Failed to claim bingo'
+      };
     }
   }, [gameId, fetchGame]);
 
@@ -379,6 +424,24 @@ const startPolling = useCallback(() => {
     return 'Active game'; // Simplified since we don't have timestamp data
   }, [gameState.currentNumber]);
 
+  // Debug function to check current state
+  const debugCurrentState = useCallback(() => {
+    console.log('🔍 DEBUG - Current state:', {
+      gameId,
+      gameStatus: game?.status,
+      bingoCard: bingoCard ? {
+        markedCount: bingoCard.markedPositions?.length || 0,
+        markedPositions: bingoCard.markedPositions || [],
+        hasNumbers: !!bingoCard.numbers
+      } : null,
+      gameState: {
+        currentNumber: gameState.currentNumber,
+        calledNumbersCount: gameState.calledNumbers?.length || 0,
+        isStarted: gameState.isStarted
+      }
+    });
+  }, [gameId, game, bingoCard, gameState]);
+
   // Enhanced game state with time info
   const enhancedGameState = {
     ...gameState,
@@ -418,6 +481,20 @@ const startPolling = useCallback(() => {
     }
   }, [gameState.currentNumber, gameState.calledNumbers.length]);
 
+  // Debug effect for manual mode testing
+  useEffect(() => {
+    console.log('🎯 MANUAL MODE ACTIVE - Users must click numbers to mark them');
+    console.log('🏆 Users must click "CLAIM BINGO" to win');
+    
+    // Log initial card state
+    if (bingoCard) {
+      console.log('🃏 Initial bingo card loaded:', {
+        markedPositions: bingoCard.markedPositions?.length || 0,
+        numbers: bingoCard.numbers ? 'Loaded' : 'Not loaded'
+      });
+    }
+  }, [bingoCard]);
+
   return {
     // State
     game,
@@ -430,8 +507,9 @@ const startPolling = useCallback(() => {
     markNumber,
     refreshGame: () => fetchGame(false),
     manualCallNumber,
-    callNumber, // Add this to the return object
+    callNumber,
     getWinnerInfo,
+    claimBingo, // Add claimBingo to return object
     
     // User info
     isUserInGame: isUserInGame(),
