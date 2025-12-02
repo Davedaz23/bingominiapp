@@ -21,11 +21,10 @@ interface CardData {
 }
 
 interface LocalBingoCard {
-  cardNumber?: number; // Make this optional
+  cardNumber?: number;
   numbers: (number | string)[][];
   markedPositions: number[];
   selected?: boolean[][];
-  // Add other properties that might come from the API
   id?: string;
   _id?: string;
   cardIndex?: number;
@@ -42,6 +41,13 @@ interface WinnerInfo {
   endedAt: string;
   totalPlayers: number;
   numbersCalled: number;
+  winningPattern?: string;
+  winningCard?: {
+    cardNumber: number;
+    numbers: (number | string)[][];
+    markedPositions: number[];
+    winningPatternPositions?: number[];
+  };
 }
 
 export default function GamePage() {
@@ -54,7 +60,6 @@ export default function GamePage() {
     game, 
     bingoCard: gameBingoCard, 
     gameState, 
-    // markNumber, 
     isLoading,
     error: gameError,
     manualCallNumber,
@@ -85,6 +90,7 @@ export default function GamePage() {
   const [isWinnerLoading, setIsWinnerLoading] = useState(false);
   const [isUserWinner, setIsUserWinner] = useState(false);
   const [winningAmount, setWinningAmount] = useState(0);
+  const [countdown, setCountdown] = useState<number>(5);
   
   // State for bingo claiming
   const [isClaimingBingo, setIsClaimingBingo] = useState<boolean>(false);
@@ -98,6 +104,7 @@ export default function GamePage() {
   // Refs for tracking
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameEndedCheckRef = useRef(false);
+  const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize game and load card
   useEffect(() => {
@@ -213,8 +220,41 @@ export default function GamePage() {
     }
   }, [game]);
 
-  // Check if game ended and show winner modal
+  // Start countdown when winner modal shows
+  useEffect(() => {
+    if (showWinnerModal && winnerInfo) {
+      setCountdown(5);
+      
+      // Clear any existing countdown
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+      }
+      
+      // Start countdown
+      countdownRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            // Auto-return to lobby when countdown reaches 0
+            if (countdownRef.current) {
+              clearInterval(countdownRef.current);
+            }
+            handleReturnToLobby();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    // Cleanup
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+      }
+    };
+  }, [showWinnerModal, winnerInfo]);
 
+  // Check if game ended and show winner modal
 useEffect(() => {
   const checkGameEnded = async () => {
     if (!game || gameEndedCheckRef.current) return;
@@ -229,6 +269,28 @@ useEffect(() => {
         // Fetch winner information
         const winnerData = await getWinnerInfo();
         if (winnerData) {
+          // If winner card data is missing, try to fetch it separately
+          if (!winnerData.winningCard && winnerData.winner) {
+            try {
+              const winnerUserId = winnerData.winner.telegramId || winnerData.winner._id;
+              if (winnerUserId) {
+                const winnerCardResponse = await gameAPI.getUserBingoCard(id, winnerUserId.toString());
+                
+                if (winnerCardResponse.data.success && winnerCardResponse.data.bingoCard) {
+                  const winnerCard = winnerCardResponse.data.bingoCard;
+                  winnerData.winningCard = {
+                    cardNumber: (winnerCard as any).cardNumber || (winnerCard as any).cardIndex || 0,
+                    numbers: winnerCard.numbers || [],
+                    markedPositions: winnerCard.markedNumbers || winnerCard.markedPositions || [],
+                    winningPatternPositions: (winnerCard as any).winningPatternPositions || []
+                  };
+                }
+              }
+            } catch (cardError) {
+              console.warn('Could not fetch winner card details:', cardError);
+            }
+          }
+          
           setWinnerInfo(winnerData);
           
           // Check if current user is the winner
@@ -239,7 +301,7 @@ useEffect(() => {
             setIsUserWinner(isWinner);
             
             // Calculate winning amount (90% of total pot)
-            const totalPot = (game.currentPlayers || 0) * 10; // $10 entry fee
+            const totalPot = (game.currentPlayers || 0) * 10;
             const platformFee = totalPot * 0.1;
             const winnerPrize = totalPot - platformFee;
             setWinningAmount(winnerPrize);
@@ -268,13 +330,6 @@ useEffect(() => {
           setIsWinnerLoading(false);
         }, 1500);
         
-        // Auto-return to lobby after 8 seconds (show modal for 8 seconds)
-        setTimeout(() => {
-          if (showWinnerModal) {
-            handleReturnToLobby();
-          }
-        }, 8000);
-        
       } catch (error) {
         console.error('Failed to fetch winner info:', error);
         setIsWinnerLoading(false);
@@ -292,113 +347,113 @@ useEffect(() => {
 
   // Function to call next number (MANUAL MARKING - NO AUTO-MARK)
   const handleCallNumber = async () => {
-  if (isCallingNumber || !id || game?.status !== 'ACTIVE') return;
-  
-  try {
-    setIsCallingNumber(true);
-    console.log('🎲 Calling next number (MANUAL MARKING MODE)...');
+    if (isCallingNumber || !id || game?.status !== 'ACTIVE') return;
     
-    const response = await gameAPI.callNumber(id);
-    const data: CallNumberResponse = response.data;
-    
-    if (data.success) {
-      // Update current called number with animation
-      const letter = getNumberLetter(data.number);
-      setCurrentCalledNumber({
-        number: data.number,
-        letter: letter
-      });
+    try {
+      setIsCallingNumber(true);
+      console.log('🎲 Calling next number (MANUAL MARKING MODE)...');
       
-      // Update all called numbers - but DO NOT auto-mark
-      setAllCalledNumbers(data.calledNumbers);
+      const response = await gameAPI.callNumber(id);
+      const data: CallNumberResponse = response.data;
       
-      // Show notification that number was called
-      console.log(`📢 ${letter}${data.number} called! Click it on your card to mark.`);
-      
-      // Display notification to user (without reloading)
-      const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-yellow-500 text-white px-4 py-2 rounded-lg z-50';
-      notification.textContent = `${letter}${data.number} called! Click to mark.`;
-      document.body.appendChild(notification);
-      
-      setTimeout(() => {
-        notification.remove();
-      }, 3000);
-      
-      // Trigger animation
-      setIsAnimating(true);
-      
-      // Update game state without reloading
-      setTimeout(() => {
-        setIsAnimating(false);
-      }, 1500);
-    }
-  } catch (error) {
-    console.error('❌ Failed to call number:', error);
-  } finally {
-    setIsCallingNumber(false);
-  }
-};
-
-// Manual mark number (user must click)
-const handleMarkNumber = async (number: number) => {
-  if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
-  
-  try {
-    setIsMarking(true);
-    console.log(`🎯 Attempting to manually mark number: ${number}`);
-    
-    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-    if (!userId) {
-      throw new Error('User ID not found');
-    }
-    
-    // Call the API to mark this number
-    const response = await gameAPI.markNumber(id, userId, number);
-    
-    if (response.data.success) {
-      console.log(`✅ Successfully manually marked number: ${number}`);
-      setSelectedNumber(number);
-      
-      // Update local bingo card state WITHOUT reloading
-      if (displayBingoCard) {
-        const numbers = displayBingoCard.numbers.flat();
-        const position = numbers.indexOf(number);
+      if (data.success) {
+        // Update current called number with animation
+        const letter = getNumberLetter(data.number);
+        setCurrentCalledNumber({
+          number: data.number,
+          letter: letter
+        });
         
-        if (position !== -1 && !displayBingoCard.markedPositions?.includes(position)) {
-          const updatedMarkedPositions = [...(displayBingoCard.markedPositions || []), position];
-          setLocalBingoCard({
-            ...displayBingoCard,
-            markedPositions: updatedMarkedPositions
-          });
+        // Update all called numbers - but DO NOT auto-mark
+        setAllCalledNumbers(data.calledNumbers);
+        
+        // Show notification that number was called
+        console.log(`📢 ${letter}${data.number} called! Click it on your card to mark.`);
+        
+        // Display notification to user (without reloading)
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-yellow-500 text-white px-4 py-2 rounded-lg z-50';
+        notification.textContent = `${letter}${data.number} called! Click to mark.`;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          notification.remove();
+        }, 3000);
+        
+        // Trigger animation
+        setIsAnimating(true);
+        
+        // Update game state without reloading
+        setTimeout(() => {
+          setIsAnimating(false);
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('❌ Failed to call number:', error);
+    } finally {
+      setIsCallingNumber(false);
+    }
+  };
+
+  // Manual mark number (user must click)
+  const handleMarkNumber = async (number: number) => {
+    if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
+    
+    try {
+      setIsMarking(true);
+      console.log(`🎯 Attempting to manually mark number: ${number}`);
+      
+      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+      if (!userId) {
+        throw new Error('User ID not found');
+      }
+      
+      // Call the API to mark this number
+      const response = await gameAPI.markNumber(id, userId, number);
+      
+      if (response.data.success) {
+        console.log(`✅ Successfully manually marked number: ${number}`);
+        setSelectedNumber(number);
+        
+        // Update local bingo card state WITHOUT reloading
+        if (displayBingoCard) {
+          const numbers = displayBingoCard.numbers.flat();
+          const position = numbers.indexOf(number);
           
-          // Show success feedback without reloading
-          const successMsg = document.createElement('div');
-          successMsg.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-lg z-50';
-          successMsg.textContent = `✓ Marked ${number}!`;
-          document.body.appendChild(successMsg);
-          
-          setTimeout(() => {
-            successMsg.remove();
-          }, 1500);
+          if (position !== -1 && !displayBingoCard.markedPositions?.includes(position)) {
+            const updatedMarkedPositions = [...(displayBingoCard.markedPositions || []), position];
+            setLocalBingoCard({
+              ...displayBingoCard,
+              markedPositions: updatedMarkedPositions
+            });
+            
+            // Show success feedback without reloading
+            const successMsg = document.createElement('div');
+            successMsg.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-lg z-50';
+            successMsg.textContent = `✓ Marked ${number}!`;
+            document.body.appendChild(successMsg);
+            
+            setTimeout(() => {
+              successMsg.remove();
+            }, 1500);
+          }
         }
       }
+    } catch (error: any) {
+      console.error('Failed to mark number:', error);
+      // Show error without reloading
+      const errorMsg = document.createElement('div');
+      errorMsg.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg z-50';
+      errorMsg.textContent = error.response?.data?.error || 'Failed to mark number';
+      document.body.appendChild(errorMsg);
+      
+      setTimeout(() => {
+        errorMsg.remove();
+      }, 3000);
+    } finally {
+      setIsMarking(false);
     }
-  } catch (error: any) {
-    console.error('Failed to mark number:', error);
-    // Show error without reloading
-    const errorMsg = document.createElement('div');
-    errorMsg.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg z-50';
-    errorMsg.textContent = error.response?.data?.error || 'Failed to mark number';
-    document.body.appendChild(errorMsg);
-    
-    setTimeout(() => {
-      errorMsg.remove();
-    }, 3000);
-  } finally {
-    setIsMarking(false);
-  }
-};
+  };
 
   // Manual Bingo claim
   const handleClaimBingo = async () => {
@@ -449,32 +504,46 @@ const handleMarkNumber = async (number: number) => {
   };
 
   // Function to handle returning to lobby
-const handleReturnToLobby = () => {
-  
-  // Clear all game states
-  setShowWinnerModal(false);
-  setWinnerInfo(null);
-  setIsUserWinner(false);
-  setWinningAmount(0);
-  setCurrentCalledNumber(null);
-  setAllCalledNumbers([]);
-  setClaimResult(null);
-  
-  // Reset game ended check
-  gameEndedCheckRef.current = false;
-  
-  // Navigate to lobby
-  router.push('/');
-};
+  const handleReturnToLobby = () => {
+    console.log('🚀 Returning to lobby...');
+    
+    // Clear countdown
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+    }
+    
+    // Clear all game states
+    setShowWinnerModal(false);
+    setWinnerInfo(null);
+    setIsUserWinner(false);
+    setWinningAmount(0);
+    setCurrentCalledNumber(null);
+    setAllCalledNumbers([]);
+    setClaimResult(null);
+    setCountdown(5);
+    
+    // Reset game ended check
+    gameEndedCheckRef.current = false;
+    
+    // Navigate to lobby
+    router.push('/');
+  };
 
   // Function to play again
   const handlePlayAgain = () => {
     console.log('🔄 Playing again...');
+    
+    // Clear countdown
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+    }
+    
     setShowWinnerModal(false);
     gameEndedCheckRef.current = false;
     setWinnerInfo(null);
     setIsUserWinner(false);
     setWinningAmount(0);
+    setCountdown(5);
     refreshGame();
   };
 
@@ -484,11 +553,46 @@ const handleReturnToLobby = () => {
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
       }
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+      }
     };
   }, []);
 
   // Use local card if available, otherwise use the one from useGame hook
   const displayBingoCard = localBingoCard || gameBingoCard;
+
+  // Helper function to check if a position is in winning pattern
+  const isWinningPosition = (rowIndex: number, colIndex: number): boolean => {
+    if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
+    const flatIndex = rowIndex * 5 + colIndex;
+    return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
+  };
+
+  // Function to get winning pattern type name
+  const getPatternName = (patternType?: string): string => {
+    if (!patternType) return 'BINGO Line';
+    
+    const patternMap: Record<string, string> = {
+      'ROW_0': 'Top Row',
+      'ROW_1': 'Second Row',
+      'ROW_2': 'Third Row',
+      'ROW_3': 'Fourth Row',
+      'ROW_4': 'Bottom Row',
+      'COLUMN_0': 'First Column (B)',
+      'COLUMN_1': 'Second Column (I)',
+      'COLUMN_2': 'Third Column (N)',
+      'COLUMN_3': 'Fourth Column (G)',
+      'COLUMN_4': 'Fifth Column (O)',
+      'DIAGONAL_LEFT': 'Left Diagonal',
+      'DIAGONAL_RIGHT': 'Right Diagonal',
+      'FOUR_CORNERS': 'Four Corners',
+      'BLACKOUT': 'Blackout (Full Card)',
+      'BINGO': 'BINGO Line'
+    };
+    
+    return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
+  };
 
   if (isLoading || isLoadingCard) {
     return (
@@ -525,79 +629,163 @@ const handleReturnToLobby = () => {
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
       {/* Winner Modal */}
       {showWinnerModal && winnerInfo && (
-  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-    <div className="bg-gradient-to-br from-purple-700 to-blue-800 rounded-2xl p-6 max-w-md w-full border-2 border-yellow-400 shadow-2xl">
-      <div className="text-center">
-        {/* Trophy Icon */}
-        <div className="mb-4">
-          <div className="text-6xl mb-2">🏆</div>
-          <h2 className="text-2xl font-bold text-white mb-1">Game Over!</h2>
-          <p className="text-white/70 text-sm">Game Code: {winnerInfo.gameCode}</p>
+  <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+    <div className="bg-gradient-to-br from-purple-800 to-blue-900 rounded-2xl p-6 max-w-4xl w-full border-4 border-yellow-500 shadow-2xl">
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Left: Winner Info - same as before */}
+        <div className="lg:w-2/5">
+          {/* ... keep existing winner info code ... */}
         </div>
         
-        {/* Winner Info */}
-        <div className="bg-white/10 rounded-xl p-4 mb-4 border border-white/20">
-          <div className="flex items-center justify-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
-              <span className="text-xl font-bold">👑</span>
-            </div>
-            <div className="text-left">
-              <h3 className="text-white font-bold text-lg">
-                {winnerInfo.winner.firstName} {winnerInfo.winner.username ? `(@${winnerInfo.winner.username})` : ''}
+        {/* Right: Winning Card Display */}
+        <div className="lg:w-3/5">
+          <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-5 border-2 border-yellow-500/50">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-bold text-xl">
+                {winnerInfo.winningCard 
+                  ? `Winning Card #${winnerInfo.winningCard.cardNumber || 'N/A'}`
+                  : 'Winner Details'
+                }
               </h3>
-              <p className="text-white/70 text-sm">Is the Winner!</p>
+              <div className="text-white/70 text-sm bg-yellow-500/20 px-3 py-1 rounded-full">
+                Winning Pattern Highlighted
+              </div>
             </div>
+            
+            {/* Display card if available, otherwise show winner details */}
+            {winnerInfo.winningCard?.numbers ? (
+              <>
+                {/* BINGO Header */}
+                <div className="grid grid-cols-5 gap-2 mb-3">
+                  {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                    <div 
+                      key={letter}
+                      className="h-12 rounded-lg flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-700 to-blue-800"
+                    >
+                      {letter}
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Winning Card Numbers */}
+                <div className="grid grid-cols-5 gap-2">
+                  {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+                    row.map((number: number | string, colIndex: number) => {
+                      const flatIndex = rowIndex * 5 + colIndex;
+                      const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
+                      const isWinningPos = winnerInfo.winningCard?.winningPatternPositions?.includes(flatIndex);
+                      const isFreeSpace = rowIndex === 2 && colIndex === 2;
+
+                      return (
+                        <div
+                          key={`${rowIndex}-${colIndex}`}
+                          className={`
+                            h-14 rounded-lg flex items-center justify-center 
+                            font-bold transition-all duration-200 relative
+                            ${isWinningPos
+                              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border-3 border-yellow-300 shadow-lg shadow-yellow-500/50'
+                              : isMarked
+                              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
+                              : isFreeSpace
+                              ? 'bg-gradient-to-br from-purple-700 to-pink-700 text-white'
+                              : 'bg-gray-800 text-white/70'
+                            }
+                          `}
+                        >
+                          {isFreeSpace ? (
+                            <>
+                              <span className="text-xs font-bold">FREE</span>
+                              <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                            </>
+                          ) : (
+                            <>
+                              <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
+                                {number}
+                              </span>
+                              {isMarked && (
+                                <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                              )}
+                              {isWinningPos && (
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full animate-ping"></div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                
+                {/* Pattern Legend */}
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-gradient-to-br from-yellow-500 to-orange-500"></div>
+                    <span className="text-white/70">Winning Pattern</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-gradient-to-br from-green-600 to-emerald-700"></div>
+                    <span className="text-white/70">Marked Numbers</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-700 to-pink-700"></div>
+                    <span className="text-white/70">Free Space</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              // Fallback when card data isn't available
+              <div className="text-center py-10">
+                <div className="text-5xl mb-4">🎯</div>
+                <h4 className="text-white text-xl font-bold mb-2">Winner Details</h4>
+                <p className="text-white/70 mb-6">
+                  {winnerInfo.winner.firstName} won with {winnerInfo.winningPattern || 'a winning pattern'}!
+                </p>
+                
+                <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
+                  <div className="grid grid-cols-2 gap-3 text-left">
+                    <div>
+                      <p className="text-white/70 text-xs">Pattern</p>
+                      <p className="text-white font-bold">
+                        {winnerInfo.winningPattern ? getPatternName(winnerInfo.winningPattern) : 'BINGO'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-white/70 text-xs">Numbers Called</p>
+                      <p className="text-white font-bold">{winnerInfo.numbersCalled}/75</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="text-white/60 text-sm">
+                  Card details not available for display
+                </div>
+              </div>
+            )}
           </div>
           
-          {/* Stats */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="bg-white/5 rounded-lg p-2">
-              <p className="text-white/70 text-xs">Players</p>
-              <p className="text-white font-bold">{winnerInfo.totalPlayers}</p>
-            </div>
-            <div className="bg-white/5 rounded-lg p-2">
-              <p className="text-white/70 text-xs">Numbers Called</p>
-              <p className="text-white font-bold">{winnerInfo.numbersCalled}/75</p>
+          {/* Game Summary */}
+          <div className="mt-4 bg-black/30 rounded-xl p-4">
+            <h4 className="text-white font-bold mb-2">Game Summary</h4>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="text-white/70">
+                <span>Winner:</span>
+                <div className="text-white font-medium">{winnerInfo.winner.firstName}</div>
+              </div>
+              <div className="text-white/70">
+                <span>Prize:</span>
+                <div className="text-yellow-300 font-bold">${winningAmount} ብር</div>
+              </div>
+              <div className="text-white/70">
+                <span>Total Players:</span>
+                <div className="text-white">{winnerInfo.totalPlayers}</div>
+              </div>
+              <div className="text-white/70">
+                <span>Numbers Called:</span>
+                <div className="text-white">{winnerInfo.numbersCalled}</div>
+              </div>
             </div>
           </div>
-          
-          {/* Winning Amount */}
-          {isUserWinner && winningAmount > 0 && (
-            <div className="bg-gradient-to-r from-green-500/20 to-emerald-600/20 rounded-lg p-3 mb-3 border border-green-500/30">
-              <p className="text-white/80 text-sm mb-1">You won!</p>
-              <p className="text-2xl font-bold text-yellow-300">${winningAmount} ብር</p>
-              <p className="text-white/60 text-xs mt-1">Has been added to your wallet</p>
-            </div>
-          )}
-          
-          {!isUserWinner && (
-            <div className="bg-white/5 rounded-lg p-3 mb-3">
-              <p className="text-white/70 text-sm">
-                Better luck next time! You'll get them next game.
-              </p>
-            </div>
-          )}
         </div>
-        
-        {/* Actions */}
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={handlePlayAgain}
-            className="bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3 rounded-xl font-bold hover:from-green-600 hover:to-emerald-700 transition-all"
-          >
-            Play Another Game
-          </button>
-          <button
-            onClick={handleReturnToLobby}
-            className="bg-white/20 text-white py-3 rounded-xl font-bold hover:bg-white/30 transition-all"
-          >
-            Return to Lobby
-          </button>
-        </div>
-        
-        <p className="text-white/50 text-xs mt-4">
-          Auto-returning to lobby in <span className="text-yellow-300">8</span> seconds...
-        </p>
       </div>
     </div>
   </div>
@@ -645,19 +833,29 @@ const handleReturnToLobby = () => {
         </div>
         
         {/* Game Status Badge */}
-      <div className="mt-3 flex justify-center">
-  <div className={`px-4 py-1 rounded-full text-sm font-medium ${
-    game.status === 'WAITING' ? 'bg-yellow-500/20 text-yellow-300' :
-    game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
-    'bg-red-500/20 text-red-300'
-  }`}>
-    {game.status === 'WAITING' ? '⏳ Waiting for players' :
-     game.status === 'ACTIVE' ? '🎮 Game Active' :
-     '🏁 Game Ended'}
-  </div>
-</div>
-
-       
+        <div className="mt-3 flex justify-center">
+          <div className={`px-4 py-1 rounded-full text-sm font-medium ${
+            game.status === 'WAITING' ? 'bg-yellow-500/20 text-yellow-300' :
+            game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
+            'bg-red-500/20 text-red-300'
+          }`}>
+            {game.status === 'WAITING' ? '⏳ Waiting for players' :
+             game.status === 'ACTIVE' ? '🎮 Game Active' :
+             '🏁 Game Ended'}
+          </div>
+        </div>
+        
+        {/* Manual Marking Instructions Banner (only show when game is active) */}
+        {game.status === 'ACTIVE' && (
+          <div className="mt-3 p-3 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg border border-yellow-400/30">
+            <div className="flex items-center justify-center gap-2">
+              <div className="text-yellow-300 text-lg">⚠️</div>
+              <p className="text-yellow-300 text-sm font-medium">
+                MANUAL MODE: Click called numbers on your card to mark them!
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Card Error Display */}
         {cardError && (
@@ -841,11 +1039,13 @@ const handleReturnToLobby = () => {
             </div>
             
             {/* Manual Marking Instructions */}
-            <div className="mb-4 p-3 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-lg border border-blue-400/30">
-              <p className="text-white text-sm text-center font-medium">
-                💡 <span className="text-yellow-300">MANUAL MARKING:</span> Click called numbers below to mark your card!
-              </p>
-            </div>
+            {game.status === 'ACTIVE' && (
+              <div className="mb-4 p-3 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-lg border border-blue-400/30">
+                <p className="text-white text-sm text-center font-medium">
+                  💡 <span className="text-yellow-300">MANUAL MARKING:</span> Click called numbers below to mark your card!
+                </p>
+              </div>
+            )}
             
             {displayBingoCard ? (
               <div className="mb-4">
@@ -877,19 +1077,14 @@ const handleReturnToLobby = () => {
                             h-12 rounded-lg flex items-center justify-center 
                             font-bold transition-all duration-200 relative
                             ${isMarked
-                              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'  // Marked - Green
+                              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'
                               : isFreeSpace
-                              ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white border-2 border-purple-400'    // Free space - Purple
+                              ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white border-2 border-purple-400'
                               : 'bg-white/15 text-white'
                             }
                             ${isCalled && !isMarked && !isFreeSpace ? 'cursor-pointer hover:scale-[1.02] hover:bg-white/25' : 'cursor-default'}
                           `}
                           onClick={() => {
-                            // Only allow clicking if:
-                            // 1. Number is called
-                            // 2. Not already marked
-                            // 3. Not free space (free space is always marked)
-                            // 4. Game is active
                             if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
                               handleMarkNumber(number as number);
                             }
@@ -911,7 +1106,6 @@ const handleReturnToLobby = () => {
                               <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
                                 {number}
                               </span>
-                              {/* Show called indicator (small dot) for called but unmarked numbers */}
                               {isCalled && !isMarked && (
                                 <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
                               )}
