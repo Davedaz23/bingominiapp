@@ -196,9 +196,12 @@ export const gameAPI = {
   //   api.post<{ success: boolean; number: number; calledNumbers: number[]; totalCalled: number }>(`/games/${gameId}/call-number`),
    callNumber: (gameId: string) =>
     api.post<CallNumberResponse>(`/games/${gameId}/call-number`),
-  markNumber: (gameId: string, userId: string, number: number) =>
-    api.post<{ success: boolean; bingoCard: BingoCard; isWinner: boolean; isSpectator?: boolean }>(`/games/${gameId}/mark-number`, { userId, number }),
-  
+// In services/api.ts - markNumber endpoint
+markNumber: (gameId: string, userId: string, number: number) =>
+  api.post<{ success: boolean; bingoCard: BingoCard; isWinner: boolean; }>(
+    `/games/${gameId}/mark-number`, 
+    { userId, number }
+  ),
   // ==================== GAME QUERIES ====================
   getActiveGames: () =>
     api.get<{ success: boolean; games: Game[] }>('/games/active'),

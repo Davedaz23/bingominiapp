@@ -21,10 +21,14 @@ interface CardData {
 }
 
 interface LocalBingoCard {
-  cardNumber: number;
+  cardNumber?: number; // Make this optional
   numbers: (number | string)[][];
   markedPositions: number[];
   selected?: boolean[][];
+  // Add other properties that might come from the API
+  id?: string;
+  _id?: string;
+  cardIndex?: number;
 }
 
 interface WinnerInfo {
@@ -50,7 +54,7 @@ export default function GamePage() {
     game, 
     bingoCard: gameBingoCard, 
     gameState, 
-    markNumber, 
+    // markNumber, 
     isLoading,
     error: gameError,
     manualCallNumber,
@@ -280,72 +284,132 @@ export default function GamePage() {
 
   // Function to call next number (MANUAL MARKING - NO AUTO-MARK)
   const handleCallNumber = async () => {
-    if (isCallingNumber || !id || game?.status !== 'ACTIVE') return;
+  if (isCallingNumber || !id || game?.status !== 'ACTIVE') return;
+  
+  try {
+    setIsCallingNumber(true);
+    console.log('🎲 Calling next number (MANUAL MARKING MODE)...');
     
-    try {
-      setIsCallingNumber(true);
-      console.log('🎲 Calling next number...');
+    const response = await gameAPI.callNumber(id);
+    const data: CallNumberResponse = response.data;
+    
+    if (data.success) {
+      // Update current called number with animation
+      const letter = getNumberLetter(data.number);
+      setCurrentCalledNumber({
+        number: data.number,
+        letter: letter
+      });
       
-      const response = await gameAPI.callNumber(id);
-      const data: CallNumberResponse = response.data;
+      // Update all called numbers - but DO NOT auto-mark
+      setAllCalledNumbers(data.calledNumbers);
       
-      if (data.success) {
-        // Update current called number with animation
-        const letter = getNumberLetter(data.number);
-        setCurrentCalledNumber({
-          number: data.number,
-          letter: letter
-        });
-        
-        // Update all called numbers
-        setAllCalledNumbers(data.calledNumbers);
-        
-        // Trigger animation
-        setIsAnimating(true);
-        
-        // MANUAL MARKING: Numbers do NOT auto-mark
-        console.log(`📢 ${letter}${data.number} called! Click it on your card to mark.`);
-        
-        console.log(`✅ Called number: ${letter}${data.number}`);
-        
-        // Refresh game state after a short delay
-        setTimeout(() => {
-          refreshGame();
-          setIsAnimating(false);
-        }, 1500);
-      }
-    } catch (error) {
-      console.error('❌ Failed to call number:', error);
-    } finally {
-      setIsCallingNumber(false);
+      // Show notification that number was called
+      console.log(`📢 ${letter}${data.number} called! Click it on your card to mark.`);
+      
+      // Display notification to user
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-yellow-500 text-white px-4 py-2 rounded-lg z-50';
+      notification.textContent = `${letter}${data.number} called! Click to mark.`;
+      document.body.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.remove();
+      }, 3000);
+      
+      // Trigger animation
+      setIsAnimating(true);
+      
+      setTimeout(() => {
+        refreshGame();
+        setIsAnimating(false);
+      }, 1500);
     }
-  };
-
+  } catch (error) {
+    console.error('❌ Failed to call number:', error);
+  } finally {
+    setIsCallingNumber(false);
+  }
+};
   // Manual mark number (user must click)
-  const handleMarkNumber = async (number: number) => {
-    if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
+  // Add this function to your component
+const manualMarkNumber = async (number: number) => {
+  const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+  if (!userId) {
+    alert('Please log in to mark numbers');
+    return;
+  }
+  
+  try {
+    const response = await gameAPI.markNumber(id, userId, number);
     
-    try {
-      setIsMarking(true);
-      console.log(`🎯 Attempting to mark number: ${number}`);
-      
-      const success = await markNumber(number);
-      
-      if (success) {
-        console.log(`✅ Successfully marked number: ${number}`);
-        setSelectedNumber(number);
+    if (response.data.success) {
+      // Update local state
+      if (displayBingoCard) {
+        const flatNumbers = displayBingoCard.numbers.flat();
+        const position = flatNumbers.indexOf(number);
         
-        // Refresh game state after marking
-        setTimeout(() => {
-          refreshGame();
-        }, 500);
+        if (position !== -1) {
+          setLocalBingoCard({
+            ...displayBingoCard,
+            markedPositions: [...(displayBingoCard.markedPositions || []), position]
+          });
+        }
       }
-    } catch (error) {
-      console.error('Failed to mark number:', error);
-    } finally {
-      setIsMarking(false);
+      
+      return true;
     }
-  };
+    return false;
+  } catch (error) {
+    console.error('Manual mark failed:', error);
+    return false;
+  }
+};
+// Manual mark number (user must click)
+const handleMarkNumber = async (number: number) => {
+  if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
+  
+  try {
+    setIsMarking(true);
+    console.log(`🎯 Attempting to mark number: ${number}`);
+    
+    // ONLY mark if user clicks, remove any automatic marking logic
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    if (!userId) {
+      throw new Error('User ID not found');
+    }
+    
+    // Call the API to mark this number on the server
+    const response = await gameAPI.markNumber(id, userId, number);
+    
+    if (response.data.success) {
+      console.log(`✅ Successfully manually marked number: ${number}`);
+      setSelectedNumber(number);
+      
+      // Update local bingo card state to reflect the marked number
+      if (displayBingoCard) {
+        const numbers = displayBingoCard.numbers.flat();
+        const position = numbers.indexOf(number);
+        
+        if (position !== -1 && !displayBingoCard.markedPositions?.includes(position)) {
+          setLocalBingoCard({
+            ...displayBingoCard,
+            markedPositions: [...(displayBingoCard.markedPositions || []), position]
+          });
+        }
+      }
+      
+      // Refresh game state after marking
+      setTimeout(() => {
+        refreshGame();
+      }, 500);
+    }
+  } catch (error) {
+    console.error('Failed to mark number:', error);
+  } finally {
+    setIsMarking(false);
+  }
+};
 
   // Manual Bingo claim
   const handleClaimBingo = async () => {
@@ -615,7 +679,22 @@ export default function GamePage() {
           </div>
         )}
       </div>
-
+{/* Add this notification component near the top of your JSX */}
+{currentCalledNumber && (
+  <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
+    <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-full shadow-lg">
+      <div className="flex items-center gap-3">
+        <span className="text-2xl">🔔</span>
+        <div>
+          <div className="font-bold text-lg">
+            {currentCalledNumber.letter}{currentCalledNumber.number} CALLED!
+          </div>
+          <div className="text-sm opacity-90">Click it on your card to mark</div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
       <div className="grid grid-cols-4 gap-4">
         {/* Left: Called Numbers */}
         <div className="col-span-2">
@@ -788,63 +867,68 @@ export default function GamePage() {
                 </div>
                 
                 {/* Card Numbers */}
-                <div className="grid grid-cols-5 gap-1">
-                  {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                    row.map((number: number | string, colIndex: number) => {
-                      const flatIndex = rowIndex * 5 + colIndex;
-                      const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
-                      const isCalled = allCalledNumbers.includes(number as number);
-                      const isFreeSpace = rowIndex === 2 && colIndex === 2;
+        
+<div className="grid grid-cols-5 gap-1">
+  {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+    row.map((number: number | string, colIndex: number) => {
+      const flatIndex = rowIndex * 5 + colIndex;
+      const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
+      const isCalled = allCalledNumbers.includes(number as number);
+      const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
-                      return (
-                        <div
-                          key={`${rowIndex}-${colIndex}`}
-                          className={`
-                            h-12 rounded-lg flex items-center justify-center 
-                            font-bold transition-all duration-200 relative
-                            ${isMarked
-                              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
-                              : isFreeSpace
-                              ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'
-                              : isCalled
-                              ? 'bg-gradient-to-br from-yellow-500/40 to-orange-500/40 text-white hover:scale-[1.02] cursor-pointer'
-                              : 'bg-white/15 text-white hover:bg-white/25'
-                            }
-                            ${isCalled && !isMarked && !isFreeSpace ? 'cursor-pointer hover:scale-[1.02]' : 'cursor-default'}
-                          `}
-                          onClick={() => 
-                            !isFreeSpace && isCalled && !isMarked && handleMarkNumber(number as number)
-                          }
-                          title={
-                            isFreeSpace ? 'FREE SPACE (Always marked)' :
-                            isMarked ? `Marked: ${number}` :
-                            isCalled ? `Click to mark ${number}` :
-                            `${number} (Not called yet)`
-                          }
-                        >
-                          {isFreeSpace ? (
-                            <>
-                              <span className="text-xs font-bold">FREE</span>
-                              <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-                            </>
-                          ) : (
-                            <>
-                              <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
-                                {number}
-                              </span>
-                              {isMarked && (
-                                <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-                              )}
-                              {isCalled && !isMarked && (
-                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
+      return (
+        <div
+          key={`${rowIndex}-${colIndex}`}
+          className={`
+            h-12 rounded-lg flex items-center justify-center 
+            font-bold transition-all duration-200 relative
+            ${isMarked
+              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
+              : isFreeSpace
+              ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'
+              : isCalled
+              ? 'bg-gradient-to-br from-yellow-500/40 to-orange-500/40 text-white hover:scale-[1.02] cursor-pointer'
+              : 'bg-white/15 text-white'
+            }
+            ${isCalled && !isMarked && !isFreeSpace ? 'cursor-pointer hover:scale-[1.02]' : 'cursor-default'}
+          `}
+          onClick={() => {
+            // ONLY allow clicking if the number is called AND not already marked AND not free space
+            if (!isFreeSpace && isCalled && !isMarked) {
+              handleMarkNumber(number as number);
+            }
+          }}
+          title={
+            isFreeSpace ? 'FREE SPACE (Always marked)' :
+            isMarked ? `Marked: ${number}` :
+            isCalled ? `Click to mark ${number}` :
+            `${number} (Not called yet)`
+          }
+        >
+          {isFreeSpace ? (
+            <>
+              <span className="text-xs font-bold">FREE</span>
+              <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+            </>
+          ) : (
+            <>
+              <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
+                {number}
+              </span>
+              {isMarked && (
+                <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+              )}
+              {/* Show click indicator for called but unmarked numbers */}
+              {isCalled && !isMarked && (
+                <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+              )}
+            </>
+          )}
+        </div>
+      );
+    })
+  )}
+</div>
               </div>
             ) : (
               <div className="text-center text-white/70 py-8">

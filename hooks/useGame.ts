@@ -31,7 +31,7 @@ interface UseGameReturn {
   error: string | null;
   
   // Actions
-  markNumber: (number: number) => Promise<boolean>;
+  // markNumber: (number: number) => Promise<boolean>;
   refreshGame: () => void;
   manualCallNumber: () => Promise<number>;
   callNumber: () => Promise<number>;
@@ -275,36 +275,36 @@ export const useGame = (gameId: string): UseGameReturn => {
   }, [fetchGame]);
 
   // **FIXED: Manual mark number function (NO AUTO-WIN CHECKING)**
-  const markNumber = useCallback(async (number: number): Promise<boolean> => {
-    try {
-      const userId = getCurrentUserId();
-      if (!userId) {
-        throw new Error('No user ID found');
-      }
+  // const markNumber = useCallback(async (number: number): Promise<boolean> => {
+  //   try {
+  //     const userId = getCurrentUserId();
+  //     if (!userId) {
+  //       throw new Error('No user ID found');
+  //     }
 
-      console.log(`🎯 Marking number: ${number}`);
-      const response = await gameAPI.markNumber(gameId, userId, number);
+  //     console.log(`🎯 Marking number: ${number}`);
+  //     const response = await gameAPI.markNumber(gameId, userId, number);
       
-      // MANUAL MODE: Just update the bingo card with the marked position
-      const updatedCard = response.data.bingoCard;
+  //     // MANUAL MODE: Just update the bingo card with the marked position
+  //     const updatedCard = response.data.bingoCard;
       
-      // Update the local bingo card
-      setBingoCard(updatedCard);
+  //     // Update the local bingo card
+  //     setBingoCard(updatedCard);
       
-      console.log(`✅ Number ${number} marked successfully. Marked count: ${updatedCard.markedPositions?.length || 0}`);
+  //     console.log(`✅ Number ${number} marked successfully. Marked count: ${updatedCard.markedPositions?.length || 0}`);
       
-      // In manual mode, markNumber should NEVER check for wins
-      // The user must click "CLAIM BINGO" separately
-      return false; // Always return false for manual mode
+  //     // In manual mode, markNumber should NEVER check for wins
+  //     // The user must click "CLAIM BINGO" separately
+  //     return false; // Always return false for manual mode
       
-    } catch (err) {
-      console.error('Error marking number:', err);
-      const apiError = err as ApiError;
+  //   } catch (err) {
+  //     console.error('Error marking number:', err);
+  //     const apiError = err as ApiError;
       
-      const errorMessage = apiError.response?.data?.error || apiError.message || 'Failed to mark number';
-      throw new Error(errorMessage);
-    }
-  }, [gameId]);
+  //     const errorMessage = apiError.response?.data?.error || apiError.message || 'Failed to mark number';
+  //     throw new Error(errorMessage);
+  //   }
+  // }, [gameId]);
 
   // Manual Bingo claim function
   const claimBingo = useCallback(async () => {
@@ -504,7 +504,7 @@ export const useGame = (gameId: string): UseGameReturn => {
     error,
     
     // Actions
-    markNumber,
+    // markNumber,
     refreshGame: () => fetchGame(false),
     manualCallNumber,
     callNumber,
