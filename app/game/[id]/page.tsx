@@ -371,22 +371,21 @@ const handleMarkNumber = async (number: number) => {
   
   try {
     setIsMarking(true);
-    console.log(`🎯 Attempting to mark number: ${number}`);
+    console.log(`🎯 Attempting to manually mark number: ${number}`);
     
-    // ONLY mark if user clicks, remove any automatic marking logic
     const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
     if (!userId) {
       throw new Error('User ID not found');
     }
     
-    // Call the API to mark this number on the server
+    // Call the API to mark this number
     const response = await gameAPI.markNumber(id, userId, number);
     
     if (response.data.success) {
       console.log(`✅ Successfully manually marked number: ${number}`);
       setSelectedNumber(number);
       
-      // Update local bingo card state to reflect the marked number
+      // Update local bingo card state
       if (displayBingoCard) {
         const numbers = displayBingoCard.numbers.flat();
         const position = numbers.indexOf(number);
@@ -399,13 +398,14 @@ const handleMarkNumber = async (number: number) => {
         }
       }
       
-      // Refresh game state after marking
+      // Refresh game state
       setTimeout(() => {
         refreshGame();
       }, 500);
     }
   } catch (error) {
     console.error('Failed to mark number:', error);
+    alert(`Failed to mark number: ${error}`);
   } finally {
     setIsMarking(false);
   }
@@ -887,15 +887,22 @@ const handleMarkNumber = async (number: number) => {
               : isFreeSpace
               ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'
               : isCalled
-              ? 'bg-gradient-to-br from-yellow-500/40 to-orange-500/40 text-white hover:scale-[1.02] cursor-pointer'
+              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white hover:scale-[1.02] cursor-pointer'
               : 'bg-white/15 text-white'
             }
             ${isCalled && !isMarked && !isFreeSpace ? 'cursor-pointer hover:scale-[1.02]' : 'cursor-default'}
           `}
           onClick={() => {
-            // ONLY allow clicking if the number is called AND not already marked AND not free space
-            if (!isFreeSpace && isCalled && !isMarked) {
+            // Only allow clicking if:
+            // 1. Number is called
+            // 2. Not already marked
+            // 3. Not free space (free space is always marked)
+            // 4. Game is active
+            if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
               handleMarkNumber(number as number);
+            } else if (!isCalled) {
+              // Show tooltip or message
+              console.log(`Number ${number} hasn't been called yet`);
             }
           }}
           title={
@@ -917,10 +924,6 @@ const handleMarkNumber = async (number: number) => {
               </span>
               {isMarked && (
                 <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-              )}
-              {/* Show click indicator for called but unmarked numbers */}
-              {isCalled && !isMarked && (
-                <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
               )}
             </>
           )}
