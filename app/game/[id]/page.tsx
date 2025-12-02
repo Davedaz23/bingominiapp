@@ -1,8 +1,8 @@
-// app/game/[id]/page.tsx - UPDATED WITH WINNER MODAL
+// app/game/[id]/page.tsx - COMPLETE VERSION (Manual Marking Only)
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
 
@@ -65,7 +65,7 @@ export default function GamePage() {
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
   
-  // NEW: Enhanced state for called numbers
+  // Enhanced state for called numbers
   const [currentCalledNumber, setCurrentCalledNumber] = useState<{
     number: number;
     letter: string;
@@ -75,20 +75,14 @@ export default function GamePage() {
   const [isCallingNumber, setIsCallingNumber] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   
-  // NEW: Winner modal state
+  // Winner modal state
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [winnerInfo, setWinnerInfo] = useState<WinnerInfo | null>(null);
   const [isWinnerLoading, setIsWinnerLoading] = useState(false);
   const [isUserWinner, setIsUserWinner] = useState(false);
   const [winningAmount, setWinningAmount] = useState(0);
   
-  // Refs for tracking
-  const autoMarkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const gameEndedCheckRef = useRef(false);
-
-
-  // NEW: State for bingo claiming
+  // State for bingo claiming
   const [isClaimingBingo, setIsClaimingBingo] = useState<boolean>(false);
   const [claimResult, setClaimResult] = useState<{
     success: boolean;
@@ -97,6 +91,9 @@ export default function GamePage() {
     prizeAmount?: number;
   } | null>(null);
 
+  // Refs for tracking
+  const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const gameEndedCheckRef = useRef(false);
 
   // Initialize game and load card
   useEffect(() => {
@@ -212,7 +209,7 @@ export default function GamePage() {
     }
   }, [game]);
 
-  // NEW: Check if game ended and show winner modal
+  // Check if game ended and show winner modal
   useEffect(() => {
     const checkGameEnded = async () => {
       if (!game || gameEndedCheckRef.current) return;
@@ -281,7 +278,7 @@ export default function GamePage() {
     };
   }, [game, getWinnerInfo, showWinnerModal]);
 
-  // NEW: Function to call next number
+  // Function to call next number (MANUAL MARKING - NO AUTO-MARK)
   const handleCallNumber = async () => {
     if (isCallingNumber || !id || game?.status !== 'ACTIVE') return;
     
@@ -306,10 +303,8 @@ export default function GamePage() {
         // Trigger animation
         setIsAnimating(true);
         
-        // Auto-mark on user's card if they have one
-        if (localBingoCard) {
-          autoMarkNumberOnCard(data.number);
-        }
+        // MANUAL MARKING: Numbers do NOT auto-mark
+        console.log(`📢 ${letter}${data.number} called! Click it on your card to mark.`);
         
         console.log(`✅ Called number: ${letter}${data.number}`);
         
@@ -326,18 +321,7 @@ export default function GamePage() {
     }
   };
 
-  // Auto-mark number on card when it's called
-const autoMarkNumberOnCard = useCallback((number: number) => {
-  // REMOVE THIS FUNCTION - Don't auto-mark anymore
-  // Just notify the user that a number was called
-  if (localBingoCard && number) {
-    console.log(`📢 Number ${number} was called. Click it to mark!`);
-    
-    // Optional: Show a notification toast instead of auto-marking
-    // toast(`Number ${number} called! Click it to mark.`);
-  }
-}, [localBingoCard]);
-
+  // Manual mark number (user must click)
   const handleMarkNumber = async (number: number) => {
     if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
     
@@ -362,7 +346,9 @@ const autoMarkNumberOnCard = useCallback((number: number) => {
       setIsMarking(false);
     }
   };
- const handleClaimBingo = async () => {
+
+  // Manual Bingo claim
+  const handleClaimBingo = async () => {
     if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !displayBingoCard) return;
     
     try {
@@ -408,14 +394,15 @@ const autoMarkNumberOnCard = useCallback((number: number) => {
       setIsClaimingBingo(false);
     }
   };
-  // NEW: Function to handle returning to lobby
+
+  // Function to handle returning to lobby
   const handleReturnToLobby = () => {
     console.log('🚀 Returning to lobby...');
     setShowWinnerModal(false);
     router.push('/');
   };
 
-  // NEW: Function to play again
+  // Function to play again
   const handlePlayAgain = () => {
     console.log('🔄 Playing again...');
     setShowWinnerModal(false);
@@ -429,9 +416,6 @@ const autoMarkNumberOnCard = useCallback((number: number) => {
   // Clean up timeouts on unmount
   useEffect(() => {
     return () => {
-      if (autoMarkTimeoutRef.current) {
-        clearTimeout(autoMarkTimeoutRef.current);
-      }
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
       }
@@ -603,8 +587,18 @@ const autoMarkNumberOnCard = useCallback((number: number) => {
             'bg-red-500/20 text-red-300'
           }`}>
             {game.status === 'WAITING' ? '⏳ Waiting for players' :
-             game.status === 'ACTIVE' ? '🎮 Game Active' :
+             game.status === 'ACTIVE' ? '🎮 Game Active - Manual Marking' :
              '🏁 Game Ended'}
+          </div>
+        </div>
+
+        {/* Manual Marking Instructions Banner */}
+        <div className="mt-3 p-3 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg border border-yellow-400/30">
+          <div className="flex items-center justify-center gap-2">
+            <div className="text-yellow-300 text-lg">⚠️</div>
+            <p className="text-yellow-300 text-sm font-medium">
+              MANUAL MODE: Click called numbers on your card to mark them!
+            </p>
           </div>
         </div>
 
@@ -736,7 +730,7 @@ const autoMarkNumberOnCard = useCallback((number: number) => {
                     <span className="text-yellow-300">{currentCalledNumber.number}</span>
                   </div>
                   <p className="text-white/70 text-sm">
-                    Click on {currentCalledNumber.letter}{currentCalledNumber.number} to mark your card
+                    Click {currentCalledNumber.letter}{currentCalledNumber.number} on your card to mark it!
                   </p>
                 </div>
               ) : (
@@ -770,6 +764,13 @@ const autoMarkNumberOnCard = useCallback((number: number) => {
               <div className="text-white/70 text-sm bg-white/10 px-4 py-1.5 rounded-full">
                 Marked: <span className="text-white font-bold ml-1">{displayBingoCard?.markedPositions?.length || 0}</span>/24
               </div>
+            </div>
+            
+            {/* Manual Marking Instructions */}
+            <div className="mb-4 p-3 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-lg border border-blue-400/30">
+              <p className="text-white text-sm text-center font-medium">
+                💡 <span className="text-yellow-300">MANUAL MARKING:</span> Click called numbers below to mark your card!
+              </p>
             </div>
             
             {displayBingoCard ? (
@@ -815,14 +816,17 @@ const autoMarkNumberOnCard = useCallback((number: number) => {
                             !isFreeSpace && isCalled && !isMarked && handleMarkNumber(number as number)
                           }
                           title={
-                            isFreeSpace ? 'FREE SPACE' :
+                            isFreeSpace ? 'FREE SPACE (Always marked)' :
                             isMarked ? `Marked: ${number}` :
                             isCalled ? `Click to mark ${number}` :
-                            `${number}`
+                            `${number} (Not called yet)`
                           }
                         >
                           {isFreeSpace ? (
-                            <span className="text-xs font-bold">FREE</span>
+                            <>
+                              <span className="text-xs font-bold">FREE</span>
+                              <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                            </>
                           ) : (
                             <>
                               <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
@@ -830,6 +834,9 @@ const autoMarkNumberOnCard = useCallback((number: number) => {
                               </span>
                               {isMarked && (
                                 <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                              )}
+                              {isCalled && !isMarked && (
+                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
                               )}
                             </>
                           )}
@@ -853,112 +860,127 @@ const autoMarkNumberOnCard = useCallback((number: number) => {
             )}
           </div>
 
-
           {/* Game Controls */}
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
-              <h4 className="text-white font-bold mb-2">Game Status</h4>
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <span className="text-white/70 text-xs">Status:</span>
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                    game.status === 'ACTIVE' ? 'bg-green-500/30 text-green-300' :
-                    game.status === 'WAITING' ? 'bg-yellow-500/30 text-yellow-300' :
-                    'bg-red-500/30 text-red-300'
-                  }`}>
-                    {game.status}
-                  </span>
+              <h4 className="text-white font-bold mb-2">How to Win</h4>
+              <div className="space-y-2 text-xs text-white/80">
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400">1.</span>
+                  <span>Listen for called numbers</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-white/70 text-xs">Players:</span>
-                  <span className="text-white text-xs font-medium">{game.currentPlayers || 0}</span>
+                <div className="flex items-start gap-2">
+                  <span className="text-yellow-400">2.</span>
+                  <span><span className="font-bold">Click</span> called numbers on your card</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-white/70 text-xs">Called:</span>
-                  <span className="text-white text-xs font-medium">{allCalledNumbers.length}/75</span>
+                <div className="flex items-start gap-2">
+                  <span className="text-red-400">3.</span>
+                  <span>Complete a line (row, column, diagonal)</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-purple-400">4.</span>
+                  <span><span className="font-bold">First</span> to claim with valid line wins!</span>
                 </div>
               </div>
             </div>
 
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
-              <h4 className="text-white font-bold mb-2">Actions</h4>
+              <h4 className="text-white font-bold mb-2">Quick Actions</h4>
               <div className="space-y-1.5">
+                <button
+                  onClick={() => {
+                    alert(`🎮 MANUAL BINGO GAME RULES:
+
+• Numbers are called automatically every 5-8 seconds
+• YOU must click each called number on YOUR card
+• Mark a complete line (5 in a row, column, or diagonal)
+• Click "CLAIM BINGO" immediately when you complete a line
+• First player with valid claim wins the prize!
+
+⚡ TIP: Be quick! Other players are marking manually too!`);
+                  }}
+                  className="w-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-white py-1.5 rounded text-xs hover:from-blue-500/30 hover:to-purple-500/30 transition-all border border-blue-400/30"
+                >
+                  📖 Game Rules
+                </button>
                 <button
                   onClick={() => router.refresh()}
                   className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all"
                 >
                   ↻ Refresh Game
                 </button>
-                <button
-                  onClick={() => router.push('/')}
-                  className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all"
-                >
-                  ← Back to Lobby
-                </button>
               </div>
             </div>
           </div>
         </div>
-        {game?.status === 'ACTIVE' && displayBingoCard && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10">
-          <button
-            onClick={handleClaimBingo}
-            disabled={isClaimingBingo}
-            className={`
-              bg-gradient-to-r from-yellow-500 to-orange-500 
-              text-white px-8 py-4 rounded-2xl font-bold text-lg
-              shadow-lg shadow-orange-500/30
-              hover:from-yellow-600 hover:to-orange-600
-              active:scale-95 transition-all duration-200
-              flex items-center gap-3
-              ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
-            `}
-          >
-            {isClaimingBingo ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                Verifying...
-              </>
-            ) : (
-              <>
-                <span className="text-2xl">🏆</span>
-                CLAIM BINGO
-                <span className="text-2xl">🏆</span>
-              </>
-            )}
-          </button>
-          
-          {/* Claim Result Message */}
-          {claimResult && (
-            <div className={`
-              mt-3 p-3 rounded-xl text-center text-sm font-medium
-              ${claimResult.success 
-                ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
-                : 'bg-red-500/20 text-red-300 border border-red-500/30'
-              }
-              animate-fadeIn
-            `}>
-              {claimResult.message}
-              {claimResult.patternType && (
-                <div className="text-xs mt-1">
-                  Pattern: {claimResult.patternType}
-                </div>
-              )}
-              {claimResult.prizeAmount && (
-                <div className="text-xs mt-1 font-bold">
-                  Prize: ${claimResult.prizeAmount} ብር
-                </div>
-              )}
+      </div>
+
+      {/* Claim Bingo Button - Fixed Position */}
+      {game?.status === 'ACTIVE' && displayBingoCard && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 w-full max-w-md">
+          <div className="flex flex-col items-center">
+            <div className="mb-2 text-center">
+              <div className="text-white/70 text-xs bg-black/40 px-3 py-1 rounded-full inline-block mb-1 border border-white/20">
+                ⚡ Manual Marking Active
+              </div>
+              <div className="text-white/60 text-xs max-w-xs">
+                Mark numbers manually, complete a line, then claim!
+              </div>
             </div>
-          )}
-          
-          {/* Instructions */}
-          <div className="text-white/70 text-xs text-center mt-2 max-w-xs">
-            First player to claim with a valid bingo line wins!
+            
+            <button
+              onClick={handleClaimBingo}
+              disabled={isClaimingBingo}
+              className={`
+                bg-gradient-to-r from-yellow-500 to-orange-500 
+                text-white px-10 py-4 rounded-2xl font-bold text-lg
+                shadow-lg shadow-orange-500/30
+                hover:from-yellow-600 hover:to-orange-600
+                active:scale-95 transition-all duration-200
+                flex items-center gap-3 w-full justify-center
+                ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
+              `}
+            >
+              {isClaimingBingo ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  Verifying Claim...
+                </>
+              ) : (
+                <>
+                  <span className="text-2xl">🏆</span>
+                  CLAIM BINGO
+                  <span className="text-2xl">🏆</span>
+                </>
+              )}
+            </button>
+            
+            {/* Claim Result Message */}
+            {claimResult && (
+              <div className={`
+                mt-3 p-3 rounded-xl text-center text-sm font-medium w-full
+                ${claimResult.success 
+                  ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
+                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                }
+                animate-fadeIn
+              `}>
+                {claimResult.message}
+                {claimResult.patternType && (
+                  <div className="text-xs mt-1">
+                    Winning Pattern: <span className="font-bold">{claimResult.patternType}</span>
+                  </div>
+                )}
+                {claimResult.prizeAmount && (
+                  <div className="text-xs mt-1 font-bold">
+                    Prize: <span className="text-yellow-300">${claimResult.prizeAmount} ብር</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
-      </div>
     </div>
   );
 }
