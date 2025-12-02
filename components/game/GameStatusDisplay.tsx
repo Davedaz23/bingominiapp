@@ -10,6 +10,8 @@ interface GameStatusDisplayProps {
   shouldEnableCardSelection: boolean;
    autoStartTimeRemaining?: number; // ADD THIS
   hasAutoStartTimer?: boolean; // ADD THIS
+    hasRestartCooldown: boolean;
+  restartCooldownRemaining: number;
   
 }
 
@@ -21,6 +23,7 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
   walletBalance,
   shouldEnableCardSelection,
    autoStartTimeRemaining = 0,
+   
   hasAutoStartTimer = false
 }) => {
   const getStatusMessage = () => {

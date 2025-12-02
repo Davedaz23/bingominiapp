@@ -35,8 +35,7 @@ export interface BingoCard {
   isWinner?: boolean;
   createdAt?: string;
   user?: User;
-    markedNumbers?: number[]; // Flat array of marked numbers
-
+  markedNumbers?: number[]; // Flat array of marked numbers
 }
 
 export interface GameState {
@@ -110,6 +109,47 @@ export interface Game {
   selectedCards?: Record<string, string>;
   cardSelectionEndTime?: string;
   isCardSelectionActive?: boolean;
+  
+  // Add restart cooldown properties
+  hasRestartCooldown?: boolean;
+  restartCooldownRemaining?: number;
+  
+  // Add game statistics properties
+  playersWithCards?: number;
+  minPlayersRequired?: number;
+  canStart?: boolean;
+  playersNeeded?: number;
+  cardsNeeded?: number;
+  acceptsLateJoiners?: boolean;
+  numbersCalledCount?: number;
+  totalParticipants?: number;
+  activePlayers?: number;
+  spectators?: number;
+  
+  // Add auto-start properties
+  autoStartTimerEndTime?: string;
+  autoStartTimerRemaining?: number;
+  
+  // Add winner properties
+  winnerInfo?: {
+    winner: {
+      _id: string;
+      username: string;
+      firstName: string;
+      telegramId?: string;
+    };
+    gameCode: string;
+    endedAt: string;
+    totalPlayers: number;
+    numbersCalled: number;
+    winningPattern?: string;
+    winningCard?: {
+      cardNumber: number;
+      numbers: (number | string)[][];
+      markedPositions: number[];
+      winningPatternPositions?: number[];
+    };
+  };
 }
 
 export interface WinnerInfo {
@@ -140,7 +180,3 @@ export interface AdminStats {
   activeGames: number;
   pendingDeposits: number;
 }
-
-
-// Remove duplicate Permission type declaration from here
-// and keep it only in AuthContext
