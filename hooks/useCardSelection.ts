@@ -290,50 +290,22 @@ const fetchTakenCards = useCallback(async () => {
       });
     }
   };
-  const checkAndAutoStartGame = async () => {
-  if (!gameData?._id || gameStatus !== 'WAITING') return;
-  
-  try {
-    console.log('🔍 Checking if game should auto-start...');
-    const response = await gameAPI.checkAutoStart(gameData._id);
-    
-    if (response.data.success && response.data.gameStarted) {
-      console.log('🚀 Game auto-started successfully!');
-      // Refresh game status to reflect the change
-      setTimeout(() => {
-        // You might want to call a function to refresh game state
-        // or navigate to the game page automatically
-        console.log('🔄 Game started - ready to join!');
-      }, 1000);
-    }
-  } catch (error) {
-    console.error('❌ Auto-start check failed:', error);
-  }
-};
-
 
   // Real-time polling for taken cards
-useEffect(() => {
-  if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
+  useEffect(() => {
+    if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
 
-  console.log('⏰ Starting enhanced real-time polling');
-  
-  const interval = setInterval(async () => {
-    // Update taken cards
-    await fetchTakenCards();
+    console.log('⏰ Starting real-time taken cards polling');
     
-    // Auto-start logic
-    if (gameStatus === 'WAITING' && takenCards.length >= 2) {
-      console.log(`🎯 Auto-start condition met: ${takenCards.length} players with cards`);
-      await checkAndAutoStartGame();
-    }
-  }, 3000); // Poll every 3 seconds
+    const interval = setInterval(() => {
+      fetchTakenCards();
+    }, 2000); // Poll every 2 seconds for real-time updates
 
-  return () => {
-    console.log('🛑 Stopping enhanced real-time polling');
-    clearInterval(interval);
-  };
-}, [gameData?._id, cardSelectionStatus.isSelectionActive, fetchTakenCards, gameStatus, takenCards.length]);
+    return () => {
+      console.log('🛑 Stopping real-time taken cards polling');
+      clearInterval(interval);
+    };
+  }, [gameData?._id, cardSelectionStatus.isSelectionActive, fetchTakenCards]);
 
   // Fetch available cards when game data changes
   useEffect(() => {
