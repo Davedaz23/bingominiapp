@@ -108,89 +108,97 @@ export default function GamePage() {
 
   // Initialize game and load card
   useEffect(() => {
-    const initializeGame = async () => {
+  const initializeGame = async () => {
+    try {
+      console.log('🎮 Initializing game page...');
+      
+      // Load wallet balance
       try {
-        console.log('🎮 Initializing game page...');
-        
-        // Load wallet balance
-        try {
-          const walletResponse = await walletAPIAuto.getBalance();
-          if (walletResponse.data.success) {
-            setWalletBalance(walletResponse.data.balance);
-            console.log('💰 Wallet balance loaded:', walletResponse.data.balance);
-          }
-        } catch (walletError) {
-          console.warn('⚠️ Could not load wallet balance:', walletError);
+        const walletResponse = await walletAPIAuto.getBalance();
+        if (walletResponse.data.success) {
+          setWalletBalance(walletResponse.data.balance);
+          console.log('💰 Wallet balance loaded:', walletResponse.data.balance);
         }
-
-        // Try to get card data from URL parameters first
-        const cardParam = searchParams.get('card');
-        if (cardParam) {
-          try {
-            const cardData: CardData = JSON.parse(decodeURIComponent(cardParam));
-            console.log('🎯 Loaded card from URL:', cardData);
-            setLocalBingoCard({
-              cardNumber: cardData.cardNumber,
-              numbers: cardData.numbers,
-              markedPositions: []
-            });
-            setSelectedNumber(cardData.cardNumber);
-            setIsLoadingCard(false);
-            setCardError('');
-            return;
-          } catch (error) {
-            console.error('Failed to parse card data from URL:', error);
-            setCardError('Failed to load card data from URL');
-          }
-        }
-
-        // If no card in URL, try to fetch from API
-        console.log('🔄 Fetching card from API...');
-        try {
-          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-          if (userId) {
-            console.log('📋 Fetching card for user:', userId);
-            const cardResponse = await gameAPI.getUserBingoCard(id, userId);
-            
-            if (cardResponse.data.success && cardResponse.data.bingoCard) {
-              console.log('✅ Loaded card from API:', cardResponse.data.bingoCard);
-              
-              const apiCard = cardResponse.data.bingoCard;
-              setLocalBingoCard({
-                cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
-                numbers: apiCard.numbers || [],
-                markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
-                selected: (apiCard as any).selected
-              });
-              setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
-              setCardError('');
-            } else {
-              setCardError('No bingo card found for this user');
-              console.log('❌ No bingo card in response:', cardResponse.data);
-            }
-          } else {
-            setCardError('User ID not found');
-            console.log('❌ No user ID found in localStorage');
-          }
-        } catch (error: any) {
-          console.error('Failed to fetch card from API:', error);
-          if (error.response?.data?.error?.includes('Cast to ObjectId failed')) {
-            setCardError('User ID format error. Please rejoin the game.');
-          } else {
-            setCardError('Failed to load bingo card from server');
-          }
-        }
-
-        setIsLoadingCard(false);
-      } catch (error) {
-        console.error('Failed to initialize game:', error);
-        setCardError('Failed to initialize game');
-        setIsLoadingCard(false);
+      } catch (walletError) {
+        console.warn('⚠️ Could not load wallet balance:', walletError);
       }
-    };
 
-    initializeGame();
-  }, [id, searchParams]);
+      // Try to get card data from URL parameters first
+      const cardParam = searchParams.get('card');
+      const isSpectator = searchParams.get('spectator') === 'true';
+      
+      if (isSpectator) {
+        console.log('👁️ User is joining as spectator');
+        setIsLoadingCard(false);
+        return;
+      }
+
+      if (cardParam) {
+        try {
+          const cardData: CardData = JSON.parse(decodeURIComponent(cardParam));
+          console.log('🎯 Loaded card from URL:', cardData);
+          setLocalBingoCard({
+            cardNumber: cardData.cardNumber,
+            numbers: cardData.numbers,
+            markedPositions: []
+          });
+          setSelectedNumber(cardData.cardNumber);
+          setIsLoadingCard(false);
+          setCardError('');
+          return;
+        } catch (error) {
+          console.error('Failed to parse card data from URL:', error);
+          setCardError('Failed to load card data from URL');
+        }
+      }
+
+      // If no card in URL, try to fetch from API
+      console.log('🔄 Fetching card from API...');
+      try {
+        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+        if (userId) {
+          console.log('📋 Fetching card for user:', userId);
+          const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+          
+          if (cardResponse.data.success && cardResponse.data.bingoCard) {
+            console.log('✅ Loaded card from API:', cardResponse.data.bingoCard);
+            
+            const apiCard = cardResponse.data.bingoCard;
+            setLocalBingoCard({
+              cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
+              numbers: apiCard.numbers || [],
+              markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
+              selected: (apiCard as any).selected
+            });
+            setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
+            setCardError('');
+          } else {
+            setCardError('No bingo card found for this user');
+            console.log('❌ No bingo card in response:', cardResponse.data);
+          }
+        } else {
+          setCardError('User ID not found');
+          console.log('❌ No user ID found in localStorage');
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch card from API:', error);
+        if (error.response?.data?.error?.includes('Cast to ObjectId failed')) {
+          setCardError('User ID format error. Please rejoin the game.');
+        } else {
+          setCardError('Failed to load bingo card from server');
+        }
+      }
+
+      setIsLoadingCard(false);
+    } catch (error) {
+      console.error('Failed to initialize game:', error);
+      setCardError('Failed to initialize game');
+      setIsLoadingCard(false);
+    }
+  };
+
+  initializeGame();
+}, [id, searchParams]);
 
   // Helper function to get BINGO letter for a number
   const getNumberLetter = (num: number): string => {
@@ -593,7 +601,61 @@ useEffect(() => {
     
     return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
   };
-
+if (searchParams.get('spectator') === 'true') {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
+        <h1 className="text-white font-bold text-xl mb-2">Spectator Mode</h1>
+        <p className="text-white/70 text-sm mb-4">
+          You are watching the game as a spectator. Join next game to play!
+        </p>
+        <button 
+          onClick={() => router.push('/')}
+          className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-6 py-3 rounded-xl font-bold"
+        >
+          Return to Lobby
+        </button>
+      </div>
+      
+      {/* Show game state for spectators */}
+      {game && (
+        <div className="space-y-4">
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+            <h3 className="text-white font-bold mb-3">Game Info</h3>
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-white font-bold">{game.currentPlayers || 0}</p>
+                <p className="text-white/60 text-xs">Players</p>
+              </div>
+              <div>
+                <p className="text-white font-bold">{(game.currentPlayers || 0) * 10} ብር</p>
+                <p className="text-white/60 text-xs">Pot</p>
+              </div>
+              <div>
+                <p className="text-white font-bold">{calledNumbers.length}/75</p>
+                <p className="text-white/60 text-xs">Called</p>
+              </div>
+            </div>
+          </div>
+          
+          {currentCalledNumber && (
+            <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
+              <h3 className="text-white font-bold mb-2">Current Number</h3>
+              <div className="text-center">
+                <div className="text-4xl font-bold text-yellow-300 mb-2">
+                  {currentCalledNumber.letter}{currentCalledNumber.number}
+                </div>
+                <p className="text-white/70 text-sm">
+                  Game is in progress. Join next game to play!
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
   if (isLoading || isLoadingCard) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
