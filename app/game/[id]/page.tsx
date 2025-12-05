@@ -108,7 +108,7 @@ export default function GamePage() {
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize game and load card
-   useEffect(() => {
+useEffect(() => {
     const initializeGame = async () => {
       try {
         console.log('🎮 Initializing game page...');
