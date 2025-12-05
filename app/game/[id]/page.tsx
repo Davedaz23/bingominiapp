@@ -907,17 +907,6 @@ if (searchParams.get('spectator') === 'true') {
           </div>
         </div>
         
-        {/* Manual Marking Instructions Banner (only show when game is active) */}
-        {game.status === 'ACTIVE' && (
-          <div className="mt-3 p-3 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg border border-yellow-400/30">
-            <div className="flex items-center justify-center gap-2">
-              <div className="text-yellow-300 text-lg">⚠️</div>
-              <p className="text-yellow-300 text-sm font-medium">
-                MANUAL MODE: Click called numbers on your card to mark them!
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Card Error Display */}
         {cardError && (
