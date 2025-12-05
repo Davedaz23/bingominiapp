@@ -632,7 +632,7 @@ if (searchParams.get('spectator') === 'true') {
                 <p className="text-white/60 text-xs">Pot</p>
               </div>
               <div>
-                <p className="text-white font-bold">{calledNumbers.length}/75</p>
+                <p className="text-white font-bold">{allCalledNumbers .length}/75</p>
                 <p className="text-white/60 text-xs">Called</p>
               </div>
             </div>
