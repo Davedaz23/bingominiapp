@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
+import { AnimatePresence } from 'framer-motion';
 
 // Interface for CallNumberResponse from API
 interface CallNumberResponse {
@@ -107,98 +108,125 @@ export default function GamePage() {
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize game and load card
-  useEffect(() => {
-  const initializeGame = async () => {
-    try {
-      console.log('🎮 Initializing game page...');
-      
-      // Load wallet balance
+   useEffect(() => {
+    const initializeGame = async () => {
       try {
-        const walletResponse = await walletAPIAuto.getBalance();
-        if (walletResponse.data.success) {
-          setWalletBalance(walletResponse.data.balance);
-          console.log('💰 Wallet balance loaded:', walletResponse.data.balance);
-        }
-      } catch (walletError) {
-        console.warn('⚠️ Could not load wallet balance:', walletError);
-      }
-
-      // Try to get card data from URL parameters first
-      const cardParam = searchParams.get('card');
-      const isSpectator = searchParams.get('spectator') === 'true';
-      
-      if (isSpectator) {
-        console.log('👁️ User is joining as spectator');
-        setIsLoadingCard(false);
-        return;
-      }
-
-      if (cardParam) {
-        try {
-          const cardData: CardData = JSON.parse(decodeURIComponent(cardParam));
-          console.log('🎯 Loaded card from URL:', cardData);
-          setLocalBingoCard({
-            cardNumber: cardData.cardNumber,
-            numbers: cardData.numbers,
-            markedPositions: []
-          });
-          setSelectedNumber(cardData.cardNumber);
-          setIsLoadingCard(false);
-          setCardError('');
+        console.log('🎮 Initializing game page...');
+        
+        // Check if user should be redirected to spectator
+        const isSpectator = searchParams.get('spectator') === 'true';
+        const cardParam = searchParams.get('card');
+        
+        // FIX: Check game status before loading
+        if (!game) {
+          console.log('⏳ Waiting for game data...');
           return;
-        } catch (error) {
-          console.error('Failed to parse card data from URL:', error);
-          setCardError('Failed to load card data from URL');
         }
-      }
 
-      // If no card in URL, try to fetch from API
-      console.log('🔄 Fetching card from API...');
-      try {
-        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-        if (userId) {
-          console.log('📋 Fetching card for user:', userId);
-          const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+        // FIX: Don't allow users to join games without enough players
+        if (game.status === 'WAITING_FOR_PLAYERS' && !isSpectator && !cardParam) {
+          const participants = await gameAPI.getGameParticipants(id);
+          const playersWithCards = participants.filter(p => p.hasCard).length;
           
-          if (cardResponse.data.success && cardResponse.data.bingoCard) {
-            console.log('✅ Loaded card from API:', cardResponse.data.bingoCard);
-            
-            const apiCard = cardResponse.data.bingoCard;
-            setLocalBingoCard({
-              cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
-              numbers: apiCard.numbers || [],
-              markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
-              selected: (apiCard as any).selected
-            });
-            setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
-            setCardError('');
-          } else {
-            setCardError('No bingo card found for this user');
-            console.log('❌ No bingo card in response:', cardResponse.data);
+          if (playersWithCards < 2) { // MIN_PLAYERS_TO_START
+            console.log('❌ Not enough players, redirecting to home');
+            router.push('/');
+            return;
           }
-        } else {
-          setCardError('User ID not found');
-          console.log('❌ No user ID found in localStorage');
         }
-      } catch (error: any) {
-        console.error('Failed to fetch card from API:', error);
-        if (error.response?.data?.error?.includes('Cast to ObjectId failed')) {
-          setCardError('User ID format error. Please rejoin the game.');
-        } else {
-          setCardError('Failed to load bingo card from server');
+
+        // Load wallet balance
+        try {
+          const walletResponse = await walletAPIAuto.getBalance();
+          if (walletResponse.data.success) {
+            setWalletBalance(walletResponse.data.balance);
+            console.log('💰 Wallet balance loaded:', walletResponse.data.balance);
+          }
+        } catch (walletError) {
+          console.warn('⚠️ Could not load wallet balance:', walletError);
         }
+
+        // Spectator mode
+        if (isSpectator) {
+          console.log('👁️ User is joining as spectator');
+          setIsLoadingCard(false);
+          return;
+        }
+
+        // Card from URL
+        if (cardParam) {
+          try {
+            const cardData: CardData = JSON.parse(decodeURIComponent(cardParam));
+            console.log('🎯 Loaded card from URL:', cardData);
+            setLocalBingoCard({
+              cardNumber: cardData.cardNumber,
+              numbers: cardData.numbers,
+              markedPositions: []
+            });
+            setSelectedNumber(cardData.cardNumber);
+            setIsLoadingCard(false);
+            setCardError('');
+            return;
+          } catch (error) {
+            console.error('Failed to parse card data from URL:', error);
+            setCardError('Failed to load card data from URL');
+          }
+        }
+
+        // Fetch from API
+        console.log('🔄 Fetching card from API...');
+        try {
+          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+          if (userId) {
+            console.log('📋 Fetching card for user:', userId);
+            const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+            
+            if (cardResponse.data.success && cardResponse.data.bingoCard) {
+              console.log('✅ Loaded card from API:', cardResponse.data.bingoCard);
+              
+              const apiCard = cardResponse.data.bingoCard;
+              setLocalBingoCard({
+                cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
+                numbers: apiCard.numbers || [],
+                markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
+                selected: (apiCard as any).selected
+              });
+              setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
+              setCardError('');
+            } else {
+              // FIX: If no card found and game is not accepting players, redirect
+              if (game.status === 'ACTIVE' || game.status === 'CARD_SELECTION') {
+                setCardError('No bingo card found. Joining as spectator...');
+                setTimeout(() => {
+                  router.push(`/game/${id}?spectator=true`);
+                }, 2000);
+              } else {
+                setCardError('No bingo card found for this user');
+              }
+            }
+          } else {
+            setCardError('User ID not found');
+            console.log('❌ No user ID found in localStorage');
+          }
+        } catch (error: any) {
+          console.error('Failed to fetch card from API:', error);
+          if (error.response?.data?.error?.includes('Cast to ObjectId failed')) {
+            setCardError('User ID format error. Please rejoin the game.');
+          } else {
+            setCardError('Failed to load bingo card from server');
+          }
+        }
+
+        setIsLoadingCard(false);
+      } catch (error) {
+        console.error('Failed to initialize game:', error);
+        setCardError('Failed to initialize game');
+        setIsLoadingCard(false);
       }
+    };
 
-      setIsLoadingCard(false);
-    } catch (error) {
-      console.error('Failed to initialize game:', error);
-      setCardError('Failed to initialize game');
-      setIsLoadingCard(false);
-    }
-  };
-
-  initializeGame();
-}, [id, searchParams]);
+    initializeGame();
+  }, [id, searchParams, game]);
 
   // Helper function to get BINGO letter for a number
   const getNumberLetter = (num: number): string => {
@@ -690,168 +718,279 @@ if (searchParams.get('spectator') === 'true') {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
       {/* Winner Modal */}
-      {showWinnerModal && winnerInfo && (
-  <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
-    <div className="bg-gradient-to-br from-purple-800 to-blue-900 rounded-2xl p-6 max-w-4xl w-full border-4 border-yellow-500 shadow-2xl">
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Left: Winner Info - same as before */}
-        <div className="lg:w-2/5">
-          {/* ... keep existing winner info code ... */}
-        </div>
-        
-        {/* Right: Winning Card Display */}
-        <div className="lg:w-3/5">
-          <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-5 border-2 border-yellow-500/50">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-bold text-xl">
-                {winnerInfo.winningCard 
-                  ? `Winning Card #${winnerInfo.winningCard.cardNumber || 'N/A'}`
-                  : 'Winner Details'
-                }
-              </h3>
-              <div className="text-white/70 text-sm bg-yellow-500/20 px-3 py-1 rounded-full">
-                Winning Pattern Highlighted
+   <AnimatePresence>
+        {showWinnerModal && winnerInfo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 50 }}
+              animate={{ scale: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 100 }}
+              className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-3xl p-8 max-w-6xl w-full border-4 border-yellow-500 shadow-2xl relative overflow-hidden"
+            >
+              {/* Confetti Background Effect */}
+              <div className="absolute inset-0 pointer-events-none">
+                {Array.from({ length: 20 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-1 h-1 bg-yellow-300 rounded-full"
+                    style={{
+                      left: `${Math.random() * 100}%`,
+                      top: `${Math.random() * 100}%`,
+                      animation: `twinkle ${1 + Math.random()}s infinite alternate`
+                    }}
+                  />
+                ))}
               </div>
-            </div>
-            
-            {/* Display card if available, otherwise show winner details */}
-            {winnerInfo.winningCard?.numbers ? (
-              <>
-                {/* BINGO Header */}
-                <div className="grid grid-cols-5 gap-2 mb-3">
-                  {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                    <div 
-                      key={letter}
-                      className="h-12 rounded-lg flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-700 to-blue-800"
-                    >
-                      {letter}
-                    </div>
-                  ))}
-                </div>
-                
-                {/* Winning Card Numbers */}
-                <div className="grid grid-cols-5 gap-2">
-                  {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                    row.map((number: number | string, colIndex: number) => {
-                      const flatIndex = rowIndex * 5 + colIndex;
-                      const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
-                      const isWinningPos = winnerInfo.winningCard?.winningPatternPositions?.includes(flatIndex);
-                      const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
-                      return (
-                        <div
-                          key={`${rowIndex}-${colIndex}`}
-                          className={`
-                            h-14 rounded-lg flex items-center justify-center 
-                            font-bold transition-all duration-200 relative
-                            ${isWinningPos
-                              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border-3 border-yellow-300 shadow-lg shadow-yellow-500/50'
-                              : isMarked
-                              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
-                              : isFreeSpace
-                              ? 'bg-gradient-to-br from-purple-700 to-pink-700 text-white'
-                              : 'bg-gray-800 text-white/70'
-                            }
-                          `}
-                        >
-                          {isFreeSpace ? (
-                            <>
-                              <span className="text-xs font-bold">FREE</span>
-                              <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-                            </>
-                          ) : (
-                            <>
-                              <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
-                                {number}
-                              </span>
-                              {isMarked && (
-                                <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-                              )}
-                              {isWinningPos && (
-                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full animate-ping"></div>
-                              )}
-                            </>
+              {/* Winner Crown Icon */}
+              <div className="absolute -top-6 left-1/2 transform -translate-x-1/2">
+                <div className="text-6xl text-yellow-400 animate-bounce">👑</div>
+              </div>
+
+              <div className="relative z-10">
+                {/* Header */}
+                <div className="text-center mb-8">
+                  <h1 className="text-4xl font-bold text-white mb-2">
+                    🎉 BINGO WINNER! 🎉
+                  </h1>
+                  <p className="text-white/70 text-lg">
+                    Game #{winnerInfo.gameCode || id}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Left: Winner Information */}
+                  <div className="space-y-6">
+                    {/* Winner Profile */}
+                    <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-2xl p-6 border border-white/20">
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-2xl font-bold">
+                          {isUserWinner ? 'YOU' : winnerInfo.winner.firstName.charAt(0)}
+                        </div>
+                        <div>
+                          <h3 className="text-2xl font-bold text-white">
+                            {isUserWinner ? '🎊 YOU WON! 🎊' : winnerInfo.winner.firstName}
+                          </h3>
+                          <p className="text-white/70">
+                            @{winnerInfo.winner.username}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Prize Amount */}
+                      <div className="text-center py-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl">
+                        <p className="text-white/80 text-sm mb-1">Prize Amount</p>
+                        <p className="text-3xl font-bold text-yellow-300">
+                          {winningAmount} ብር
+                        </p>
+                        {isUserWinner && (
+                          <p className="text-green-300 text-sm mt-2">
+                            💰 Added to your wallet!
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Game Stats */}
+                    <div className="bg-gradient-to-r from-gray-900 to-black rounded-2xl p-5 border border-white/10">
+                      <h4 className="text-white font-bold mb-4 text-lg">Game Statistics</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Total Players</p>
+                          <p className="text-white text-xl font-bold">{winnerInfo.totalPlayers}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Numbers Called</p>
+                          <p className="text-white text-xl font-bold">{winnerInfo.numbersCalled}/75</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Winning Pattern</p>
+                          <p className="text-green-300 text-lg font-bold">
+                            {getPatternName(winnerInfo.winningPattern)}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Game Duration</p>
+                          <p className="text-white text-sm">
+                            {new Date(winnerInfo.endedAt).toLocaleTimeString([], { 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Winning Card Display */}
+                  <div className="space-y-6">
+                    {/* Card Title */}
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-white font-bold text-xl">
+                        Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
+                      </h3>
+                      <div className="text-yellow-300 text-sm bg-yellow-500/20 px-3 py-1 rounded-full">
+                        Winning Pattern Highlighted
+                      </div>
+                    </div>
+
+                    {/* Winning Card */}
+                    {winnerInfo.winningCard?.numbers ? (
+                      <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-6 border-2 border-yellow-500/50">
+                        {/* BINGO Header */}
+                        <div className="grid grid-cols-5 gap-2 mb-4">
+                          {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                            <div 
+                              key={letter}
+                              className="h-12 rounded-lg flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-700 to-blue-800"
+                            >
+                              {letter}
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {/* Winning Card Numbers */}
+                        <div className="grid grid-cols-5 gap-2">
+                          {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+                            row.map((number: number | string, colIndex: number) => {
+                              const flatIndex = rowIndex * 5 + colIndex;
+                              const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
+                              const isWinningPos = isWinningPosition(rowIndex, colIndex, winnerInfo.winningCard);
+                              const isFreeSpace = rowIndex === 2 && colIndex === 2;
+
+                              return (
+                                <motion.div
+                                  key={`${rowIndex}-${colIndex}`}
+                                  initial={{ scale: 0.8 }}
+                                  animate={{ scale: 1 }}
+                                  transition={{ delay: rowIndex * 0.1 + colIndex * 0.02 }}
+                                  className={`
+                                    h-14 rounded-lg flex items-center justify-center 
+                                    font-bold transition-all duration-200 relative
+                                    ${isWinningPos
+                                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border-3 border-yellow-300 shadow-lg shadow-yellow-500/50'
+                                      : isMarked
+                                      ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
+                                      : isFreeSpace
+                                      ? 'bg-gradient-to-br from-purple-700 to-pink-700 text-white'
+                                      : 'bg-gray-800 text-white/70'
+                                    }
+                                  `}
+                                >
+                                  {isFreeSpace ? (
+                                    <>
+                                      <span className="text-xs font-bold">FREE</span>
+                                      <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
+                                        {number}
+                                      </span>
+                                      {isMarked && (
+                                        <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                                      )}
+                                      {isWinningPos && (
+                                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full animate-ping"></div>
+                                      )}
+                                    </>
+                                  )}
+                                </motion.div>
+                              );
+                            })
                           )}
                         </div>
-                      );
-                    })
-                  )}
+                        
+                        {/* Pattern Legend */}
+                        <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded bg-gradient-to-br from-yellow-500 to-orange-500"></div>
+                            <span className="text-white/70">Winning Pattern</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded bg-gradient-to-br from-green-600 to-emerald-700"></div>
+                            <span className="text-white/70">Marked Numbers</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-700 to-pink-700"></div>
+                            <span className="text-white/70">Free Space</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-8 text-center">
+                        <div className="text-5xl mb-4">🎯</div>
+                        <h4 className="text-white text-xl font-bold mb-2">Winner Details</h4>
+                        <p className="text-white/70 mb-4">
+                          {winnerInfo.winner.firstName} won with {getPatternName(winnerInfo.winningPattern)}!
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                
-                {/* Pattern Legend */}
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-gradient-to-br from-yellow-500 to-orange-500"></div>
-                    <span className="text-white/70">Winning Pattern</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-gradient-to-br from-green-600 to-emerald-700"></div>
-                    <span className="text-white/70">Marked Numbers</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-700 to-pink-700"></div>
-                    <span className="text-white/70">Free Space</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              // Fallback when card data isn't available
-              <div className="text-center py-10">
-                <div className="text-5xl mb-4">🎯</div>
-                <h4 className="text-white text-xl font-bold mb-2">Winner Details</h4>
-                <p className="text-white/70 mb-6">
-                  {winnerInfo.winner.firstName} won with {winnerInfo.winningPattern || 'a winning pattern'}!
-                </p>
-                
-                <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
-                  <div className="grid grid-cols-2 gap-3 text-left">
-                    <div>
-                      <p className="text-white/70 text-xs">Pattern</p>
-                      <p className="text-white font-bold">
-                        {winnerInfo.winningPattern ? getPatternName(winnerInfo.winningPattern) : 'BINGO'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-white/70 text-xs">Numbers Called</p>
-                      <p className="text-white font-bold">{winnerInfo.numbersCalled}/75</p>
+
+                {/* Countdown and Action Buttons */}
+                <div className="mt-8 pt-6 border-t border-white/20">
+                  {/* Countdown */}
+                  <div className="text-center mb-6">
+                    <p className="text-white/70 text-sm mb-2">
+                      New game starts in:
+                    </p>
+                    <div className="text-3xl font-bold text-yellow-300">
+                      {countdown} seconds
                     </div>
                   </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                    {isUserWinner ? (
+                      <button
+                        onClick={handlePlayAgain}
+                        className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-green-600 hover:to-emerald-700 transition-all"
+                      >
+                        🎮 Play Again
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handlePlayAgain}
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-blue-600 hover:to-purple-700 transition-all"
+                      >
+                        🎯 Join Next Game
+                      </button>
+                    )}
+                    
+                    <button
+                      onClick={handleReturnToLobby}
+                      className="bg-gradient-to-r from-gray-700 to-gray-800 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-gray-800 hover:to-gray-900 transition-all"
+                    >
+                      ⏪ Return to Lobby
+                    </button>
+                  </div>
+
+                  {/* Share Button */}
+                  <div className="text-center mt-4">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`I just won ${winningAmount} ብር in Bingo! 🎉`);
+                        alert('Winner announcement copied to clipboard!');
+                      }}
+                      className="text-white/60 text-sm hover:text-white transition-colors"
+                    >
+                      📋 Share this victory
+                    </button>
+                  </div>
                 </div>
-                
-                <div className="text-white/60 text-sm">
-                  Card details not available for display
-                </div>
               </div>
-            )}
-          </div>
-          
-          {/* Game Summary */}
-          <div className="mt-4 bg-black/30 rounded-xl p-4">
-            <h4 className="text-white font-bold mb-2">Game Summary</h4>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="text-white/70">
-                <span>Winner:</span>
-                <div className="text-white font-medium">{winnerInfo.winner.firstName}</div>
-              </div>
-              <div className="text-white/70">
-                <span>Prize:</span>
-                <div className="text-yellow-300 font-bold">${winningAmount} ብር</div>
-              </div>
-              <div className="text-white/70">
-                <span>Total Players:</span>
-                <div className="text-white">{winnerInfo.totalPlayers}</div>
-              </div>
-              <div className="text-white/70">
-                <span>Numbers Called:</span>
-                <div className="text-white">{winnerInfo.numbersCalled}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       
       {/* Loading overlay for winner info */}
       {isWinnerLoading && (
