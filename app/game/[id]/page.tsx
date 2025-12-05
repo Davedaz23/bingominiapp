@@ -871,7 +871,7 @@ if (searchParams.get('spectator') === 'true') {
                             row.map((number: number | string, colIndex: number) => {
                               const flatIndex = rowIndex * 5 + colIndex;
                               const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
-                              const isWinningPos = isWinningPosition(rowIndex, colIndex, winnerInfo.winningCard);
+const isWinningPos = isWinningPosition(rowIndex, colIndex);
                               const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
                               return (
