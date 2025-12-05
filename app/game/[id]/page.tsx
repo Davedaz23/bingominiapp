@@ -124,17 +124,28 @@ export default function GamePage() {
         }
 
         // FIX: Don't allow users to join games without enough players
-        if (game.status === 'WAITING_FOR_PLAYERS' && !isSpectator && !cardParam) {
-          const participants = await gameAPI.getGameParticipants(id);
-          const playersWithCards = participants.filter(p => p.hasCard).length;
-          
-          if (playersWithCards < 2) { // MIN_PLAYERS_TO_START
-            console.log('❌ Not enough players, redirecting to home');
-            router.push('/');
-            return;
-          }
-        }
-
+       // FIX: Don't allow users to join games without enough players
+if (game.status === 'WAITING_FOR_PLAYERS' && !isSpectator && !cardParam) {
+  try {
+    const response = await gameAPI.getGameParticipants(id);
+    const participants = response.data.participants || [];
+    const playersWithCards = participants.filter(p => p.hasCard).length;
+    
+    if (playersWithCards < 2) { // MIN_PLAYERS_TO_START
+      console.log('❌ Not enough players, redirecting to home');
+      router.push('/');
+      return;
+    }
+  } catch (error) {
+    console.warn('Could not fetch participants, using game data:', error);
+    // Fallback to existing game data
+    const playersWithCards = game.players?.filter((p: any) => p.hasCard).length || 0;
+    if (playersWithCards < 2) {
+      router.push('/');
+      return;
+    }
+  }
+}
         // Load wallet balance
         try {
           const walletResponse = await walletAPIAuto.getBalance();
