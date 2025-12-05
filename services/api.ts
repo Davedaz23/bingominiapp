@@ -221,7 +221,21 @@ markNumber: (gameId: string, userId: string, number: number) =>
   // ==================== GAME ACTIONS ====================
   leaveGame: (gameId: string, userId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${gameId}/leave`, { userId }),
-  
+   getGameParticipants: (gameId: string) =>
+    api.get<{
+      success: boolean;
+      participants: Array<{
+        _id: string;
+        userId: string;
+        username: string;
+        firstName: string;
+        telegramId?: string;
+        hasCard: boolean;
+        cardNumber?: number;
+        cardIndex?: number;
+        joinedAt: string;
+      }>;
+    }>(`/games/${gameId}/participants`),
   endGame: (gameId: string) =>
     api.post<{ success: boolean; game: Game }>(`/games/${gameId}/end`),
   
