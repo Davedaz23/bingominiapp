@@ -1,4 +1,4 @@
-// app/page.tsx - COMPLETE FIXED VERSION
+// app/page.tsx - MODIFIED VERSION
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -20,7 +20,7 @@ import { GameControls } from '../components/game/GameControls';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
 import { useAccountStorage } from '../hooks/useAccountStorage';
-import { Clock, Play, Check, Rocket } from 'lucide-react';
+import { Clock, Play, Check, Rocket, AlertCircle, Users } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -69,6 +69,9 @@ export default function Home() {
   const [joinError, setJoinError] = useState<string>('');
   const [showGameView, setShowGameView] = useState<boolean>(false);
   const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
+  const [gameParticipants, setGameParticipants] = useState<any[]>([]);
+  const [playersWithCards, setPlayersWithCards] = useState<number>(0);
+  const [canStartGame, setCanStartGame] = useState<boolean>(false);
 
   // ==================== ADD MISSING RESTART COOLDOWN STATES ====================
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
@@ -90,7 +93,39 @@ export default function Home() {
     }
   }, [gameData]);
 
-  // ==================== AUTO-JOIN LOGIC ====================
+  // ==================== FETCH GAME PARTICIPANTS AND CHECK CONDITIONS ====================
+  useEffect(() => {
+    const fetchGameParticipants = async () => {
+      if (gameData?._id) {
+        try {
+          const response = await gameAPI.getGameParticipants(gameData._id);
+          if (response.data.success) {
+            const participants = response.data.participants || [];
+            setGameParticipants(participants);
+            
+            const playersWithCardsCount = participants.filter(p => p.hasCard).length;
+            setPlayersWithCards(playersWithCardsCount);
+            
+            // Check if game can start (minimum 2 players with cards)
+            const canStart = playersWithCardsCount >= 2;
+            setCanStartGame(canStart);
+            
+            console.log(`👥 Game participants: ${participants.length}, Players with cards: ${playersWithCardsCount}, Can start: ${canStart}`);
+          }
+        } catch (error) {
+          console.error('❌ Failed to fetch game participants:', error);
+        }
+      }
+    };
+
+    fetchGameParticipants();
+    
+    // Refresh participants every 5 seconds
+    const interval = setInterval(fetchGameParticipants, 5000);
+    return () => clearInterval(interval);
+  }, [gameData?._id]);
+
+  // ==================== MODIFIED AUTO-JOIN LOGIC WITH CONDITIONS CHECK ====================
   useEffect(() => {
     console.log('🔍 Auto-join condition check:', {
       timeRemaining: cardSelectionStatus.timeRemaining,
@@ -98,24 +133,27 @@ export default function Home() {
       selectedNumber: selectedNumber,
       walletBalance: walletBalance,
       hasRestartCooldown: hasRestartCooldown,
+      playersWithCards: playersWithCards,
       allConditionsMet: cardSelectionStatus.timeRemaining <= 0 && 
                       cardSelectionStatus.isSelectionActive && 
                       selectedNumber && 
                       walletBalance >= 10 &&
-                      !hasRestartCooldown // Don't auto-join during restart cooldown
+                      !hasRestartCooldown &&
+                      playersWithCards >= 2 // ADDED: Minimum players check
     });
 
-    // Auto-join when ALL conditions are met (NOT during restart cooldown)
+    // Auto-join when ALL conditions are met (including minimum players)
     if (cardSelectionStatus.timeRemaining <= 0 && 
         cardSelectionStatus.isSelectionActive && 
         selectedNumber && 
         walletBalance >= 10 &&
-        !hasRestartCooldown) {
+        !hasRestartCooldown &&
+        playersWithCards >= 2) {
       
       console.log('🚀 All auto-join conditions met! Triggering auto-join...');
       handleAutoJoinGame();
     }
-  }, [cardSelectionStatus.timeRemaining, cardSelectionStatus.isSelectionActive, selectedNumber, walletBalance, hasRestartCooldown]);
+  }, [cardSelectionStatus.timeRemaining, cardSelectionStatus.isSelectionActive, selectedNumber, walletBalance, hasRestartCooldown, playersWithCards]);
 
   // ==================== AUTO-START CHECK ====================
   useEffect(() => {
@@ -152,9 +190,16 @@ export default function Home() {
     };
   }, [gameStatus, gameData?._id, checkGameStatus, hasRestartCooldown]);
 
-  // ==================== FIXED AUTO-JOIN FUNCTION ====================
+  // ==================== MODIFIED AUTO-JOIN FUNCTION WITH CONDITIONS CHECK ====================
   const handleAutoJoinGame = async () => {
     if (!selectedNumber || !user?.id || hasRestartCooldown) return; // Don't auto-join during cooldown
+    
+    // Check if enough players before auto-joining
+    if (playersWithCards < 2) {
+      console.log(`❌ Not enough players with cards (${playersWithCards}/2). Cannot auto-join.`);
+      setJoinError(`Need ${2 - playersWithCards} more player(s) to start the game`);
+      return;
+    }
 
     try {
       console.log('🤖 Auto-joining game...');
@@ -167,6 +212,17 @@ export default function Home() {
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game = waitingGamesResponse.data.games[0];
         console.log('🎯 Joining waiting game:', game._id);
+        
+        // Check game participants again before joining
+        const participantsResponse = await gameAPI.getGameParticipants(game._id);
+        const currentPlayersWithCards = participantsResponse.data.participants?.filter(p => p.hasCard).length || 0;
+        
+        if (currentPlayersWithCards < 2) {
+          console.log(`❌ Not enough players to join (${currentPlayersWithCards}/2)`);
+          setShowGameView(false);
+          setJoinError(`Need ${2 - currentPlayersWithCards} more player(s) to start the game`);
+          return;
+        }
         
         // FIX: Use user.id (Telegram ID) instead of MongoDB ObjectId
         const joinResponse = await gameAPI.joinGame(game.code, user.id);
@@ -245,49 +301,7 @@ export default function Home() {
     }
   };
 
-  // Admin control handlers (keep existing)
-  const handleStartGame = async () => {
-    if (hasPermission('manage_games')) {
-      try {
-        if (!gameData?._id) return;
-        
-        const response = await gameAPI.startGame(gameData._id);
-        
-        if (response.data.success) {
-          console.log('🔄 Admin starting game...');
-          await checkGameStatus();
-        }
-      } catch (error) {
-        console.error('❌ Failed to start game by admin:', error);
-        setJoinError('Failed to start game');
-      }
-    }
-  };
-
-  const handleEndGame = () => {
-    if (hasPermission('manage_games')) {
-      console.log('🛑 Admin ending game...');
-    }
-  };
-
-  const handleManageUsers = () => {
-    if (hasPermission('manage_users')) {
-      console.log('👥 Admin managing users...');
-    }
-  };
-
-  const handleModerateGames = () => {
-    if (hasPermission('moderate_games')) {
-      console.log('🛡️ Moderator moderating games...');
-    }
-  };
-
-  const handleViewReports = () => {
-    if (hasPermission('view_reports')) {
-      console.log('📊 Moderator viewing reports...');
-    }
-  };
-
+  // ==================== MODIFIED JOIN GAME FUNCTION WITH CONDITIONS CHECK ====================
   const handleJoinGame = async () => {
     if (!selectedNumber || !user?.id) return;
 
@@ -295,6 +309,13 @@ export default function Home() {
     setJoinError('');
 
     try {
+      // Check if enough players before joining
+      if (playersWithCards < 2) {
+        setJoinError(`Need ${2 - playersWithCards} more player(s) to start the game`);
+        setJoining(false);
+        return;
+      }
+
       if (walletBalance < 10) {
         setJoinError('Insufficient balance. Minimum 10 ብር required to play.');
         setJoining(false);
@@ -308,6 +329,17 @@ export default function Home() {
       
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game = waitingGamesResponse.data.games[0];
+        
+        // Check participants again before joining
+        const participantsResponse = await gameAPI.getGameParticipants(game._id);
+        const currentPlayersWithCards = participantsResponse.data.participants?.filter(p => p.hasCard).length || 0;
+        
+        if (currentPlayersWithCards < 2) {
+          setJoinError(`Need ${2 - currentPlayersWithCards} more player(s) to start the game`);
+          setJoining(false);
+          return;
+        }
+        
         const joinResponse = await gameAPI.joinGame(game.code, user.id);
         
         if (joinResponse.data.success) {
@@ -343,7 +375,7 @@ export default function Home() {
     }
   };
 
-  // ==================== UPDATE GAME INFO FOOTER MESSAGE ====================
+  // ==================== UPDATED GAME INFO FOOTER MESSAGE ====================
   const getGameStatusMessage = () => {
     if (hasRestartCooldown) {
       return `🔄 Game restarting in ${Math.ceil(restartCooldownRemaining / 1000)}s - Select your card now!`;
@@ -371,7 +403,7 @@ export default function Home() {
     if (selectedNumber && walletBalance >= 10) {
       switch (gameStatus) {
         case 'WAITING':
-          return '⏳ Ready! Game will start when enough players join';
+          return `⏳ Ready! Need ${2 - playersWithCards} more player(s) to start`;
         case 'ACTIVE':
           return '🚀 Auto-joining active game with card #{selectedNumber}...';
         case 'FINISHED':
@@ -382,6 +414,21 @@ export default function Home() {
     }
 
     return '';
+  };
+
+  // ==================== CONDITIONAL GAME INFO DISPLAY ====================
+  const shouldDisplayGameInfo = () => {
+    // Only show full game info for active or waiting games with enough players
+    if (gameStatus === 'ACTIVE') {
+      return true;
+    }
+    
+    if (gameStatus === 'WAITING' && playersWithCards >= 2) {
+      return true;
+    }
+    
+    // For other statuses, show limited info
+    return false;
   };
 
   // Main initialization
@@ -413,17 +460,17 @@ export default function Home() {
 
   // Auto-join when game view is shown
   useEffect(() => {
-    if (showGameView && selectedNumber && walletBalance >= 10 && !hasRestartCooldown) {
+    if (showGameView && selectedNumber && walletBalance >= 10 && !hasRestartCooldown && playersWithCards >= 2) {
       const timer = setTimeout(() => {
         handleAutoJoinGame();
       }, 2000);
       
       return () => clearTimeout(timer);
     }
-  }, [showGameView, selectedNumber, walletBalance, hasRestartCooldown]);
+  }, [showGameView, selectedNumber, walletBalance, hasRestartCooldown, playersWithCards]);
 
   // Auto-join loading screen (keep existing)
-  if (showGameView && selectedNumber && walletBalance >= 10 && !hasRestartCooldown) {
+  if (showGameView && selectedNumber && walletBalance >= 10 && !hasRestartCooldown && playersWithCards >= 2) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20">
@@ -509,133 +556,209 @@ export default function Home() {
         />
       )}
 
-      {/* Game Status Display - UPDATED WITH RESTART COOLDOWN PROPS */}
-      <GameStatusDisplay 
-        gameStatus={gameStatus}
-        currentPlayers={currentPlayers}
-        restartCountdown={restartCountdown}
-        selectedNumber={selectedNumber}
-        walletBalance={walletBalance}
-        shouldEnableCardSelection={shouldEnableCardSelection()}
-        autoStartTimeRemaining={autoStartTimeRemaining}
-        hasAutoStartTimer={hasAutoStartTimer}
-        hasRestartCooldown={hasRestartCooldown}
-        restartCooldownRemaining={restartCooldownRemaining}
-      />
-
-      {/* AUTO-JOIN DIAGNOSTIC PANEL */}
-      <div className="mb-4 p-3 bg-black/30 rounded-xl border border-white/10 text-xs">
-        <div className="grid grid-cols-2 gap-2 text-white/70">
-          <div>Restart Cooldown: <span className={hasRestartCooldown ? 'text-yellow-300' : 'text-green-300'}>{hasRestartCooldown ? 'ACTIVE' : 'INACTIVE'}</span></div>
-          <div>Cooldown Remaining: <span className="text-yellow-300">{Math.ceil(restartCooldownRemaining/1000)}s</span></div>
-          <div>Auto-start Timer: <span className={hasAutoStartTimer ? 'text-yellow-300' : 'text-gray-400'}>{hasAutoStartTimer ? 'ACTIVE' : 'INACTIVE'}</span></div>
-          <div>Auto-start Remaining: <span className="text-yellow-300">{Math.ceil(autoStartTimeRemaining/1000)}s</span></div>
-        </div>
-      </div>
-
-      {/* Card Selection Status - UPDATED WITH RESTART COOLDOWN */}
-      {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
+      {/* ==================== PLAYERS COUNT WARNING ==================== */}
+      {gameStatus === 'WAITING' && playersWithCards < 2 && (
         <motion.div 
-          className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
-            hasRestartCooldown
-              ? 'bg-purple-500/20 border-purple-500/30' 
-              : hasAutoStartTimer 
-                ? 'bg-orange-500/20 border-orange-500/30' 
-                : 'bg-green-500/20 border-green-500/30'
-          }`}
+          className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-yellow-500/30"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {hasRestartCooldown ? (
-                <Clock className="w-4 h-4 text-purple-300" />
-              ) : hasAutoStartTimer ? (
-                <Rocket className="w-4 h-4 text-orange-300" />
-              ) : (
-                <Clock className="w-4 h-4 text-green-300" />
-              )}
-              <p className={`font-bold text-sm ${
-                hasRestartCooldown ? 'text-purple-300' :
-                hasAutoStartTimer ? 'text-orange-300' : 'text-green-300'
-              }`}>
-                {hasRestartCooldown ? '🔄 Restart Cooldown' : 
-                 hasAutoStartTimer ? '🚀 Game Starting Soon!' : 
-                 'Card Selection Active'}
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-300" />
+            <div className="flex-1">
+              <p className="text-yellow-300 font-bold text-sm">
+                Waiting for more players
+              </p>
+              <p className="text-yellow-200 text-xs">
+                Need {2 - playersWithCards} more player(s) to start the game
               </p>
             </div>
-            <p className={`text-sm ${
-              hasRestartCooldown ? 'text-purple-200' :
-              hasAutoStartTimer ? 'text-orange-200' : 'text-green-200'
-            }`}>
-              {hasRestartCooldown 
-                ? `${Math.ceil(restartCooldownRemaining / 1000)}s cooldown`
-                : hasAutoStartTimer 
-                  ? `${Math.ceil(autoStartTimeRemaining / 1000)}s to start`
-                  : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
-              }
-            </p>
+            <div className="bg-yellow-500/30 px-3 py-1 rounded-full">
+              <span className="text-yellow-300 font-bold">{playersWithCards}/2</span>
+            </div>
           </div>
-          
-          {/* RESTART COOLDOWN PROGRESS */}
-          {hasRestartCooldown && (
-            <div className="mt-2">
-              <div className="flex justify-between text-xs text-purple-200 mb-1">
-                <span>Previous game ended - Waiting 60s before next game</span>
-                <span>{currentPlayers}/2 players ready</span>
-              </div>
-              <div className="w-full bg-purple-400/20 rounded-full h-2">
-                <div 
-                  className="bg-gradient-to-r from-purple-400 to-pink-400 h-2 rounded-full transition-all duration-1000"
-                  style={{ 
-                    width: `${((60000 - restartCooldownRemaining) / 60000) * 100}%` 
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          
-          {/* AUTO-START PROGRESS */}
-          {hasAutoStartTimer && (
-            <div className="mt-2">
-              <div className="flex justify-between text-xs text-orange-200 mb-1">
-                <span>Game will start automatically</span>
-                <span>{currentPlayers}/2 players ready</span>
-              </div>
-              <div className="w-full bg-orange-400/20 rounded-full h-2">
-                <div 
-                  className="bg-gradient-to-r from-orange-400 to-red-400 h-2 rounded-full transition-all duration-1000"
-                  style={{ 
-                    width: `${((30000 - autoStartTimeRemaining) / 30000) * 100}%` 
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          
-          {/* REGULAR CARD SELECTION PROGRESS */}
-          {!hasRestartCooldown && !hasAutoStartTimer && (
-            <div className="mt-2">
-              <div className="flex justify-between text-xs text-green-200 mb-1">
-                <span>Choose your card number to join the game</span>
-                <span>{takenCards.length}/400 cards taken</span>
-              </div>
-              <div className="w-full bg-green-400/20 rounded-full h-2">
-                <div 
-                  className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
-                  style={{ 
-                    width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
-                  }}
-                />
+        </motion.div>
+      )}
+
+      {/* ==================== CONDITIONAL GAME INFO DISPLAY ==================== */}
+      {shouldDisplayGameInfo() ? (
+        <>
+          {/* Game Status Display - UPDATED WITH RESTART COOLDOWN PROPS */}
+          <GameStatusDisplay 
+            gameStatus={gameStatus}
+            currentPlayers={currentPlayers}
+            restartCountdown={restartCountdown}
+            selectedNumber={selectedNumber}
+            walletBalance={walletBalance}
+            shouldEnableCardSelection={shouldEnableCardSelection()}
+            autoStartTimeRemaining={autoStartTimeRemaining}
+            hasAutoStartTimer={hasAutoStartTimer}
+            hasRestartCooldown={hasRestartCooldown}
+            restartCooldownRemaining={restartCooldownRemaining}
+          />
+
+          {/* AUTO-JOIN DIAGNOSTIC PANEL */}
+          <div className="mb-4 p-3 bg-black/30 rounded-xl border border-white/10 text-xs">
+            <div className="grid grid-cols-2 gap-2 text-white/70">
+              <div>Restart Cooldown: <span className={hasRestartCooldown ? 'text-yellow-300' : 'text-green-300'}>{hasRestartCooldown ? 'ACTIVE' : 'INACTIVE'}</span></div>
+              <div>Cooldown Remaining: <span className="text-yellow-300">{Math.ceil(restartCooldownRemaining/1000)}s</span></div>
+              <div>Auto-start Timer: <span className={hasAutoStartTimer ? 'text-yellow-300' : 'text-gray-400'}>{hasAutoStartTimer ? 'ACTIVE' : 'INACTIVE'}</span></div>
+              <div>Auto-start Remaining: <span className="text-yellow-300">{Math.ceil(autoStartTimeRemaining/1000)}s</span></div>
+              <div className="col-span-2 text-center pt-2 border-t border-white/10">
+                <div className="flex items-center justify-center gap-2">
+                  <Users className="w-3 h-3" />
+                  <span>Players with cards: <span className="font-bold">{playersWithCards}/2</span></span>
+                </div>
               </div>
             </div>
+          </div>
+
+          {/* Card Selection Status - UPDATED WITH RESTART COOLDOWN */}
+          {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
+            <motion.div 
+              className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
+                hasRestartCooldown
+                  ? 'bg-purple-500/20 border-purple-500/30' 
+                  : hasAutoStartTimer 
+                    ? 'bg-orange-500/20 border-orange-500/30' 
+                    : 'bg-green-500/20 border-green-500/30'
+              }`}
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {hasRestartCooldown ? (
+                    <Clock className="w-4 h-4 text-purple-300" />
+                  ) : hasAutoStartTimer ? (
+                    <Rocket className="w-4 h-4 text-orange-300" />
+                  ) : (
+                    <Clock className="w-4 h-4 text-green-300" />
+                  )}
+                  <p className={`font-bold text-sm ${
+                    hasRestartCooldown ? 'text-purple-300' :
+                    hasAutoStartTimer ? 'text-orange-300' : 'text-green-300'
+                  }`}>
+                    {hasRestartCooldown ? '🔄 Restart Cooldown' : 
+                     hasAutoStartTimer ? '🚀 Game Starting Soon!' : 
+                     'Card Selection Active'}
+                  </p>
+                </div>
+                <p className={`text-sm ${
+                  hasRestartCooldown ? 'text-purple-200' :
+                  hasAutoStartTimer ? 'text-orange-200' : 'text-green-200'
+                }`}>
+                  {hasRestartCooldown 
+                    ? `${Math.ceil(restartCooldownRemaining / 1000)}s cooldown`
+                    : hasAutoStartTimer 
+                      ? `${Math.ceil(autoStartTimeRemaining / 1000)}s to start`
+                      : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
+                  }
+                </p>
+              </div>
+              
+              {/* RESTART COOLDOWN PROGRESS */}
+              {hasRestartCooldown && (
+                <div className="mt-2">
+                  <div className="flex justify-between text-xs text-purple-200 mb-1">
+                    <span>Previous game ended - Waiting 60s before next game</span>
+                    <span>{playersWithCards}/2 players ready</span>
+                  </div>
+                  <div className="w-full bg-purple-400/20 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-purple-400 to-pink-400 h-2 rounded-full transition-all duration-1000"
+                      style={{ 
+                        width: `${((60000 - restartCooldownRemaining) / 60000) * 100}%` 
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* AUTO-START PROGRESS */}
+              {hasAutoStartTimer && (
+                <div className="mt-2">
+                  <div className="flex justify-between text-xs text-orange-200 mb-1">
+                    <span>Game will start automatically</span>
+                    <span>{playersWithCards}/2 players ready</span>
+                  </div>
+                  <div className="w-full bg-orange-400/20 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-orange-400 to-red-400 h-2 rounded-full transition-all duration-1000"
+                      style={{ 
+                        width: `${((30000 - autoStartTimeRemaining) / 30000) * 100}%` 
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* REGULAR CARD SELECTION PROGRESS */}
+              {!hasRestartCooldown && !hasAutoStartTimer && (
+                <div className="mt-2">
+                  <div className="flex justify-between text-xs text-green-200 mb-1">
+                    <span>Choose your card number to join the game</span>
+                    <span>{takenCards.length}/400 cards taken</span>
+                  </div>
+                  <div className="w-full bg-green-400/20 rounded-full h-2">
+                    <div 
+                      className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
+                      style={{ 
+                        width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {cardSelectionError && (
+                <p className="text-red-300 text-xs mt-2 text-center">
+                  {cardSelectionError}
+                </p>
+              )}
+            </motion.div>
           )}
-          
-          {cardSelectionError && (
-            <p className="text-red-300 text-xs mt-2 text-center">
-              {cardSelectionError}
-            </p>
-          )}
+        </>
+      ) : (
+        /* ==================== LIMITED GAME INFO FOR NON-ACTIVE GAMES ==================== */
+        <motion.div 
+          className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="text-center">
+            <div className="mb-3">
+              <div className="text-white/70 text-sm mb-1">Game Status</div>
+              <div className={`px-4 py-1 rounded-full inline-block ${
+                gameStatus === 'WAITING' ? 'bg-yellow-500/20 text-yellow-300' :
+                gameStatus === 'FINISHED' ? 'bg-orange-500/20 text-orange-300' :
+                'bg-purple-500/20 text-purple-300'
+              }`}>
+                {gameStatus === 'WAITING' ? '⏳ Waiting for players' :
+                 gameStatus === 'FINISHED' ? '🏁 Game Finished' :
+                 '⚡ Preparing next game'}
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-white font-bold">{playersWithCards}</div>
+                <div className="text-white/60 text-xs">Players Ready</div>
+              </div>
+              <div>
+                <div className="text-white font-bold">{2 - playersWithCards}</div>
+                <div className="text-white/60 text-xs">Needed to Start</div>
+              </div>
+            </div>
+            
+            {playersWithCards < 2 && (
+              <div className="mt-3 p-2 bg-yellow-500/10 rounded-lg">
+                <p className="text-yellow-300 text-xs">
+                  Need {2 - playersWithCards} more player(s) to start the game
+                </p>
+              </div>
+            )}
+          </div>
         </motion.div>
       )}
 
@@ -710,6 +833,20 @@ export default function Home() {
               </div>
             </div>
           </motion.div>
+        </motion.div>
+      )}
+
+      {/* Join Error Display */}
+      {joinError && (
+        <motion.div 
+          className="bg-red-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-red-500/30"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-300" />
+            <p className="text-red-300 text-sm">{joinError}</p>
+          </div>
         </motion.div>
       )}
 
