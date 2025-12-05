@@ -46,7 +46,7 @@ export interface GameState {
   potAmount: number;
   timeRemaining: number;
   gameEnded: boolean;
-  status?: 'WAITING' | 'ACTIVE' | 'FINISHED';
+  status?: 'WAITING' | 'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'CANCELLED' | 'CARD_SELECTION' | 'COOLDOWN';
   currentPlayers?: number;
 }
 
@@ -77,6 +77,7 @@ export interface GamePlayer {
   numbersCalledAtJoin?: number[];
 }
 
+// UPDATED Game interface with all possible status values
 export interface Game {
   isAutoCreated: boolean;
   winner: boolean;
@@ -84,7 +85,7 @@ export interface Game {
   _id: string;
   id?: string;
   code: string;
-  status: 'WAITING' | 'ACTIVE' | 'FINISHED' | 'CANCELLED';
+  status: 'WAITING' | 'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'CANCELLED' | 'CARD_SELECTION' | 'COOLDOWN';
   calledNumbers: number[];
   currentNumber: number | null;
   players: any[];
