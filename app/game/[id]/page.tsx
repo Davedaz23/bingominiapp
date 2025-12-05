@@ -1,10 +1,11 @@
-// app/game/[id]/page.tsx - FIXED VERSION
+// app/game/[id]/page.tsx - COMPLETE VERSION (Manual Marking Only)
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
+import { AnimatePresence, motion } from 'framer-motion';
 
 // Interface for CallNumberResponse from API
 interface CallNumberResponse {
@@ -49,24 +50,6 @@ interface WinnerInfo {
     winningPatternPositions?: number[];
   };
 }
-
-// Add this helper function to map backend status to frontend status
-const mapGameStatus = (backendStatus: string): string => {
-  const statusMap: Record<string, string> = {
-    'WAITING_FOR_PLAYERS': 'WAITING',
-    'CARD_SELECTION': 'WAITING',
-    'ACTIVE': 'ACTIVE',
-    'FINISHED': 'FINISHED',
-    'COOLDOWN': 'FINISHED',
-    'CANCELLED': 'CANCELLED'
-  };
-  return statusMap[backendStatus] || 'WAITING';
-};
-
-// Helper function to check if game is in waiting state
-const isGameWaiting = (status: string): boolean => {
-  return status === 'WAITING_FOR_PLAYERS' || status === 'CARD_SELECTION' || status === 'WAITING';
-};
 
 export default function GamePage() {
   const params = useParams();
@@ -124,8 +107,8 @@ export default function GamePage() {
   const gameEndedCheckRef = useRef(false);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize game and load card - FIXED
-  useEffect(() => {
+  // Initialize game and load card
+   useEffect(() => {
     const initializeGame = async () => {
       try {
         console.log('🎮 Initializing game page...');
@@ -141,20 +124,14 @@ export default function GamePage() {
         }
 
         // FIX: Don't allow users to join games without enough players
-        // Use the backend status directly for comparison
-        const backendStatus = game.status as string;
-        if (isGameWaiting(backendStatus) && !isSpectator && !cardParam) {
-          try {
-            const participants = await gameAPI.getGameParticipants(id);
-            const playersWithCards = participants.filter(p => p.hasCard).length;
-            
-            if (playersWithCards < 2) { // MIN_PLAYERS_TO_START
-              console.log('❌ Not enough players, redirecting to home');
-              router.push('/');
-              return;
-            }
-          } catch (error) {
-            console.error('Failed to check players:', error);
+        if (game.status === 'WAITING_FOR_PLAYERS' && !isSpectator && !cardParam) {
+          const participants = await gameAPI.getGameParticipants(id);
+          const playersWithCards = participants.filter(p => p.hasCard).length;
+          
+          if (playersWithCards < 2) { // MIN_PLAYERS_TO_START
+            console.log('❌ Not enough players, redirecting to home');
+            router.push('/');
+            return;
           }
         }
 
@@ -218,8 +195,7 @@ export default function GamePage() {
               setCardError('');
             } else {
               // FIX: If no card found and game is not accepting players, redirect
-              const backendStatus = game.status as string;
-              if (backendStatus === 'ACTIVE' || backendStatus === 'CARD_SELECTION') {
+              if (game.status === 'ACTIVE' || game.status === 'CARD_SELECTION') {
                 setCardError('No bingo card found. Joining as spectator...');
                 setTimeout(() => {
                   router.push(`/game/${id}?spectator=true`);
@@ -250,33 +226,7 @@ export default function GamePage() {
     };
 
     initializeGame();
-  }, [id, searchParams, game, router]);
-
-  // FIX: Add game to dependency array and check game status
-  useEffect(() => {
-    if (game) {
-      console.log(`Game status: ${game.status}`);
-      
-      // If game is in waiting but not enough players, show waiting screen
-      const backendStatus = game.status as string;
-      if (isGameWaiting(backendStatus)) {
-        const checkPlayers = async () => {
-          try {
-            const response = await gameAPI.getGameParticipants(id);
-            const playersWithCards = response.filter(p => p.hasCard).length;
-            
-            if (playersWithCards < 2) {
-              console.log(`Not enough players: ${playersWithCards}/2`);
-            }
-          } catch (error) {
-            console.error('Failed to check players:', error);
-          }
-        };
-        
-        checkPlayers();
-      }
-    }
-  }, [game, id]);
+  }, [id, searchParams, game]);
 
   // Helper function to get BINGO letter for a number
   const getNumberLetter = (num: number): string => {
@@ -341,103 +291,99 @@ export default function GamePage() {
   }, [showWinnerModal, winnerInfo]);
 
   // Check if game ended and show winner modal
-  useEffect(() => {
-    const checkGameEnded = async () => {
-      if (!game || gameEndedCheckRef.current) return;
+useEffect(() => {
+  const checkGameEnded = async () => {
+    if (!game || gameEndedCheckRef.current) return;
+    
+    if (game.status === 'FINISHED' && game.winner && !showWinnerModal) {
+      console.log('🏁 Game finished! Fetching winner info...');
+      gameEndedCheckRef.current = true;
       
-      const backendStatus = game.status as string;
-      if (backendStatus === 'FINISHED' && game.winner && !showWinnerModal) {
-        console.log('🏁 Game finished! Fetching winner info...');
-        gameEndedCheckRef.current = true;
+      try {
+        setIsWinnerLoading(true);
         
-        try {
-          setIsWinnerLoading(true);
-          
-          // Fetch winner information
-          const winnerData = await getWinnerInfo();
-          if (winnerData) {
-            // If winner card data is missing, try to fetch it separately
-            if (!winnerData.winningCard && winnerData.winner) {
-              try {
-                const winnerUserId = winnerData.winner.telegramId || winnerData.winner._id;
-                if (winnerUserId) {
-                  const winnerCardResponse = await gameAPI.getUserBingoCard(id, winnerUserId.toString());
-                  
-                  if (winnerCardResponse.data.success && winnerCardResponse.data.bingoCard) {
-                    const winnerCard = winnerCardResponse.data.bingoCard;
-                    winnerData.winningCard = {
-                      cardNumber: (winnerCard as any).cardNumber || (winnerCard as any).cardIndex || 0,
-                      numbers: winnerCard.numbers || [],
-                      markedPositions: winnerCard.markedNumbers || winnerCard.markedPositions || [],
-                      winningPatternPositions: (winnerCard as any).winningPatternPositions || []
-                    };
-                  }
+        // Fetch winner information
+        const winnerData = await getWinnerInfo();
+        if (winnerData) {
+          // If winner card data is missing, try to fetch it separately
+          if (!winnerData.winningCard && winnerData.winner) {
+            try {
+              const winnerUserId = winnerData.winner.telegramId || winnerData.winner._id;
+              if (winnerUserId) {
+                const winnerCardResponse = await gameAPI.getUserBingoCard(id, winnerUserId.toString());
+                
+                if (winnerCardResponse.data.success && winnerCardResponse.data.bingoCard) {
+                  const winnerCard = winnerCardResponse.data.bingoCard;
+                  winnerData.winningCard = {
+                    cardNumber: (winnerCard as any).cardNumber || (winnerCard as any).cardIndex || 0,
+                    numbers: winnerCard.numbers || [],
+                    markedPositions: winnerCard.markedNumbers || winnerCard.markedPositions || [],
+                    winningPatternPositions: (winnerCard as any).winningPatternPositions || []
+                  };
                 }
-              } catch (cardError) {
-                console.warn('Could not fetch winner card details:', cardError);
               }
-            }
-            
-            setWinnerInfo(winnerData);
-            
-            // Check if current user is the winner
-            const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-            if (userId) {
-              const isWinner = winnerData.winner.telegramId === userId || 
-                              winnerData.winner._id.toString() === userId;
-              setIsUserWinner(isWinner);
-              
-              // Calculate winning amount (90% of total pot)
-              const totalPot = (game.currentPlayers || 0) * 10;
-              const platformFee = totalPot * 0.1;
-              const winnerPrize = totalPot - platformFee;
-              setWinningAmount(winnerPrize);
-              
-              console.log(`🏆 Winner detected: ${winnerData.winner.username}, Prize: $${winnerPrize}`);
-              
-              // Update wallet balance if user is winner
-              if (isWinner) {
-                setTimeout(async () => {
-                  try {
-                    const walletResponse = await walletAPIAuto.getBalance();
-                    if (walletResponse.data.success) {
-                      setWalletBalance(walletResponse.data.balance);
-                    }
-                  } catch (error) {
-                    console.warn('Could not update wallet balance:', error);
-                  }
-                }, 1000);
-              }
+            } catch (cardError) {
+              console.warn('Could not fetch winner card details:', cardError);
             }
           }
           
-          // Show winner modal after a short delay
-          setTimeout(() => {
-            setShowWinnerModal(true);
-            setIsWinnerLoading(false);
-          }, 1500);
+          setWinnerInfo(winnerData);
           
-        } catch (error) {
-          console.error('Failed to fetch winner info:', error);
-          setIsWinnerLoading(false);
+          // Check if current user is the winner
+          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+          if (userId) {
+            const isWinner = winnerData.winner.telegramId === userId || 
+                            winnerData.winner._id.toString() === userId;
+            setIsUserWinner(isWinner);
+            
+            // Calculate winning amount (90% of total pot)
+            const totalPot = (game.currentPlayers || 0) * 10;
+            const platformFee = totalPot * 0.1;
+            const winnerPrize = totalPot - platformFee;
+            setWinningAmount(winnerPrize);
+            
+            console.log(`🏆 Winner detected: ${winnerData.winner.username}, Prize: $${winnerPrize}`);
+            
+            // Update wallet balance if user is winner
+            if (isWinner) {
+              setTimeout(async () => {
+                try {
+                  const walletResponse = await walletAPIAuto.getBalance();
+                  if (walletResponse.data.success) {
+                    setWalletBalance(walletResponse.data.balance);
+                  }
+                } catch (error) {
+                  console.warn('Could not update wallet balance:', error);
+                }
+              }, 1000);
+            }
+          }
         }
+        
+        // Show winner modal after a short delay
+        setTimeout(() => {
+          setShowWinnerModal(true);
+          setIsWinnerLoading(false);
+        }, 1500);
+        
+      } catch (error) {
+        console.error('Failed to fetch winner info:', error);
+        setIsWinnerLoading(false);
       }
-    };
-    
-    checkGameEnded();
-    
-    // Cleanup function
-    return () => {
-      gameEndedCheckRef.current = false;
-    };
-  }, [game, getWinnerInfo, showWinnerModal, id]);
+    }
+  };
+  
+  checkGameEnded();
+  
+  // Cleanup function
+  return () => {
+    gameEndedCheckRef.current = false;
+  };
+}, [game, getWinnerInfo, showWinnerModal]);
 
   // Function to call next number (MANUAL MARKING - NO AUTO-MARK)
   const handleCallNumber = async () => {
-    if (isCallingNumber || !id) return;
-    
-    const backendStatus = game?.status as string;
-    if (backendStatus !== 'ACTIVE') return;
+    if (isCallingNumber || !id || game?.status !== 'ACTIVE') return;
     
     try {
       setIsCallingNumber(true);
@@ -487,10 +433,7 @@ export default function GamePage() {
 
   // Manual mark number (user must click)
   const handleMarkNumber = async (number: number) => {
-    if (isMarking || !allCalledNumbers.includes(number)) return;
-    
-    const backendStatus = game?.status as string;
-    if (backendStatus !== 'ACTIVE') return;
+    if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
     
     try {
       setIsMarking(true);
@@ -550,10 +493,7 @@ export default function GamePage() {
 
   // Manual Bingo claim
   const handleClaimBingo = async () => {
-    if (isClaimingBingo || !id || !displayBingoCard) return;
-    
-    const backendStatus = game?.status as string;
-    if (backendStatus !== 'ACTIVE') return;
+    if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !displayBingoCard) return;
     
     try {
       setIsClaimingBingo(true);
@@ -689,123 +629,61 @@ export default function GamePage() {
     
     return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
   };
-
-  // FIX: Add conditional rendering for waiting games - BEFORE spectator mode
-  if (game && isGameWaiting(game.status as string)) {
-    const playersNeeded = 2; // MIN_PLAYERS_TO_START
-    
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
-          <h1 className="text-white font-bold text-xl mb-2">Game #{game.code}</h1>
-          <p className="text-white/70 text-sm mb-4">
-            Waiting for more players to join...
-          </p>
-          
-          <div className="bg-yellow-500/20 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-center gap-3 mb-3">
-              <div className="text-4xl">⏳</div>
+if (searchParams.get('spectator') === 'true') {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
+        <h1 className="text-white font-bold text-xl mb-2">Spectator Mode</h1>
+        <p className="text-white/70 text-sm mb-4">
+          You are watching the game as a spectator. Join next game to play!
+        </p>
+        <button 
+          onClick={() => router.push('/')}
+          className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-6 py-3 rounded-xl font-bold"
+        >
+          Return to Lobby
+        </button>
+      </div>
+      
+      {/* Show game state for spectators */}
+      {game && (
+        <div className="space-y-4">
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+            <h3 className="text-white font-bold mb-3">Game Info</h3>
+            <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <h3 className="text-white font-bold">Waiting for Players</h3>
-                <p className="text-white/70 text-sm">Need {playersNeeded - (game.currentPlayers || 0)} more players</p>
+                <p className="text-white font-bold">{game.currentPlayers || 0}</p>
+                <p className="text-white/60 text-xs">Players</p>
               </div>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="bg-black/30 p-3 rounded-lg">
-                <p className="text-white font-bold text-lg">{game.currentPlayers || 0}</p>
-                <p className="text-white/60 text-xs">Current Players</p>
+              <div>
+                <p className="text-white font-bold">{(game.currentPlayers || 0) * 10} ብር</p>
+                <p className="text-white/60 text-xs">Pot</p>
               </div>
-              <div className="bg-black/30 p-3 rounded-lg">
-                <p className="text-white font-bold text-lg">{playersNeeded}</p>
-                <p className="text-white/60 text-xs">Required</p>
-              </div>
-              <div className="bg-black/30 p-3 rounded-lg">
-                <p className="text-white font-bold text-lg">
-                  {(game.currentPlayers || 0) * 10} ብር
-                </p>
-                <p className="text-white/60 text-xs">Current Pot</p>
+              <div>
+                <p className="text-white font-bold">{allCalledNumbers .length}/75</p>
+                <p className="text-white/60 text-xs">Called</p>
               </div>
             </div>
           </div>
           
-          <div className="space-y-3">
-            <button 
-              onClick={() => router.push('/')}
-              className="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white px-6 py-3 rounded-xl font-bold"
-            >
-              Return to Lobby
-            </button>
-            
-            <button 
-              onClick={() => router.push(`/game/${id}?spectator=true`)}
-              className="w-full bg-white/10 text-white px-6 py-3 rounded-xl font-bold border border-white/20"
-            >
-              Watch as Spectator
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // SPECTATOR MODE - ONLY when explicitly requested
-  if (searchParams.get('spectator') === 'true') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
-          <h1 className="text-white font-bold text-xl mb-2">Spectator Mode</h1>
-          <p className="text-white/70 text-sm mb-4">
-            You are watching the game as a spectator. Join next game to play!
-          </p>
-          <button 
-            onClick={() => router.push('/')}
-            className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-6 py-3 rounded-xl font-bold"
-          >
-            Return to Lobby
-          </button>
-        </div>
-        
-        {/* Show game state for spectators */}
-        {game && (
-          <div className="space-y-4">
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-              <h3 className="text-white font-bold mb-3">Game Info</h3>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <p className="text-white font-bold">{game.currentPlayers || 0}</p>
-                  <p className="text-white/60 text-xs">Players</p>
+          {currentCalledNumber && (
+            <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
+              <h3 className="text-white font-bold mb-2">Current Number</h3>
+              <div className="text-center">
+                <div className="text-4xl font-bold text-yellow-300 mb-2">
+                  {currentCalledNumber.letter}{currentCalledNumber.number}
                 </div>
-                <div>
-                  <p className="text-white font-bold">{(game.currentPlayers || 0) * 10} ብር</p>
-                  <p className="text-white/60 text-xs">Pot</p>
-                </div>
-                <div>
-                  <p className="text-white font-bold">{allCalledNumbers.length}/75</p>
-                  <p className="text-white/60 text-xs">Called</p>
-                </div>
+                <p className="text-white/70 text-sm">
+                  Game is in progress. Join next game to play!
+                </p>
               </div>
             </div>
-            
-            {currentCalledNumber && (
-              <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
-                <h3 className="text-white font-bold mb-2">Current Number</h3>
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-yellow-300 mb-2">
-                    {currentCalledNumber.letter}{currentCalledNumber.number}
-                  </div>
-                  <p className="text-white/70 text-sm">
-                    Game is in progress. Join next game to play!
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
   if (isLoading || isLoadingCard) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
@@ -837,15 +715,293 @@ export default function GamePage() {
     );
   }
 
-  // Map backend status to frontend status for display
-  const frontendStatus = mapGameStatus(game.status as string);
-  const backendStatus = game.status as string;
-  
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
-      {/* Winner Modal - Keep your existing winner modal code */}
-      {/* ... winner modal code remains exactly the same ... */}
+      {/* Winner Modal */}
+   <AnimatePresence>
+        {showWinnerModal && winnerInfo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 50 }}
+              animate={{ scale: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 100 }}
+              className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-3xl p-8 max-w-6xl w-full border-4 border-yellow-500 shadow-2xl relative overflow-hidden"
+            >
+              {/* Confetti Background Effect */}
+              <div className="absolute inset-0 pointer-events-none">
+                {Array.from({ length: 20 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-1 h-1 bg-yellow-300 rounded-full"
+                    style={{
+                      left: `${Math.random() * 100}%`,
+                      top: `${Math.random() * 100}%`,
+                      animation: `twinkle ${1 + Math.random()}s infinite alternate`
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Winner Crown Icon */}
+              <div className="absolute -top-6 left-1/2 transform -translate-x-1/2">
+                <div className="text-6xl text-yellow-400 animate-bounce">👑</div>
+              </div>
+
+              <div className="relative z-10">
+                {/* Header */}
+                <div className="text-center mb-8">
+                  <h1 className="text-4xl font-bold text-white mb-2">
+                    🎉 BINGO WINNER! 🎉
+                  </h1>
+                  <p className="text-white/70 text-lg">
+                    Game #{winnerInfo.gameCode || id}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Left: Winner Information */}
+                  <div className="space-y-6">
+                    {/* Winner Profile */}
+                    <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-2xl p-6 border border-white/20">
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-2xl font-bold">
+                          {isUserWinner ? 'YOU' : winnerInfo.winner.firstName.charAt(0)}
+                        </div>
+                        <div>
+                          <h3 className="text-2xl font-bold text-white">
+                            {isUserWinner ? '🎊 YOU WON! 🎊' : winnerInfo.winner.firstName}
+                          </h3>
+                          <p className="text-white/70">
+                            @{winnerInfo.winner.username}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Prize Amount */}
+                      <div className="text-center py-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl">
+                        <p className="text-white/80 text-sm mb-1">Prize Amount</p>
+                        <p className="text-3xl font-bold text-yellow-300">
+                          {winningAmount} ብር
+                        </p>
+                        {isUserWinner && (
+                          <p className="text-green-300 text-sm mt-2">
+                            💰 Added to your wallet!
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Game Stats */}
+                    <div className="bg-gradient-to-r from-gray-900 to-black rounded-2xl p-5 border border-white/10">
+                      <h4 className="text-white font-bold mb-4 text-lg">Game Statistics</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Total Players</p>
+                          <p className="text-white text-xl font-bold">{winnerInfo.totalPlayers}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Numbers Called</p>
+                          <p className="text-white text-xl font-bold">{winnerInfo.numbersCalled}/75</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Winning Pattern</p>
+                          <p className="text-green-300 text-lg font-bold">
+                            {getPatternName(winnerInfo.winningPattern)}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Game Duration</p>
+                          <p className="text-white text-sm">
+                            {new Date(winnerInfo.endedAt).toLocaleTimeString([], { 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Winning Card Display */}
+                  <div className="space-y-6">
+                    {/* Card Title */}
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-white font-bold text-xl">
+                        Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
+                      </h3>
+                      <div className="text-yellow-300 text-sm bg-yellow-500/20 px-3 py-1 rounded-full">
+                        Winning Pattern Highlighted
+                      </div>
+                    </div>
+
+                    {/* Winning Card */}
+                    {winnerInfo.winningCard?.numbers ? (
+                      <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-6 border-2 border-yellow-500/50">
+                        {/* BINGO Header */}
+                        <div className="grid grid-cols-5 gap-2 mb-4">
+                          {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                            <div 
+                              key={letter}
+                              className="h-12 rounded-lg flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-700 to-blue-800"
+                            >
+                              {letter}
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {/* Winning Card Numbers */}
+                        <div className="grid grid-cols-5 gap-2">
+                          {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+                            row.map((number: number | string, colIndex: number) => {
+                              const flatIndex = rowIndex * 5 + colIndex;
+                              const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
+                              const isWinningPos = isWinningPosition(rowIndex, colIndex, winnerInfo.winningCard);
+                              const isFreeSpace = rowIndex === 2 && colIndex === 2;
+
+                              return (
+                                <motion.div
+                                  key={`${rowIndex}-${colIndex}`}
+                                  initial={{ scale: 0.8 }}
+                                  animate={{ scale: 1 }}
+                                  transition={{ delay: rowIndex * 0.1 + colIndex * 0.02 }}
+                                  className={`
+                                    h-14 rounded-lg flex items-center justify-center 
+                                    font-bold transition-all duration-200 relative
+                                    ${isWinningPos
+                                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border-3 border-yellow-300 shadow-lg shadow-yellow-500/50'
+                                      : isMarked
+                                      ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
+                                      : isFreeSpace
+                                      ? 'bg-gradient-to-br from-purple-700 to-pink-700 text-white'
+                                      : 'bg-gray-800 text-white/70'
+                                    }
+                                  `}
+                                >
+                                  {isFreeSpace ? (
+                                    <>
+                                      <span className="text-xs font-bold">FREE</span>
+                                      <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
+                                        {number}
+                                      </span>
+                                      {isMarked && (
+                                        <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                                      )}
+                                      {isWinningPos && (
+                                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full animate-ping"></div>
+                                      )}
+                                    </>
+                                  )}
+                                </motion.div>
+                              );
+                            })
+                          )}
+                        </div>
+                        
+                        {/* Pattern Legend */}
+                        <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded bg-gradient-to-br from-yellow-500 to-orange-500"></div>
+                            <span className="text-white/70">Winning Pattern</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded bg-gradient-to-br from-green-600 to-emerald-700"></div>
+                            <span className="text-white/70">Marked Numbers</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-700 to-pink-700"></div>
+                            <span className="text-white/70">Free Space</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-8 text-center">
+                        <div className="text-5xl mb-4">🎯</div>
+                        <h4 className="text-white text-xl font-bold mb-2">Winner Details</h4>
+                        <p className="text-white/70 mb-4">
+                          {winnerInfo.winner.firstName} won with {getPatternName(winnerInfo.winningPattern)}!
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Countdown and Action Buttons */}
+                <div className="mt-8 pt-6 border-t border-white/20">
+                  {/* Countdown */}
+                  <div className="text-center mb-6">
+                    <p className="text-white/70 text-sm mb-2">
+                      New game starts in:
+                    </p>
+                    <div className="text-3xl font-bold text-yellow-300">
+                      {countdown} seconds
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                    {isUserWinner ? (
+                      <button
+                        onClick={handlePlayAgain}
+                        className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-green-600 hover:to-emerald-700 transition-all"
+                      >
+                        🎮 Play Again
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handlePlayAgain}
+                        className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-blue-600 hover:to-purple-700 transition-all"
+                      >
+                        🎯 Join Next Game
+                      </button>
+                    )}
+                    
+                    <button
+                      onClick={handleReturnToLobby}
+                      className="bg-gradient-to-r from-gray-700 to-gray-800 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-gray-800 hover:to-gray-900 transition-all"
+                    >
+                      ⏪ Return to Lobby
+                    </button>
+                  </div>
+
+                  {/* Share Button */}
+                  <div className="text-center mt-4">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`I just won ${winningAmount} ብር in Bingo! 🎉`);
+                        alert('Winner announcement copied to clipboard!');
+                      }}
+                      className="text-white/60 text-sm hover:text-white transition-colors"
+                    >
+                      📋 Share this victory
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       
+      {/* Loading overlay for winner info */}
+      {isWinnerLoading && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40">
+          <div className="bg-gradient-to-br from-purple-700 to-blue-800 rounded-2xl p-8 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-white font-medium">Loading winner information...</p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="grid grid-cols-6 gap-4 text-center">
@@ -880,12 +1036,12 @@ export default function GamePage() {
         {/* Game Status Badge */}
         <div className="mt-3 flex justify-center">
           <div className={`px-4 py-1 rounded-full text-sm font-medium ${
-            frontendStatus === 'WAITING' ? 'bg-yellow-500/20 text-yellow-300' :
-            frontendStatus === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
+            game.status === 'WAITING' ? 'bg-yellow-500/20 text-yellow-300' :
+            game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
             'bg-red-500/20 text-red-300'
           }`}>
-            {frontendStatus === 'WAITING' ? '⏳ Waiting for players' :
-             frontendStatus === 'ACTIVE' ? '🎮 Game Active' :
+            {game.status === 'WAITING' ? '⏳ Waiting for players' :
+             game.status === 'ACTIVE' ? '🎮 Game Active' :
              '🏁 Game Ended'}
           </div>
         </div>
@@ -906,7 +1062,7 @@ export default function GamePage() {
       </div>
 
       {/* Called Number Notification */}
-      {currentCalledNumber && backendStatus === 'ACTIVE' && (
+      {currentCalledNumber && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
           <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-full shadow-lg">
             <div className="flex items-center gap-3">
@@ -995,7 +1151,7 @@ export default function GamePage() {
             </div>
             
             {/* Call Number Button */}
-            {backendStatus === 'ACTIVE' && (
+            {game.status === 'ACTIVE' && (
               <div className="mt-3 pt-3 border-t border-white/20">
                 <button
                   onClick={handleCallNumber}
@@ -1045,7 +1201,7 @@ export default function GamePage() {
                     No numbers called yet
                   </p>
                   <p className="text-white/60 text-sm">
-                    {backendStatus === 'ACTIVE' 
+                    {game.status === 'ACTIVE' 
                       ? 'Waiting for first number...' 
                       : 'Game not active'}
                   </p>
@@ -1073,7 +1229,7 @@ export default function GamePage() {
             </div>
             
             {/* Manual Marking Instructions */}
-            {backendStatus === 'ACTIVE' && (
+            {game.status === 'ACTIVE' && (
               <div className="mb-4 p-3 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-lg border border-blue-400/30">
                 <p className="text-white text-sm text-center font-medium">
                   💡 <span className="text-yellow-300">MANUAL MARKING:</span> Click called numbers below to mark your card!
@@ -1119,7 +1275,7 @@ export default function GamePage() {
                             ${isCalled && !isMarked && !isFreeSpace ? 'cursor-pointer hover:scale-[1.02] hover:bg-white/25' : 'cursor-default'}
                           `}
                           onClick={() => {
-                            if (backendStatus === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
+                            if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
                               handleMarkNumber(number as number);
                             }
                           }}
@@ -1224,7 +1380,7 @@ export default function GamePage() {
       </div>
 
       {/* Claim Bingo Button - Fixed Position */}
-      {backendStatus === 'ACTIVE' && displayBingoCard && (
+      {game?.status === 'ACTIVE' && displayBingoCard && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 w-full max-w-md">
           <div className="flex flex-col items-center">
             <div className="mb-2 text-center">
