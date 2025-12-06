@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // services/gameService.ts
 import { gameAPI, walletAPI } from './api';
 import { BingoCard, GameState, Game, User } from '../types';

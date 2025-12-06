@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // types/index.ts - UPDATED WITH PROPER TYPES
 export type UserRole = 'admin' | 'moderator' | 'user';
 

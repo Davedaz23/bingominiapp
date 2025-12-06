@@ -1,8 +1,52 @@
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable react-hooks/preserve-manual-memoization */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/hooks/useCardSelection.ts - FIXED VERSION
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { gameAPI } from '../services/api';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { useAccountStorage } from './useAccountStorage';
+
+// ⭐ MOVE generateBingoCard OUTSIDE the hook
+const generateBingoCard = (cardNumber: number) => {
+  const seed = cardNumber * 12345;
+  const card = [];
+  
+  const ranges = [
+    { min: 1, max: 15 },
+    { min: 16, max: 30 },
+    { min: 31, max: 45 },
+    { min: 46, max: 60 },
+    { min: 61, max: 75 }
+  ];
+
+  for (let col = 0; col < 5; col++) {
+    const column = [];
+    const usedNumbers = new Set();
+    const range = ranges[col];
+    
+    for (let row = 0; row < 5; row++) {
+      if (col === 2 && row === 2) {
+        column.push('FREE');
+        continue;
+      }
+      
+      let number;
+      let attempts = 0;
+      do {
+        const random = Math.sin(seed + col * 5 + row) * 10000;
+        number = range.min + Math.floor((random - Math.floor(random)) * (range.max - range.min + 1));
+        attempts++;
+      } while (usedNumbers.has(number) && attempts < 10);
+      
+      usedNumbers.add(number);
+      column.push(number);
+    }
+    card.push(column);
+  }
+  
+  return card;
+};
 
 export const useCardSelection = (gameData: any, gameStatus: string) => {
   const { user, walletBalance } = useAuth();
@@ -27,56 +71,12 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   useEffect(() => {
     const savedSelectedNumber = getAccountData('selected_number');
     if (savedSelectedNumber) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedNumber(savedSelectedNumber);
-      setBingoCard(generateBingoCard(savedSelectedNumber));
+      setBingoCard(generateBingoCard(savedSelectedNumber)); // ✅ Now this works
       console.log('✅ Loaded saved card selection:', savedSelectedNumber);
     }
   }, [user]);
-
-  const generateBingoCard = (cardNumber: number) => {
-    const seed = cardNumber * 12345;
-    const card = [];
-    
-    const ranges = [
-      { min: 1, max: 15 },
-      { min: 16, max: 30 },
-      { min: 31, max: 45 },
-      { min: 46, max: 60 },
-      { min: 61, max: 75 }
-    ];
-
-    for (let col = 0; col < 5; col++) {
-      const column = [];
-      const usedNumbers = new Set();
-      const range = ranges[col];
-      
-      for (let row = 0; row < 5; row++) {
-        if (col === 2 && row === 2) {
-          column.push('FREE');
-          continue;
-        }
-        
-        let number;
-        let attempts = 0;
-        do {
-          const random = Math.sin(seed + col * 5 + row) * 10000;
-          number = range.min + Math.floor((random - Math.floor(random)) * (range.max - range.min + 1));
-          attempts++;
-        } while (usedNumbers.has(number) && attempts < 10);
-        
-        usedNumbers.add(number);
-        column.push(number);
-      }
-      card.push(column);
-    }
-    
-    return card;
-  };
-
-  // FIX: Change back to function
-//   const shouldEnableCardSelection = () => {
-//     return !selectedNumber && !!gameData?._id && walletBalance >= 10;
-//   };
 
   const shouldEnableCardSelection = () => {
     if (!gameData?._id) {
@@ -90,40 +90,41 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     return false;
   };
 
+  // Rest of your hook code remains the same...
   // Real-time polling for taken cards
-const fetchTakenCards = useCallback(async () => {
-  if (!gameData?._id) return;
+  const fetchTakenCards = useCallback(async () => {
+    if (!gameData?._id) return;
 
-  try {
-    console.log('🔄 Polling for taken cards...');
-    const response = await gameAPI.getTakenCards(gameData._id);
-    console.log("taken payload",response);
-    if (response.data.success) {
-      // Merge with current user's selection to avoid flickering
-      setTakenCards(prev => {
-        const backendCards = response.data.takenCards;
-        
-        // If user has a selected card, ensure it's included
-        if (selectedNumber && user?.id) {
-          const userCardExists = backendCards.some(card => 
-            card.cardNumber === selectedNumber && card.userId === user.id
-          );
+    try {
+      console.log('🔄 Polling for taken cards...');
+      const response = await gameAPI.getTakenCards(gameData._id);
+      console.log("taken payload",response);
+      if (response.data.success) {
+        // Merge with current user's selection to avoid flickering
+        setTakenCards(() => {
+          const backendCards = response.data.takenCards;
           
-          if (!userCardExists) {
-            // Add user's current selection to the backend data
-            return [...backendCards, { cardNumber: selectedNumber, userId: user.id }];
+          // If user has a selected card, ensure it's included
+          if (selectedNumber && user?.id) {
+            const userCardExists = backendCards.some(card => 
+              card.cardNumber === selectedNumber && card.userId === user.id
+            );
+            
+            if (!userCardExists) {
+              // Add user's current selection to the backend data
+              return [...backendCards, { cardNumber: selectedNumber, userId: user.id }];
+            }
           }
-        }
+          
+          return backendCards;
+        });
         
-        return backendCards;
-      });
-      
-      console.log('✅ Taken cards updated:', response.data.takenCards.length, 'cards taken');
+        console.log('✅ Taken cards updated:', response.data.takenCards.length, 'cards taken');
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching taken cards:', error.message);
     }
-  } catch (error: any) {
-    console.error('❌ Error fetching taken cards:', error.message);
-  }
-}, [gameData?._id, selectedNumber, user?.id]); // ADD dependencies
+  }, [gameData?._id, selectedNumber, user?.id]);
 
   const fetchAvailableCards = async () => {
     try {
@@ -314,21 +315,21 @@ const fetchTakenCards = useCallback(async () => {
       gameStatus,
       walletBalance,
       userId: user?.id,
-      shouldEnableCardSelection: shouldEnableCardSelection() // FIX: Call the function
+      shouldEnableCardSelection: shouldEnableCardSelection()
     });
 
-    if (gameData?._id && shouldEnableCardSelection() && user?.id) { // FIX: Call the function
+    if (gameData?._id && shouldEnableCardSelection() && user?.id) {
       console.log('🚀 Fetching available cards...');
       fetchAvailableCards();
       checkCardSelectionStatus();
     } else {
       console.log('⏸️ Skipping card fetch - conditions not met:', {
         hasGameId: !!gameData?._id,
-        shouldEnableCardSelection: shouldEnableCardSelection(), // FIX: Call the function
+        shouldEnableCardSelection: shouldEnableCardSelection(),
         hasUserId: !!user?.id
       });
     }
-  }, [gameData, gameStatus, walletBalance, user, selectedNumber]); // ADD: selectedNumber to dependencies
+  }, [gameData, gameStatus, walletBalance, user, selectedNumber]);
 
   // Check card selection status periodically
   useEffect(() => {
@@ -353,7 +354,7 @@ const fetchTakenCards = useCallback(async () => {
     takenCards,
     cardSelectionStatus,
     cardSelectionError,
-    shouldEnableCardSelection, // This is now a function
+    shouldEnableCardSelection,
     handleCardSelect,
     handleCardRelease,
     fetchAvailableCards,

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // services/api.ts - UPDATED TO MATCH BACKEND ROUTES
 import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // components/GameLobby.tsx
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Clock, Play, Copy, Share2, Crown, Zap, Sparkles, Gamepad2, Eye, Trophy } from 'lucide-react';

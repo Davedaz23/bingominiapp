@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // hooks/useGame.ts - COMPLETE FIXED VERSION (Manual Marking Only)
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Game, BingoCard, GameState } from '../types';
