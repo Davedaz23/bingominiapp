@@ -83,26 +83,26 @@ export default function Home() {
   const [isAutoJoining, setIsAutoJoining] = useState<boolean>(false);
 
   // ==================== MEMOIZED FUNCTIONS ====================
-  // const refreshWalletBalanceLocal = useCallback(async () => {
-  //   try {
-  //     setIsRefreshingBalance(true);
+  const refreshWalletBalanceLocal = useCallback(async () => {
+    try {
+      setIsRefreshingBalance(true);
       
-  //     if (refreshWalletBalance) {
-  //       await refreshWalletBalance();
-  //     }
+      if (refreshWalletBalance) {
+        await refreshWalletBalance();
+      }
       
-  //     const walletResponse = await walletAPIAuto.getBalance();
-  //          if (walletResponse.data.success) {
-  //            setLocalWalletBalance(walletResponse.data.balance);
-  //          }
+      const walletResponse = await walletAPIAuto.getBalance();
+           if (walletResponse.data.success) {
+             setLocalWalletBalance(walletResponse.data.balance);
+           }
       
     
-  //   } catch (error) {
-  //     console.error('❌ Failed to refresh wallet balance:', error);
-  //   } finally {
-  //     setIsRefreshingBalance(false);
-  //   }
-  // }, [refreshWalletBalance]);
+    } catch (error) {
+      console.error('❌ Failed to refresh wallet balance:', error);
+    } finally {
+      setIsRefreshingBalance(false);
+    }
+  }, [refreshWalletBalance]);
 
   // ==================== USE CORRECT BALANCE SOURCE ====================
   const effectiveWalletBalance = localWalletBalance > 0 ? localWalletBalance : walletBalance;
@@ -358,7 +358,7 @@ export default function Home() {
       }
 
       try {
-      //  await refreshWalletBalanceLocal();
+        await refreshWalletBalanceLocal();
         await initializeGameState();
         
         console.log('✅ App initialization complete');
@@ -369,16 +369,16 @@ export default function Home() {
     };
 
     initializeApp();
-  }, [authLoading, isAuthenticated, user, initializeGameState,]);
+  }, [authLoading, isAuthenticated, user, initializeGameState, refreshWalletBalanceLocal]);
 
   // ==================== PERIODIC BALANCE REFRESH ====================
   useEffect(() => {
     const intervalId = setInterval(() => {
-   //   refreshWalletBalanceLocal();
+      refreshWalletBalanceLocal();
     }, 30000);
 
     return () => clearInterval(intervalId);
-  }, []);
+  }, [refreshWalletBalanceLocal]);
 
   // Auto-join loading screen
   if (isAutoJoining) {
@@ -495,6 +495,7 @@ export default function Home() {
               </p>
             </div>
             <button
+              onClick={refreshWalletBalanceLocal}
               disabled={isRefreshingBalance}
               className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50 flex items-center gap-1"
             >
