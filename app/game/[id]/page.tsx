@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - SIMPLIFIED WINNER MODAL (Only winning line green)
+// app/game/[id]/page.tsx - FIXED VERSION (No page reload, proper spectator mode)
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -93,7 +93,7 @@ export default function GamePage() {
   const [isWinnerLoading, setIsWinnerLoading] = useState(false);
   const [isUserWinner, setIsUserWinner] = useState(false);
   const [winningAmount, setWinningAmount] = useState(0);
-  const [countdown, setCountdown] = useState<number>(15); // Increased from 5 to 15 seconds
+  const [countdown, setCountdown] = useState<number>(5);
   
   // State for bingo claiming
   const [isClaimingBingo, setIsClaimingBingo] = useState<boolean>(false);
@@ -387,10 +387,10 @@ export default function GamePage() {
     }
   }, [game, showWinnerModal, checkForWinner]);
 
-  // Countdown for winner modal - INCREASED TO 15 SECONDS
+  // Countdown for winner modal
   useEffect(() => {
     if (showWinnerModal && winnerInfo) {
-      setCountdown(15); // Increased from 5 to 15
+      setCountdown(5);
       
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
@@ -568,7 +568,7 @@ export default function GamePage() {
     setCurrentCalledNumber(null);
     setAllCalledNumbers([]);
     setClaimResult(null);
-    setCountdown(15);
+    setCountdown(5);
     
     gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
@@ -593,7 +593,7 @@ export default function GamePage() {
     setWinnerInfo(null);
     setIsUserWinner(false);
     setWinningAmount(0);
-    setCountdown(15);
+    setCountdown(5);
     
     // Navigate to main page to select a new card
     router.push('/');
@@ -765,7 +765,7 @@ export default function GamePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
-      {/* Winner Modal - SIMPLIFIED VERSION */}
+      {/* Winner Modal */}
       <AnimatePresence>
         {showWinnerModal && winnerInfo && (
           <motion.div
@@ -778,158 +778,193 @@ export default function GamePage() {
               initial={{ scale: 0.8, y: 50 }}
               animate={{ scale: 1, y: 0 }}
               transition={{ type: "spring", stiffness: 100 }}
-              className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-3xl p-6 max-w-md w-full border-4 border-yellow-500 shadow-2xl relative overflow-hidden"
+              className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-3xl p-8 max-w-6xl w-full border-4 border-yellow-500 shadow-2xl relative overflow-hidden"
             >
-              {/* Winner content - SIMPLIFIED */}
+              {/* Winner content */}
               <div className="relative z-10">
                 {/* Header */}
-                <div className="text-center mb-6">
-                  <h1 className="text-3xl font-bold text-white mb-2">
-                    🏆 WINNER! 🏆
+                <div className="text-center mb-8">
+                  <h1 className="text-4xl font-bold text-white mb-2">
+                    🎉 BINGO WINNER! 🎉
                   </h1>
-                  <p className="text-white/70 text-sm">
+                  <p className="text-white/70 text-lg">
                     Game #{winnerInfo.gameCode || id}
                   </p>
                 </div>
 
-                {/* Winner Info - SIMPLIFIED */}
-                <div className="space-y-6">
-                  {/* Winner Profile */}
-                  <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-2xl p-4 border border-white/20">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-xl font-bold">
-                        {isUserWinner ? 'YOU' : winnerInfo.winner.firstName.charAt(0)}
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-white">
-                          {isUserWinner ? '🎊 YOU WON! 🎊' : winnerInfo.winner.firstName}
-                        </h3>
-                        <p className="text-white/70 text-sm">
-                          @{winnerInfo.winner.username}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Prize Amount */}
-                    <div className="text-center py-3 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl">
-                      <p className="text-white/80 text-sm mb-1">Prize Amount</p>
-                      <p className="text-2xl font-bold text-yellow-300">
-                        {winningAmount} ብር
-                      </p>
-                      {isUserWinner && (
-                        <p className="text-green-300 text-xs mt-1">
-                          💰 Added to your wallet!
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Winning Pattern Info */}
-                  <div className="bg-gradient-to-r from-gray-900 to-black rounded-2xl p-4 border border-white/10">
-                    <h4 className="text-white font-bold mb-3 text-center">Winning Pattern</h4>
-                    <div className="text-center mb-4">
-                      <div className="text-green-300 text-lg font-bold mb-2">
-                        {getPatternName(winnerInfo.winningPattern)}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <p className="text-white/70">Players</p>
-                          <p className="text-white font-bold">{winnerInfo.totalPlayers}</p>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Left: Winner Information */}
+                  <div className="space-y-6">
+                    {/* Winner Profile */}
+                    <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-2xl p-6 border border-white/20">
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-2xl font-bold">
+                          {isUserWinner ? 'YOU' : winnerInfo.winner.firstName.charAt(0)}
                         </div>
                         <div>
-                          <p className="text-white/70">Numbers Called</p>
-                          <p className="text-white font-bold">{winnerInfo.numbersCalled}/75</p>
+                          <h3 className="text-2xl font-bold text-white">
+                            {isUserWinner ? '🎊 YOU WON! 🎊' : winnerInfo.winner.firstName}
+                          </h3>
+                          <p className="text-white/70">
+                            @{winnerInfo.winner.username}
+                          </p>
                         </div>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Winning Line Display - SIMPLIFIED */}
-                  {winnerInfo.winningCard?.numbers && (
-                    <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-4 border-2 border-yellow-500/30">
-                      <h4 className="text-white font-bold mb-3 text-center text-sm">
-                        Winning Line (Card #{winnerInfo.winningCard?.cardNumber || 'N/A'})
-                      </h4>
-                      
-                      {/* BINGO Header */}
-                      <div className="grid grid-cols-5 gap-1 mb-2">
-                        {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                          <div 
-                            key={letter}
-                            className="h-8 rounded flex items-center justify-center font-bold text-sm text-white bg-gradient-to-b from-purple-700 to-blue-800"
-                          >
-                            {letter}
-                          </div>
-                        ))}
-                      </div>
-                      
-                      {/* Winning Card Numbers - Only winning line in green, others white */}
-                      <div className="grid grid-cols-5 gap-1">
-                        {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                          row.map((number: number | string, colIndex: number) => {
-                            const flatIndex = rowIndex * 5 + colIndex;
-                            const isWinningPos = isWinningPosition(rowIndex, colIndex);
-                            const isFreeSpace = rowIndex === 2 && colIndex === 2;
-
-                            return (
-                              <div
-                                key={`${rowIndex}-${colIndex}`}
-                                className={`
-                                  h-8 rounded flex items-center justify-center 
-                                  font-bold text-xs relative
-                                  ${isWinningPos
-                                    ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'
-                                    : isFreeSpace
-                                    ? 'bg-gradient-to-br from-purple-700 to-blue-800 text-white'
-                                    : 'bg-white text-gray-800'
-                                  }
-                                `}
-                              >
-                                {isFreeSpace ? (
-                                  <span className="text-[10px]">FREE</span>
-                                ) : (
-                                  <>
-                                    <span>{number}</span>
-                                    {isWinningPos && (
-                                      <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            );
-                          })
+                      {/* Prize Amount */}
+                      <div className="text-center py-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl">
+                        <p className="text-white/80 text-sm mb-1">Prize Amount</p>
+                        <p className="text-3xl font-bold text-yellow-300">
+                          {winningAmount} ብር
+                        </p>
+                        {isUserWinner && (
+                          <p className="text-green-300 text-sm mt-2">
+                            💰 Added to your wallet!
+                          </p>
                         )}
                       </div>
                     </div>
-                  )}
+
+                    {/* Game Stats */}
+                    <div className="bg-gradient-to-r from-gray-900 to-black rounded-2xl p-5 border border-white/10">
+                      <h4 className="text-white font-bold mb-4 text-lg">Game Statistics</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Total Players</p>
+                          <p className="text-white text-xl font-bold">{winnerInfo.totalPlayers}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Numbers Called</p>
+                          <p className="text-white text-xl font-bold">{winnerInfo.numbersCalled}/75</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Winning Pattern</p>
+                          <p className="text-green-300 text-lg font-bold">
+                            {getPatternName(winnerInfo.winningPattern)}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 text-sm">Game Duration</p>
+                          <p className="text-white text-sm">
+                            {new Date(winnerInfo.endedAt).toLocaleTimeString([], { 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right: Winning Card Display */}
+                  <div className="space-y-6">
+                    {/* Card Title */}
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-white font-bold text-xl">
+                        Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
+                      </h3>
+                      <div className="text-yellow-300 text-sm bg-yellow-500/20 px-3 py-1 rounded-full">
+                        Winning Pattern Highlighted
+                      </div>
+                    </div>
+
+                    {/* Winning Card */}
+                    {winnerInfo.winningCard?.numbers && (
+                      <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-6 border-2 border-yellow-500/50">
+                        {/* BINGO Header */}
+                        <div className="grid grid-cols-5 gap-2 mb-4">
+                          {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                            <div 
+                              key={letter}
+                              className="h-12 rounded-lg flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-700 to-blue-800"
+                            >
+                              {letter}
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {/* Winning Card Numbers */}
+                        <div className="grid grid-cols-5 gap-2">
+                          {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+                            row.map((number: number | string, colIndex: number) => {
+                              const flatIndex = rowIndex * 5 + colIndex;
+                              const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
+                              const isWinningPos = isWinningPosition(rowIndex, colIndex);
+                              const isFreeSpace = rowIndex === 2 && colIndex === 2;
+
+                              return (
+                                <motion.div
+                                  key={`${rowIndex}-${colIndex}`}
+                                  initial={{ scale: 0.8 }}
+                                  animate={{ scale: 1 }}
+                                  transition={{ delay: rowIndex * 0.1 + colIndex * 0.02 }}
+                                  className={`
+                                    h-14 rounded-lg flex items-center justify-center 
+                                    font-bold transition-all duration-200 relative
+                                    ${isWinningPos
+                                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border-3 border-yellow-300 shadow-lg shadow-yellow-500/50'
+                                      : isMarked
+                                      ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
+                                      : isFreeSpace
+                                      ? 'bg-gradient-to-br from-purple-700 to-pink-700 text-white'
+                                      : 'bg-gray-800 text-white/70'
+                                    }
+                                  `}
+                                >
+                                  {isFreeSpace ? (
+                                    <>
+                                      <span className="text-xs font-bold">FREE</span>
+                                      <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
+                                        {number}
+                                      </span>
+                                      {isMarked && (
+                                        <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                                      )}
+                                      {isWinningPos && (
+                                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full animate-ping"></div>
+                                      )}
+                                    </>
+                                  )}
+                                </motion.div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Countdown and Action Buttons */}
-                <div className="mt-6 pt-4 border-t border-white/20">
+                <div className="mt-8 pt-6 border-t border-white/20">
                   {/* Countdown */}
-                  <div className="text-center mb-4">
-                    <p className="text-white/70 text-sm mb-1">
-                      Returning to lobby in:
+                  <div className="text-center mb-6">
+                    <p className="text-white/70 text-sm mb-2">
+                      New game starts in:
                     </p>
-                    <div className="text-xl font-bold text-yellow-300">
+                    <div className="text-3xl font-bold text-yellow-300">
                       {countdown} seconds
                     </div>
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
                     <button
                       onClick={handlePlayAgain}
-                      className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-2.5 rounded-lg font-medium text-sm hover:from-green-600 hover:to-emerald-700 transition-all"
+                      className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-green-600 hover:to-emerald-700 transition-all"
                     >
                       🎮 Play Again
                     </button>
                     
                     <button
                       onClick={handleReturnToLobby}
-                      className="bg-gradient-to-r from-gray-700 to-gray-800 text-white px-6 py-2.5 rounded-lg font-medium text-sm hover:from-gray-800 hover:to-gray-900 transition-all"
+                      className="bg-gradient-to-r from-gray-700 to-gray-800 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-gray-800 hover:to-gray-900 transition-all"
                     >
-                      ⏪ Return Now
+                      ⏪ Return to Lobby
                     </button>
                   </div>
                 </div>
@@ -1211,6 +1246,8 @@ export default function GamePage() {
                 Marked: <span className="text-white font-bold ml-1">{displayBingoCard?.markedPositions?.length || 0}</span>/24
               </div>
             </div>
+            
+          
             
             {displayBingoCard ? (
               <div className="mb-4">
