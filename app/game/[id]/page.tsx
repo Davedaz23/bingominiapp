@@ -108,7 +108,7 @@ export default function GamePage() {
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize game and load card
-useEffect(() => {
+  useEffect(() => {
     const initializeGame = async () => {
       try {
         console.log('🎮 Initializing game page...');
@@ -117,35 +117,23 @@ useEffect(() => {
         const isSpectator = searchParams.get('spectator') === 'true';
         const cardParam = searchParams.get('card');
         
-        // FIX: Check game status before loading
-        if (!game) {
+        // FIX: Don't check game status yet - wait for full game data
+        if (isLoading || !game) {
           console.log('⏳ Waiting for game data...');
           return;
         }
 
-        // FIX: Don't allow users to join games without enough players
-       // FIX: Don't allow users to join games without enough players
-if (game.status === 'WAITING_FOR_PLAYERS' && !isSpectator && !cardParam) {
-  try {
-    const response = await gameAPI.getGameParticipants(id);
-    const participants = response.data.participants || [];
-    const playersWithCards = participants.filter(p => p.hasCard).length;
-    
-    if (playersWithCards < 2) { // MIN_PLAYERS_TO_START
-      console.log('❌ Not enough players, redirecting to home');
-      router.push('/');
-      return;
-    }
-  } catch (error) {
-    console.warn('Could not fetch participants, using game data:', error);
-    // Fallback to existing game data
-    const playersWithCards = game.players?.filter((p: any) => p.hasCard).length || 0;
-    if (playersWithCards < 2) {
-      router.push('/');
-      return;
-    }
-  }
-}
+        // FIX: Only check for spectator redirect if user doesn't have a card
+        // and game is not in card selection or waiting phase
+        if (!isSpectator && !cardParam) {
+          const shouldBeSpectator = await checkIfShouldBeSpectator(game);
+          if (shouldBeSpectator) {
+            console.log('👁️ Redirecting to spectator mode...');
+            router.push(`/game/${id}?spectator=true`);
+            return;
+          }
+        }
+
         // Load wallet balance
         try {
           const walletResponse = await walletAPIAuto.getBalance();
@@ -205,8 +193,8 @@ if (game.status === 'WAITING_FOR_PLAYERS' && !isSpectator && !cardParam) {
               setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
               setCardError('');
             } else {
-              // FIX: If no card found and game is not accepting players, redirect
-              if (game.status === 'ACTIVE' || game.status === 'CARD_SELECTION') {
+              // FIX: Only redirect to spectator if game is already active
+              if (game.status === 'ACTIVE') {
                 setCardError('No bingo card found. Joining as spectator...');
                 setTimeout(() => {
                   router.push(`/game/${id}?spectator=true`);
@@ -236,8 +224,28 @@ if (game.status === 'WAITING_FOR_PLAYERS' && !isSpectator && !cardParam) {
       }
     };
 
+    const checkIfShouldBeSpectator = async (currentGame: any): Promise<boolean> => {
+      // Only force spectator mode if:
+      // 1. Game is ACTIVE and user doesn't have a card
+      // 2. Game is FINISHED and user doesn't have a card
+      
+      if (currentGame.status === 'ACTIVE' || currentGame.status === 'FINISHED') {
+        try {
+          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+          if (userId) {
+            const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+            return !(cardResponse.data.success && cardResponse.data.bingoCard);
+          }
+        } catch (error) {
+          console.log('Error checking user card:', error);
+        }
+      }
+      
+      return false;
+    };
+
     initializeGame();
-  }, [id, searchParams, game]);
+  }, [id, searchParams, game, isLoading]);
 
   // Helper function to get BINGO letter for a number
   const getNumberLetter = (num: number): string => {
