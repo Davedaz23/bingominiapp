@@ -1046,37 +1046,14 @@ export default function GamePage() {
         )}
       </div>
 
-      {/* New Number Notification */}
-      {currentCalledNumber?.isNew && (
-        <motion.div 
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0, opacity: 0 }}
-          className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
-        >
-          <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-full shadow-lg">
-            <div className="flex items-center gap-3">
-              <motion.span 
-                animate={{ rotate: [0, 360] }}
-                transition={{ duration: 0.5, repeat: 1 }}
-                className="text-2xl"
-              >
-                🔔
-              </motion.span>
-              <div>
-                <motion.div 
-                  initial={{ y: -20 }}
-                  animate={{ y: 0 }}
-                  className="font-bold text-lg"
-                >
-                  {currentCalledNumber.letter}{currentCalledNumber.number} CALLED!
-                </motion.div>
-                <div className="text-sm opacity-90">Click it on your card to mark</div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
+     {/* New Number Notification */}
+{currentCalledNumber?.isNew && (
+  <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
+    <div className="bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg font-bold">
+      🔔 {currentCalledNumber.letter}{currentCalledNumber.number}
+    </div>
+  </div>
+)}
 
       <div className="grid grid-cols-4 gap-4">
         {/* Left: Called Numbers */}
