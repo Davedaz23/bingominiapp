@@ -122,7 +122,7 @@ export default function GamePage() {
           console.log('⏳ Waiting for game data...');
           return;
         }
-
+//15.0.5
         // FIX: Only check for spectator redirect if user doesn't have a card
         // and game is not in card selection or waiting phase
         if (!isSpectator && !cardParam) {
