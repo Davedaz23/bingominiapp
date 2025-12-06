@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - UPDATED WITH CORRECT TYPES
+// app/game/[id]/page.tsx - FIXED VERSION (No page reload, proper spectator mode)
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -7,14 +7,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Game as ImportedGame } from '../../../types/index'; // Import the type from your types file
 
 // Types
-interface CardData {
-  cardNumber: number;
-  numbers: (number | string)[][];
-}
-
 interface LocalBingoCard {
   cardNumber?: number;
   numbers: (number | string)[][];
@@ -45,23 +39,19 @@ interface WinnerInfo {
   };
 }
 
-// Use the imported Game type OR create a compatible local interface
-type Game = {
+interface Game {
   _id: string;
   code: string;
   status: string;
-  currentPlayers?: number;
+  currentPlayers: number;
   numbersCalled: number[];
   winnerId?: string;
-  startedAt?: string; // Changed from Date to string to match the imported type
-  endedAt?: string;   // Changed from Date to string to match the imported type
+  startedAt?: Date;
+  endedAt?: Date;
   players?: any[];
   potAmount?: number;
   message?: string;
-};
-
-// Or better yet, just use the imported type directly
-// type Game = ImportedGame;
+}
 
 export default function GamePage() {
   const params = useParams();
@@ -77,7 +67,6 @@ export default function GamePage() {
     error: gameError,
     manualCallNumber,
     getWinnerInfo,
-    refreshGame,
   } = useGame(id);
   
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -125,10 +114,10 @@ export default function GamePage() {
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const lastGameStateRef = useRef<any>(null);
-  const isInitialMount = useRef(true);
+  const hasCardCheckedRef = useRef(false);
 
-  // Polling interval for real-time updates (5 seconds)
-  const POLL_INTERVAL = 5000;
+  // Polling interval for real-time updates (3 seconds)
+  const POLL_INTERVAL = 3000;
 
   // Helper function to get BINGO letter for a number
   const getNumberLetter = (num: number): string => {
@@ -151,57 +140,64 @@ export default function GamePage() {
     }
   }, []);
 
-  // Check if user has a bingo card for this game
-  const checkUserHasCard = useCallback(async (): Promise<boolean> => {
+  // FIXED: Check if user has a bingo card for this game
+  const checkUserHasCard = useCallback(async (forceCheck = false): Promise<boolean> => {
+    // Skip if already checked and not forcing
+    if (hasCardCheckedRef.current && !forceCheck) {
+      return !!localBingoCard;
+    }
+    
     try {
       const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
       if (!userId || !id) return false;
 
       const cardResponse = await gameAPI.getUserBingoCard(id, userId);
-      return !!(cardResponse.data.success && cardResponse.data.bingoCard);
+      if (cardResponse.data.success && cardResponse.data.bingoCard) {
+        const apiCard = cardResponse.data.bingoCard;
+        setLocalBingoCard({
+          cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
+          numbers: apiCard.numbers || [],
+          markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
+          selected: (apiCard as any).selected
+        });
+        setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
+        setIsSpectatorMode(false);
+        hasCardCheckedRef.current = true;
+        return true;
+      }
+      return false;
     } catch (error) {
       console.error('Error checking user card:', error);
       return false;
     }
-  }, [id]);
+  }, [id, localBingoCard]);
 
-  // Initialize game and load user's card
-  const initializeUserCard = useCallback(async () => {
+  // FIXED: Initialize user card with better logic
+  const initializeUserCard = useCallback(async (forceCheck = false) => {
     try {
       setIsLoadingCard(true);
       setCardError('');
       
-      // First, check if user has a card
-      const hasCard = await checkUserHasCard();
+      // Check if user has a card
+      const hasCard = await checkUserHasCard(forceCheck);
       
-      if (hasCard) {
-        // User has a card, load it
-        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-        if (userId) {
-          const cardResponse = await gameAPI.getUserBingoCard(id, userId);
-          if (cardResponse.data.success && cardResponse.data.bingoCard) {
-            const apiCard = cardResponse.data.bingoCard;
-            setLocalBingoCard({
-              cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
-              numbers: apiCard.numbers || [],
-              markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
-              selected: (apiCard as any).selected
-            });
-            setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
+      if (!hasCard) {
+        // User doesn't have a card
+        if (game) {
+          if (game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION') {
+            // Game is waiting, user can still select a card
             setIsSpectatorMode(false);
+            setSpectatorMessage('Select a card number to join the game.');
+          } else if (game.status === 'ACTIVE' || game.status === 'FINISHED') {
+            // Game is active or finished, user is spectator
+            setIsSpectatorMode(true);
+            setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
           }
         }
       } else {
-        // User doesn't have a card
-        if (game && (game.status === 'ACTIVE' || game.status === 'FINISHED')) {
-          // Game is active or finished, user must be spectator
-          setIsSpectatorMode(true);
-          setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
-        } else {
-          // Game is waiting, user can still select a card
-          setIsSpectatorMode(false);
-          setSpectatorMessage('Select a card number to join the game.');
-        }
+        // User has a card, reset spectator mode
+        setIsSpectatorMode(false);
+        setSpectatorMessage('');
       }
     } catch (error) {
       console.error('Failed to initialize user card:', error);
@@ -209,15 +205,15 @@ export default function GamePage() {
     } finally {
       setIsLoadingCard(false);
     }
-  }, [game, id, checkUserHasCard]);
+  }, [game, checkUserHasCard]);
 
-  // Function to update game state without reloading page
-  const updateGameState = useCallback(async () => {
+  // FIXED: Update game state without reloading page
+  const updateGameState = useCallback(async (force = false) => {
     if (!id || showWinnerModal) return;
     
     try {
       const response = await gameAPI.getGame(id);
-      const updatedGame = response.data.game as Game; // Type assertion
+      const updatedGame = response.data.game as Game;
       
       if (updatedGame) {
         // Update called numbers if they've changed
@@ -264,11 +260,16 @@ export default function GamePage() {
         
         // Store current state for comparison
         lastGameStateRef.current = updatedGame;
+        
+        // If user is in spectator mode but game is waiting, check for card again
+        if (isSpectatorMode && (updatedGame.status === 'WAITING_FOR_PLAYERS' || updatedGame.status === 'CARD_SELECTION')) {
+          await initializeUserCard(true);
+        }
       }
     } catch (error) {
       console.warn('Failed to update game state:', error);
     }
-  }, [id, showWinnerModal, allCalledNumbers, currentCalledNumber]);
+  }, [id, showWinnerModal, allCalledNumbers, currentCalledNumber, isSpectatorMode, initializeUserCard]);
 
   // Check for winner
   const checkForWinner = useCallback(async (gameData?: Game) => {
@@ -313,7 +314,7 @@ export default function GamePage() {
     }
   }, [getWinnerInfo]);
 
-  // Main initialization
+  // FIXED: Main initialization - properly checks for card
   useEffect(() => {
     const initializeGame = async () => {
       try {
@@ -357,7 +358,7 @@ export default function GamePage() {
 
         // Start polling for updates
         if (!pollingRef.current) {
-          pollingRef.current = setInterval(updateGameState, POLL_INTERVAL);
+          pollingRef.current = setInterval(() => updateGameState(), POLL_INTERVAL);
         }
 
       } catch (error) {
@@ -382,7 +383,7 @@ export default function GamePage() {
     if (game && game.status === 'FINISHED' && game.winnerId && !showWinnerModal && !gameEndedCheckRef.current) {
       console.log('🏁 Game finished! Fetching winner info...');
       gameEndedCheckRef.current = true;
-      checkForWinner(game as Game); // Type assertion
+      checkForWinner(game as Game);
     }
   }, [game, showWinnerModal, checkForWinner]);
 
@@ -416,7 +417,7 @@ export default function GamePage() {
     };
   }, [showWinnerModal, winnerInfo]);
 
-  // Handle manual number call
+  // FIXED: Handle manual number call - no page reload
   const handleCallNumber = async () => {
     if (isCallingNumber || !id || game?.status !== 'ACTIVE') return;
     
@@ -444,8 +445,8 @@ export default function GamePage() {
           );
         }, 2000);
         
-        // Show notification
-        console.log(`📢 ${letter}${data.number} called! Click it on your card to mark.`);
+        // Trigger game state update
+        setTimeout(() => updateGameState(true), 500);
       }
     } catch (error) {
       console.error('❌ Failed to call number:', error);
@@ -454,7 +455,7 @@ export default function GamePage() {
     }
   };
 
-  // Handle manual number marking - FIXED: No page reload
+  // FIXED: Handle manual number marking - no page reload
   const handleMarkNumber = async (number: number) => {
     if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
     
@@ -468,7 +469,7 @@ export default function GamePage() {
       if (response.data.success) {
         console.log(`✅ Successfully manually marked number: ${number}`);
         
-        // Update local bingo card state WITHOUT calling refreshGame
+        // Update local bingo card state WITHOUT page reload
         if (localBingoCard) {
           const numbers = localBingoCard.numbers.flat();
           const position = numbers.indexOf(number);
@@ -485,10 +486,12 @@ export default function GamePage() {
             setTimeout(() => setIsAnimating(false), 500);
           }
         }
+        
+        // Update game state without reload
+        setTimeout(() => updateGameState(true), 300);
       }
     } catch (error: any) {
       console.error('Failed to mark number:', error);
-      // Show error message without page reload
       setClaimResult({
         success: false,
         message: error.response?.data?.message || 'Failed to mark number'
@@ -500,7 +503,7 @@ export default function GamePage() {
     }
   };
 
-  // Handle manual Bingo claim - FIXED: No page reload
+  // FIXED: Handle manual Bingo claim - no page reload
   const handleClaimBingo = async () => {
     if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard) return;
     
@@ -521,9 +524,9 @@ export default function GamePage() {
           prizeAmount: response.data.prizeAmount
         });
         
-        // Update game state WITHOUT full refresh - just poll for updates
+        // Update game state WITHOUT page reload
         setTimeout(() => {
-          updateGameState();
+          updateGameState(true);
         }, 1000);
       } else {
         setClaimResult({
@@ -568,6 +571,7 @@ export default function GamePage() {
     setCountdown(5);
     
     gameEndedCheckRef.current = false;
+    hasCardCheckedRef.current = false;
     
     router.push('/');
   };
@@ -585,6 +589,7 @@ export default function GamePage() {
     
     setShowWinnerModal(false);
     gameEndedCheckRef.current = false;
+    hasCardCheckedRef.current = false;
     setWinnerInfo(null);
     setIsUserWinner(false);
     setWinningAmount(0);
@@ -612,7 +617,7 @@ export default function GamePage() {
 
   // Manual refresh button - only updates state, doesn't reload page
   const handleManualRefresh = () => {
-    updateGameState();
+    updateGameState(true);
   };
 
   // Use local card if available
@@ -656,8 +661,8 @@ export default function GamePage() {
     return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
   };
 
-  // Show spectator mode
-  if (isSpectatorMode) {
+  // FIXED: Show spectator mode ONLY when user truly doesn't have a card
+  if (isSpectatorMode && !localBingoCard) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
