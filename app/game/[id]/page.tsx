@@ -869,7 +869,7 @@ export default function GamePage() {
                     </div>
 
                     {/* Winning Card */}
-              {winnerInfo.winningCard?.numbers && (
+                 {winnerInfo.winningCard?.numbers && (
   <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-6 border-2 border-yellow-500/50">
     {/* BINGO Header */}
     <div className="grid grid-cols-5 gap-2 mb-4">
@@ -891,6 +891,9 @@ export default function GamePage() {
           const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
           const isWinningPos = isWinningPosition(rowIndex, colIndex);
           const isFreeSpace = rowIndex === 2 && colIndex === 2;
+          
+          // Check if this position is part of the winning line (the positions that form the line)
+          const isPartOfWinningLine = isWinningPos;
 
           return (
             <motion.div
@@ -901,13 +904,13 @@ export default function GamePage() {
               className={`
                 h-14 rounded-lg flex items-center justify-center 
                 font-bold transition-all duration-200 relative
-                ${isWinningPos
-                  ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border-3 border-yellow-300 shadow-lg shadow-yellow-500/50'
-                  : isMarked
-                  ? 'bg-gradient-to-br from-gray-700 to-gray-800 text-white/70 border border-gray-600' // Changed from green to gray
+                ${isPartOfWinningLine
+                  ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-emerald-400 shadow-lg shadow-emerald-500/30'
+                  : isMarked && !isPartOfWinningLine
+                  ? 'bg-gray-800 text-white/70 border border-gray-700'
                   : isFreeSpace
-                  ? 'bg-gradient-to-br from-purple-700/70 to-pink-700/70 text-white/80 border border-purple-600/50' // More subtle
-                  : 'bg-gray-800/70 text-white/50 border border-gray-700' // Unmarked numbers
+                  ? 'bg-gray-800/80 text-white/60 border border-gray-700'
+                  : 'bg-gray-900 text-white/50 border border-gray-800'
                 }
               `}
             >
@@ -918,31 +921,42 @@ export default function GamePage() {
                 </>
               ) : (
                 <>
-                  <span className={`text-base ${isMarked && !isWinningPos ? 'opacity-70' : ''}`}>
+                  <span className={`text-base ${isMarked && !isPartOfWinningLine ? 'opacity-70' : ''}`}>
                     {number}
                   </span>
                   
-                  {/* Show checkmark for all marked positions but with different colors */}
+                  {/* Show checkmark for all marked positions */}
                   {isMarked && (
                     <div className={`
                       absolute top-1 right-1 text-[10px]
-                      ${isWinningPos ? 'text-yellow-300 opacity-90' : 'text-gray-400 opacity-60'}
+                      ${isPartOfWinningLine ? 'text-emerald-300 opacity-90' : 'text-gray-400 opacity-60'}
                     `}>
                       ✓
                     </div>
                   )}
                   
-                  {/* Special indicator for winning positions */}
-                  {isWinningPos && (
+                  {/* Animated pulse effect for winning line positions - 15 seconds duration */}
+                  {isPartOfWinningLine && (
                     <motion.div 
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ duration: 1, repeat: Infinity }}
-                      className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-lg shadow-yellow-500"
+                      animate={{ 
+                        scale: [1, 1.1, 1],
+                        boxShadow: [
+                          '0 0 0 0 rgba(34, 197, 94, 0.7)',
+                          '0 0 0 10px rgba(34, 197, 94, 0)',
+                          '0 0 0 0 rgba(34, 197, 94, 0)'
+                        ]
+                      }}
+                      transition={{ 
+                        duration: 15, // 15 seconds for a complete cycle
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                      className="absolute inset-0 rounded-lg border-2 border-emerald-400/50"
                     />
                   )}
                   
-                  {/* Subtle indicator for marked but non-winning positions */}
-                  {isMarked && !isWinningPos && !isFreeSpace && (
+                  {/* Subtle indicator for non-winning marked positions */}
+                  {isMarked && !isPartOfWinningLine && !isFreeSpace && (
                     <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-gray-500/50 rounded-full" />
                   )}
                 </>
@@ -954,18 +968,22 @@ export default function GamePage() {
     </div>
     
     {/* Legend for card colors */}
-    <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+    <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
       <div className="flex items-center gap-2">
-        <div className="w-3 h-3 rounded bg-gradient-to-br from-yellow-500 to-orange-500"></div>
+        <div className="w-3 h-3 rounded bg-gradient-to-br from-green-600 to-emerald-700"></div>
         <span className="text-white/70">Winning Line</span>
       </div>
       <div className="flex items-center gap-2">
-        <div className="w-3 h-3 rounded bg-gradient-to-br from-gray-700 to-gray-800"></div>
+        <div className="w-3 h-3 rounded bg-gray-800 border border-gray-700"></div>
         <span className="text-white/70">Marked Numbers</span>
       </div>
-      <div className="flex items-center gap-2">
-        <div className="w-3 h-3 rounded bg-gradient-to-br from-purple-700/70 to-pink-700/70"></div>
-        <span className="text-white/70">Free Space</span>
+    </div>
+    
+    {/* Animation duration info */}
+    <div className="mt-4 text-center">
+      <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-800/50 rounded-full">
+        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+        <span className="text-xs text-white/50">Winning line pulses every 15 seconds</span>
       </div>
     </div>
   </div>
