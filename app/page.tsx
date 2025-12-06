@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/page.tsx - MODIFIED VERSION
+// app/page.tsx - FIXED VERSION (Proper wallet balance handling)
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -21,7 +21,7 @@ import { GameControls } from '../components/game/GameControls';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
 import { useAccountStorage } from '../hooks/useAccountStorage';
-import { Clock, Play, Check, Rocket, AlertCircle, Users } from 'lucide-react';
+import { Clock, Play, Check, Rocket, AlertCircle, Users, RefreshCw } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -74,9 +74,55 @@ export default function Home() {
   const [playersWithCards, setPlayersWithCards] = useState<number>(0);
   const [canStartGame, setCanStartGame] = useState<boolean>(false);
 
+  // ==================== ADD BALANCE REFRESH STATES ====================
+  const [localWalletBalance, setLocalWalletBalance] = useState<number>(0);
+  const [isRefreshingBalance, setIsRefreshingBalance] = useState<boolean>(false);
+  const [balanceRefreshCounter, setBalanceRefreshCounter] = useState<number>(0);
+
   // ==================== ADD MISSING RESTART COOLDOWN STATES ====================
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
   const [restartCooldownRemaining, setRestartCooldownRemaining] = useState<number>(0);
+
+  // ==================== FIXED: REFRESH WALLET BALANCE FUNCTION ====================
+  const refreshWalletBalanceLocal = async () => {
+    try {
+      setIsRefreshingBalance(true);
+      console.log('💰 Refreshing wallet balance...');
+      
+      // First try to use the AuthContext's refresh function
+      if (refreshWalletBalance) {
+        await refreshWalletBalance();
+        console.log('✅ Used AuthContext refreshWalletBalance');
+      }
+      
+      // Also fetch directly to ensure we have the latest balance
+      const response = await fetch('/api/wallet/balance', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setLocalWalletBalance(data.balance);
+          console.log(`💰 Direct balance fetch: ${data.balance} ብር`);
+        }
+      }
+      
+      // Increment counter to trigger UI updates
+      setBalanceRefreshCounter(prev => prev + 1);
+    } catch (error) {
+      console.error('❌ Failed to refresh wallet balance:', error);
+    } finally {
+      setIsRefreshingBalance(false);
+    }
+  };
+
+  // ==================== FIXED: USE CORRECT BALANCE SOURCE ====================
+  // Combine local balance with AuthContext balance for reliability
+  const effectiveWalletBalance = localWalletBalance > 0 ? localWalletBalance : walletBalance;
 
   // ==================== UPDATE RESTART COOLDOWN FROM GAME DATA ====================
   useEffect(() => {
@@ -126,35 +172,42 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [gameData?._id]);
 
-  // ==================== MODIFIED AUTO-JOIN LOGIC WITH CONDITIONS CHECK ====================
+  // ==================== FIXED: MODIFIED AUTO-JOIN LOGIC WITH PROPER BALANCE CHECK ====================
   useEffect(() => {
     console.log('🔍 Auto-join condition check:', {
       timeRemaining: cardSelectionStatus.timeRemaining,
       isSelectionActive: cardSelectionStatus.isSelectionActive,
       selectedNumber: selectedNumber,
-      walletBalance: walletBalance,
+      walletBalance: effectiveWalletBalance,
       hasRestartCooldown: hasRestartCooldown,
       playersWithCards: playersWithCards,
       allConditionsMet: cardSelectionStatus.timeRemaining <= 0 && 
                       cardSelectionStatus.isSelectionActive && 
                       selectedNumber && 
-                      walletBalance >= 10 &&
+                      effectiveWalletBalance >= 10 &&
                       !hasRestartCooldown &&
-                      playersWithCards >= 2 // ADDED: Minimum players check
+                      playersWithCards >= 2
     });
 
     // Auto-join when ALL conditions are met (including minimum players)
     if (cardSelectionStatus.timeRemaining <= 0 && 
         cardSelectionStatus.isSelectionActive && 
         selectedNumber && 
-        walletBalance >= 10 &&
+        effectiveWalletBalance >= 10 &&
         !hasRestartCooldown &&
         playersWithCards >= 2) {
       
       console.log('🚀 All auto-join conditions met! Triggering auto-join...');
       handleAutoJoinGame();
     }
-  }, [cardSelectionStatus.timeRemaining, cardSelectionStatus.isSelectionActive, selectedNumber, walletBalance, hasRestartCooldown, playersWithCards]);
+  }, [
+    cardSelectionStatus.timeRemaining, 
+    cardSelectionStatus.isSelectionActive, 
+    selectedNumber, 
+    effectiveWalletBalance, 
+    hasRestartCooldown, 
+    playersWithCards
+  ]);
 
   // ==================== AUTO-START CHECK ====================
   useEffect(() => {
@@ -191,7 +244,7 @@ export default function Home() {
     };
   }, [gameStatus, gameData?._id, checkGameStatus, hasRestartCooldown]);
 
-  // ==================== MODIFIED AUTO-JOIN FUNCTION WITH CONDITIONS CHECK ====================
+  // ==================== FIXED: MODIFIED AUTO-JOIN FUNCTION WITH PROPER BALANCE CHECK ====================
   const handleAutoJoinGame = async () => {
     if (!selectedNumber || !user?.id || hasRestartCooldown) return; // Don't auto-join during cooldown
     
@@ -199,6 +252,13 @@ export default function Home() {
     if (playersWithCards < 2) {
       console.log(`❌ Not enough players with cards (${playersWithCards}/2). Cannot auto-join.`);
       setJoinError(`Need ${2 - playersWithCards} more player(s) to start the game`);
+      return;
+    }
+
+    // Check balance
+    if (effectiveWalletBalance < 10) {
+      console.log(`❌ Insufficient balance: ${effectiveWalletBalance} ብር (needs 10 ብር)`);
+      setJoinError('Insufficient balance. Minimum 10 ብር required to play.');
       return;
     }
 
@@ -302,7 +362,7 @@ export default function Home() {
     }
   };
 
-  // ==================== MODIFIED JOIN GAME FUNCTION WITH CONDITIONS CHECK ====================
+  // ==================== FIXED: MODIFIED JOIN GAME FUNCTION WITH PROPER BALANCE CHECK ====================
   const handleJoinGame = async () => {
     if (!selectedNumber || !user?.id) return;
 
@@ -317,12 +377,16 @@ export default function Home() {
         return;
       }
 
-      if (walletBalance < 10) {
-        setJoinError('Insufficient balance. Minimum 10 ብር required to play.');
+      // Check balance using effective balance
+      if (effectiveWalletBalance < 10) {
+        setJoinError(`Insufficient balance. You have ${effectiveWalletBalance} ብር, minimum 10 ብር required.`);
         setJoining(false);
+        
+        // Try to refresh balance before showing error
         setTimeout(() => {
-          handleJoinAsSpectator();
-        }, 2000);
+          refreshWalletBalanceLocal();
+        }, 1000);
+        
         return;
       }
 
@@ -376,13 +440,13 @@ export default function Home() {
     }
   };
 
-  // ==================== UPDATED GAME INFO FOOTER MESSAGE ====================
+  // ==================== FIXED: UPDATED GAME INFO FOOTER MESSAGE WITH PROPER BALANCE ====================
   const getGameStatusMessage = () => {
     if (hasRestartCooldown) {
       return `🔄 Game restarting in ${Math.ceil(restartCooldownRemaining / 1000)}s - Select your card now!`;
     }
 
-    if (!selectedNumber && walletBalance >= 10) {
+    if (!selectedNumber && effectiveWalletBalance >= 10) {
       switch (gameStatus) {
         case 'WAITING':
           return '🎯 Select a card number to join the waiting game';
@@ -397,11 +461,11 @@ export default function Home() {
       }
     }
 
-    if (!selectedNumber && walletBalance < 10) {
-      return '💡 Add balance to play - Watch mode available';
+    if (!selectedNumber && effectiveWalletBalance < 10) {
+      return `💡 Add balance to play (Current: ${effectiveWalletBalance} ብር)`;
     }
 
-    if (selectedNumber && walletBalance >= 10) {
+    if (selectedNumber && effectiveWalletBalance >= 10) {
       switch (gameStatus) {
         case 'WAITING':
           return `⏳ Ready! Need ${2 - playersWithCards} more player(s) to start`;
@@ -432,7 +496,7 @@ export default function Home() {
     return false;
   };
 
-  // Main initialization
+  // ==================== FIXED: MAIN INITIALIZATION WITH BALANCE REFRESH ====================
   useEffect(() => {
     const initializeApp = async () => {
       console.log('🚀 Starting app initialization...');
@@ -449,8 +513,15 @@ export default function Home() {
       }
 
       try {
+        // Refresh wallet balance FIRST
+        console.log('💰 Initial balance refresh...');
+        await refreshWalletBalanceLocal();
+        
+        // Initialize game state
         await initializeGameState();
+        
         console.log('✅ App initialization complete');
+        console.log(`💰 User balance: ${effectiveWalletBalance} ብር`);
       } catch (error) {
         console.error('❌ Initialization error:', error);
       }
@@ -459,19 +530,28 @@ export default function Home() {
     initializeApp();
   }, [authLoading, isAuthenticated, user]);
 
-  // Auto-join when game view is shown
+  // ==================== AUTO-JOIN WHEN GAME VIEW IS SHOWN ====================
   useEffect(() => {
-    if (showGameView && selectedNumber && walletBalance >= 10 && !hasRestartCooldown && playersWithCards >= 2) {
+    if (showGameView && selectedNumber && effectiveWalletBalance >= 10 && !hasRestartCooldown && playersWithCards >= 2) {
       const timer = setTimeout(() => {
         handleAutoJoinGame();
       }, 2000);
       
       return () => clearTimeout(timer);
     }
-  }, [showGameView, selectedNumber, walletBalance, hasRestartCooldown, playersWithCards]);
+  }, [showGameView, selectedNumber, effectiveWalletBalance, hasRestartCooldown, playersWithCards]);
 
-  // Auto-join loading screen (keep existing)
-  if (showGameView && selectedNumber && walletBalance >= 10 && !hasRestartCooldown && playersWithCards >= 2) {
+  // ==================== PERIODIC BALANCE REFRESH ====================
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      refreshWalletBalanceLocal();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Auto-join loading screen
+  if (showGameView && selectedNumber && effectiveWalletBalance >= 10 && !hasRestartCooldown && playersWithCards >= 2) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20">
@@ -523,7 +603,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-      {/* Updated Navbar with Role Info */}
+      {/* Updated Navbar with Role Info and Balance Refresh */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="flex justify-between items-center">
           <div>
@@ -535,27 +615,92 @@ export default function Home() {
             </p>
           </div>
           
-          {/* User Info with Role Badge */}
-          <UserInfoDisplay user={user} userRole={userRole} />
+          {/* User Info with Role Badge and Balance Refresh */}
+          <div className="flex items-center gap-3">
+            {/* Balance Display with Refresh Button */}
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <p className="text-white font-bold text-lg">
+                  {isRefreshingBalance ? (
+                    <span className="flex items-center gap-1">
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Updating...
+                    </span>
+                  ) : (
+                    `${effectiveWalletBalance} ብር`
+                  )}
+                </p>
+                <p className="text-white/60 text-xs">Balance</p>
+              </div>
+              <button
+                onClick={refreshWalletBalanceLocal}
+                disabled={isRefreshingBalance}
+                className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-all disabled:opacity-50"
+                title="Refresh balance"
+              >
+                <RefreshCw className={`w-4 h-4 text-white ${isRefreshingBalance ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+            
+            <UserInfoDisplay user={user} userRole={userRole} />
+          </div>
         </div>
       </div>
 
       {/* Admin Controls */}
-    {isAdmin && (
-  <AdminControls 
-    onStartGame={() => {}} // FIXED: Removed undefined function
-    onEndGame={() => {}} 
-    onManageUsers={() => {}}
-  />
-)}
+      {isAdmin && (
+        <AdminControls 
+          onStartGame={() => {}} // FIXED: Removed undefined function
+          onEndGame={() => {}} 
+          onManageUsers={() => {}}
+        />
+      )}
 
       {/* Moderator Controls */}
-    {isModerator && !isAdmin && (
-  <ModeratorControls 
-    onModerateGames={() => {}} // FIXED: Removed undefined function
-    onViewReports={() => {}}   // FIXED: Removed undefined function
-  />
-)}
+      {isModerator && !isAdmin && (
+        <ModeratorControls 
+          onModerateGames={() => {}} // FIXED: Removed undefined function
+          onViewReports={() => {}}   // FIXED: Removed undefined function
+        />
+      )}
+
+      {/* ==================== BALANCE WARNING ==================== */}
+      {effectiveWalletBalance < 10 && (
+        <motion.div 
+          className="bg-red-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-red-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-300" />
+            <div className="flex-1">
+              <p className="text-red-300 font-bold text-sm">
+                Insufficient Balance
+              </p>
+              <p className="text-red-200 text-xs">
+                You need 10 ብር to play. Current: {effectiveWalletBalance} ብር
+              </p>
+            </div>
+            <button
+              onClick={refreshWalletBalanceLocal}
+              disabled={isRefreshingBalance}
+              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50 flex items-center gap-1"
+            >
+              {isRefreshingBalance ? (
+                <>
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3 h-3" />
+                  Refresh
+                </>
+              )}
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* ==================== PLAYERS COUNT WARNING ==================== */}
       {gameStatus === 'WAITING' && playersWithCards < 2 && (
@@ -590,7 +735,7 @@ export default function Home() {
             currentPlayers={currentPlayers}
             restartCountdown={restartCountdown}
             selectedNumber={selectedNumber}
-            walletBalance={walletBalance}
+            walletBalance={effectiveWalletBalance}
             shouldEnableCardSelection={shouldEnableCardSelection()}
             autoStartTimeRemaining={autoStartTimeRemaining}
             hasAutoStartTimer={hasAutoStartTimer}
@@ -601,6 +746,7 @@ export default function Home() {
           {/* AUTO-JOIN DIAGNOSTIC PANEL */}
           <div className="mb-4 p-3 bg-black/30 rounded-xl border border-white/10 text-xs">
             <div className="grid grid-cols-2 gap-2 text-white/70">
+              <div>Wallet Balance: <span className={effectiveWalletBalance >= 10 ? 'text-green-300' : 'text-red-300'}>{effectiveWalletBalance} ብር</span></div>
               <div>Restart Cooldown: <span className={hasRestartCooldown ? 'text-yellow-300' : 'text-green-300'}>{hasRestartCooldown ? 'ACTIVE' : 'INACTIVE'}</span></div>
               <div>Cooldown Remaining: <span className="text-yellow-300">{Math.ceil(restartCooldownRemaining/1000)}s</span></div>
               <div>Auto-start Timer: <span className={hasAutoStartTimer ? 'text-yellow-300' : 'text-gray-400'}>{hasAutoStartTimer ? 'ACTIVE' : 'INACTIVE'}</span></div>
@@ -752,10 +898,29 @@ export default function Home() {
               </div>
             </div>
             
+            <div className="mt-3 grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-white font-bold">{effectiveWalletBalance} ብር</div>
+                <div className="text-white/60 text-xs">Your Balance</div>
+              </div>
+              <div>
+                <div className="text-white font-bold">10 ብር</div>
+                <div className="text-white/60 text-xs">Required</div>
+              </div>
+            </div>
+            
             {playersWithCards < 2 && (
               <div className="mt-3 p-2 bg-yellow-500/10 rounded-lg">
                 <p className="text-yellow-300 text-xs">
                   Need {2 - playersWithCards} more player(s) to start the game
+                </p>
+              </div>
+            )}
+            
+            {effectiveWalletBalance < 10 && (
+              <div className="mt-3 p-2 bg-red-500/10 rounded-lg">
+                <p className="text-red-300 text-xs">
+                  Need {10 - effectiveWalletBalance} ብር more to play
                 </p>
               </div>
             )}
@@ -768,7 +933,7 @@ export default function Home() {
         availableCards={availableCards}
         takenCards={takenCards}
         selectedNumber={selectedNumber}
-        walletBalance={walletBalance}
+        walletBalance={effectiveWalletBalance}
         gameStatus={gameStatus}
         onCardSelect={handleCardSelect}
       />
@@ -782,7 +947,7 @@ export default function Home() {
           transition={{ delay: 0.3 }}
         >
           {/* Selection Header */}
-        <motion.div 
+          <motion.div 
             className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -874,6 +1039,24 @@ export default function Home() {
         </div>
         
         <div className="space-y-2">
+          {/* Balance Information */}
+          <div className="flex justify-between items-center px-2">
+            <span className="text-white/70 text-sm">Your Balance:</span>
+            <div className="flex items-center gap-2">
+              <span className={`font-bold ${effectiveWalletBalance >= 10 ? 'text-green-300' : 'text-red-300'}`}>
+                {effectiveWalletBalance} ብር
+              </span>
+              <button
+                onClick={refreshWalletBalanceLocal}
+                disabled={isRefreshingBalance}
+                className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-all disabled:opacity-50"
+                title="Refresh balance"
+              >
+                <RefreshCw className={`w-3 h-3 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+          
           {/* Dynamic game status message */}
           <p className={`text-sm text-center font-medium ${
             hasRestartCooldown ? 'text-purple-300' :
