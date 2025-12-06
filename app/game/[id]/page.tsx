@@ -113,27 +113,44 @@ export default function GamePage() {
     const initializeGame = async () => {
       try {
         console.log('🎮 Initializing game page...');
-        
+            if (isLoading || !game) {
+      console.log('⏳ Waiting for game data...');
+      return;
+    } await new Promise(resolve => setTimeout(resolve, 1000));
         // Check if user should be redirected to spectator
         const isSpectator = searchParams.get('spectator') === 'true';
         const cardParam = searchParams.get('card');
         
-        // FIX: Don't check game status yet - wait for full game data
-        if (isLoading || !game) {
-          console.log('⏳ Waiting for game data...');
-          return;
-        }
-//15.0.5
-        // FIX: Only check for spectator redirect if user doesn't have a card
+      
         // and game is not in card selection or waiting phase
-        if (!isSpectator && !cardParam) {
-          const shouldBeSpectator = await checkIfShouldBeSpectator(game);
-          if (shouldBeSpectator) {
-            console.log('👁️ Redirecting to spectator mode...');
-            router.push(`/game/${id}?spectator=true`);
-            return;
-          }
-        }
+        if (cardParam) {
+      // Process card from URL
+      try {
+        const cardData: CardData = JSON.parse(decodeURIComponent(cardParam));
+        console.log('🎯 Loaded card from URL:', cardData);
+        setLocalBingoCard({
+          cardNumber: cardData.cardNumber,
+          numbers: cardData.numbers,
+          markedPositions: []
+        });
+        setSelectedNumber(cardData.cardNumber);
+        setIsLoadingCard(false);
+        setCardError('');
+        return;
+      } catch (error) {
+        console.error('Failed to parse card data from URL:', error);
+        setCardError('Failed to load card data from URL');
+      }
+    }
+      // Only check for spectator if no card param AND not already in spectator mode
+    if (!isSpectator && !cardParam) {
+      const shouldBeSpectator = await checkIfShouldBeSpectator(game);
+      if (shouldBeSpectator) {
+        console.log('👁️ Redirecting to spectator mode...');
+        router.push(`/game/${id}?spectator=true`);
+        return;
+      }
+    }
 
         // Load wallet balance
         try {
@@ -225,25 +242,63 @@ export default function GamePage() {
       }
     };
 
-    const checkIfShouldBeSpectator = async (currentGame: any): Promise<boolean> => {
-      // Only force spectator mode if:
-      // 1. Game is ACTIVE and user doesn't have a card
-      // 2. Game is FINISHED and user doesn't have a card
+   // Replace the checkIfShouldBeSpectator function in your GamePage component
+const checkIfShouldBeSpectator = async (currentGame: any): Promise<boolean> => {
+  // Never force spectator mode during these phases
+  if (currentGame.status === 'WAITING_FOR_PLAYERS' || 
+      currentGame.status === 'CARD_SELECTION') {
+    return false;
+  }
+  
+  // Only check for spectator mode if game is ACTIVE or FINISHED
+  if (currentGame.status === 'ACTIVE' || currentGame.status === 'FINISHED') {
+    try {
+      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+      if (!userId) {
+        return true; // No user ID, can't have a card
+      }
       
-      if (currentGame.status === 'ACTIVE' || currentGame.status === 'FINISHED') {
+      // Try multiple times with retry logic
+      let retries = 3;
+      let delay = 1000; // Start with 1 second delay
+      
+      while (retries > 0) {
         try {
-          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-          if (userId) {
-            const cardResponse = await gameAPI.getUserBingoCard(id, userId);
-            return !(cardResponse.data.success && cardResponse.data.bingoCard);
+          const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+          
+          if (cardResponse.data.success && cardResponse.data.bingoCard) {
+            console.log('✅ User has a bingo card, no spectator mode needed');
+            return false;
+          }
+          
+          // If no card found, wait and retry
+          retries--;
+          if (retries > 0) {
+            console.log(`⏳ No card found, retrying in ${delay}ms... (${retries} retries left)`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= 2; // Exponential backoff
           }
         } catch (error) {
-          console.log('Error checking user card:', error);
+          console.warn('Error checking user card:', error);
+          retries--;
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= 2;
+          }
         }
       }
       
-      return false;
-    };
+      // After all retries, if still no card, go to spectator
+      console.log('❌ No bingo card found after retries, going to spectator mode');
+      return true;
+    } catch (error) {
+      console.log('Error checking user card:', error);
+      return true; // On error, default to spectator
+    }
+  }
+  
+  return false; // Default: don't redirect to spectator
+};
 
     initializeGame();
   }, [id, searchParams, game, isLoading]);
