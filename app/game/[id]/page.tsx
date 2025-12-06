@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - UPDATED WITH PROPER TYPE IMPORTS
+// app/game/[id]/page.tsx - COMPLETE UPDATED VERSION
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -7,9 +7,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Game as GameType } from '../../../types/index'; // Import the Game type from your types file
 
-// Types - Remove local Game interface and use imported one
+// Types
 interface CardData {
   cardNumber: number;
   numbers: (number | string)[][];
@@ -45,12 +44,19 @@ interface WinnerInfo {
   };
 }
 
-// Use imported GameType instead of local Game interface
-type Game = GameType;
-
-// Polling interval for real-time updates
-const POLLING_INTERVAL = 2000; // 2 seconds
-const NUMBER_ANIMATION_DURATION = 1000; // 1 second animation
+interface Game {
+  _id: string;
+  code: string;
+  status: string;
+  currentPlayers: number;
+  numbersCalled: number[];
+  winnerId?: string;
+  startedAt?: Date;
+  endedAt?: Date;
+  players?: any[];
+  potAmount?: number;
+  message?: string;
+}
 
 export default function GamePage() {
   const params = useParams();
@@ -77,10 +83,9 @@ export default function GamePage() {
   const [isMarking, setIsMarking] = useState<boolean>(false);
   
   // Enhanced state for called numbers
-  const [currentCalledNumber, setCurrentCalledNumber] = useState<{
+   const [currentCalledNumber, setCurrentCalledNumber] = useState<{
     number: number;
     letter: string;
-    isNew: boolean;
   } | null>(null);
   
   const [allCalledNumbers, setAllCalledNumbers] = useState<number[]>([]);
@@ -108,14 +113,11 @@ export default function GamePage() {
   const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(false);
   const [spectatorMessage, setSpectatorMessage] = useState<string>('');
 
-  // Refs for preventing unnecessary updates and polling
+  // Refs
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameEndedCheckRef = useRef(false);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const lastCalledNumbersRef = useRef<number[]>([]);
-  const lastGameStatusRef = useRef<string>('');
-  const isInitialLoadRef = useRef(true);
+  const cardCheckAttempts = useRef(0);
 
   // Helper function to get BINGO letter for a number
   const getNumberLetter = (num: number): string => {
@@ -145,7 +147,7 @@ export default function GamePage() {
       if (!userId || !id) return false;
 
       const cardResponse = await gameAPI.getUserBingoCard(id, userId);
-      return !!(cardResponse.data.success && cardResponse.data.bingoCard);
+return !!(cardResponse.data.success && cardResponse.data.bingoCard);
     } catch (error) {
       console.error('Error checking user card:', error);
       return false;
@@ -198,144 +200,6 @@ export default function GamePage() {
     }
   }, [game, id, checkUserHasCard]);
 
-  // Handle game finished
-  const handleGameFinished = useCallback(async (finishedGame: Game) => {
-    if (gameEndedCheckRef.current) return;
-    
-    gameEndedCheckRef.current = true;
-    console.log('🏁 Game finished! Fetching winner info...');
-    
-    try {
-      setIsWinnerLoading(true);
-      const winnerData = await getWinnerInfo();
-      
-      if (winnerData) {
-        setWinnerInfo(winnerData);
-        
-        // Check if current user is the winner
-        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-        if (userId) {
-          const isWinner = winnerData.winner.telegramId === userId || 
-                          winnerData.winner._id.toString() === userId;
-          setIsUserWinner(isWinner);
-          
-          // Calculate winning amount
-          const totalPot = (finishedGame.currentPlayers || 0) * 10;
-          const platformFee = totalPot * 0.1;
-          const winnerPrize = totalPot - platformFee;
-          setWinningAmount(winnerPrize);
-        }
-        
-        // Show winner modal after delay
-        setTimeout(() => {
-          setShowWinnerModal(true);
-          setIsWinnerLoading(false);
-          
-          // Stop polling when game is finished
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
-        }, 1500);
-      }
-    } catch (error) {
-      console.error('Failed to fetch winner info:', error);
-      setIsWinnerLoading(false);
-    }
-  }, [getWinnerInfo]);
-
-  // Fetch game updates without triggering full page reload
-  const fetchGameUpdates = useCallback(async () => {
-    if (!id || showWinnerModal) return;
-    
-    try {
-      // Get minimal game data update
-      const response = await gameAPI.getGame(id);
-      const updatedGame = response.data.game as Game;
-      
-      if (!updatedGame) return;
-      
-      // Check for new called numbers
-      if (updatedGame.numbersCalled && updatedGame.numbersCalled.length > 0) {
-        const currentNumbers = updatedGame.numbersCalled;
-        const prevNumbers = lastCalledNumbersRef.current;
-        
-        // Find new numbers that weren't previously called
-        const newNumbers = currentNumbers.filter(
-          (num: number) => !prevNumbers.includes(num)
-        );
-        
-        // Update all called numbers
-        if (JSON.stringify(currentNumbers) !== JSON.stringify(allCalledNumbers)) {
-          setAllCalledNumbers(currentNumbers);
-        }
-        
-        // Handle new number animation
-        if (newNumbers.length > 0) {
-          const latestNumber = newNumbers[newNumbers.length - 1];
-          
-          // Animate the new number
-          setIsAnimating(true);
-          setCurrentCalledNumber({
-            number: latestNumber,
-            letter: getNumberLetter(latestNumber),
-            isNew: true
-          });
-          
-          // Clear animation after duration
-          setTimeout(() => {
-            setIsAnimating(false);
-            setCurrentCalledNumber(prev => 
-              prev ? { ...prev, isNew: false } : null
-            );
-          }, NUMBER_ANIMATION_DURATION);
-        } else if (currentNumbers.length > 0 && !currentCalledNumber) {
-          // Set current number if not set
-          const lastNumber = currentNumbers[currentNumbers.length - 1];
-          setCurrentCalledNumber({
-            number: lastNumber,
-            letter: getNumberLetter(lastNumber),
-            isNew: false
-          });
-        }
-        
-        lastCalledNumbersRef.current = currentNumbers;
-      }
-      
-      // Check for game status changes
-      if (updatedGame.status !== lastGameStatusRef.current) {
-        lastGameStatusRef.current = updatedGame.status;
-        
-        // Handle game ending
-        if (updatedGame.status === 'FINISHED' && updatedGame.winnerId) {
-          handleGameFinished(updatedGame);
-        }
-      }
-      
-    } catch (error) {
-      console.warn('Failed to fetch game updates:', error);
-    }
-  }, [id, showWinnerModal, allCalledNumbers, currentCalledNumber, handleGameFinished]);
-
-  // Set up polling for real-time updates
-  useEffect(() => {
-    if (!id || showWinnerModal) return;
-    
-    // Initial fetch
-    fetchGameUpdates();
-    
-    // Set up polling interval
-    pollingRef.current = setInterval(fetchGameUpdates, POLLING_INTERVAL);
-    
-    // Clean up polling on unmount
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    };
-  }, [id, showWinnerModal, fetchGameUpdates]);
-
   // Main initialization
   useEffect(() => {
     const initializeGame = async () => {
@@ -345,8 +209,14 @@ export default function GamePage() {
         // Load wallet balance
         await loadWalletBalance();
         
+        // Wait for game data to load
+        if (isLoading) {
+          console.log('⏳ Waiting for game data...');
+          return;
+        }
+        
         // Check if game exists
-        if (!game && !isLoading) {
+        if (!game) {
           setCardError('Game not found. Redirecting to lobby...');
           setTimeout(() => router.push('/'), 2000);
           return;
@@ -355,28 +225,18 @@ export default function GamePage() {
         // Initialize user's card
         await initializeUserCard();
 
-        // Set initial called numbers
-        if (game?.numbersCalled && game.numbersCalled.length > 0) {
-          const initialNumbers = game.numbersCalled;
-          setAllCalledNumbers(initialNumbers);
-          lastCalledNumbersRef.current = initialNumbers;
+        // Load existing called numbers
+        if (game.numbersCalled && game.numbersCalled.length > 0) {
+          setAllCalledNumbers(game.numbersCalled);
           
-          const lastNumber = initialNumbers[initialNumbers.length - 1];
+          const lastNumber = game.numbersCalled[game.numbersCalled.length - 1];
           if (lastNumber) {
             setCurrentCalledNumber({
               number: lastNumber,
-              letter: getNumberLetter(lastNumber),
-              isNew: false
+              letter: getNumberLetter(lastNumber)
             });
           }
         }
-
-        // Set initial game status
-        if (game?.status) {
-          lastGameStatusRef.current = game.status;
-        }
-
-        isInitialLoadRef.current = false;
 
       } catch (error) {
         console.error('Failed to initialize game:', error);
@@ -386,6 +246,56 @@ export default function GamePage() {
 
     initializeGame();
   }, [game, isLoading, loadWalletBalance, initializeUserCard, router]);
+
+  // Check for winner
+  useEffect(() => {
+    const checkForWinner = async () => {
+      if (!game || gameEndedCheckRef.current) return;
+      
+      if (game.status === 'FINISHED' && game.winnerId && !showWinnerModal) {
+        console.log('🏁 Game finished! Fetching winner info...');
+        gameEndedCheckRef.current = true;
+        
+        try {
+          setIsWinnerLoading(true);
+          const winnerData = await getWinnerInfo();
+          
+          if (winnerData) {
+            setWinnerInfo(winnerData);
+            
+            // Check if current user is the winner
+            const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+            if (userId) {
+              const isWinner = winnerData.winner.telegramId === userId || 
+                              winnerData.winner._id.toString() === userId;
+              setIsUserWinner(isWinner);
+              
+              // Calculate winning amount
+              const totalPot = (game.currentPlayers || 0) * 10;
+              const platformFee = totalPot * 0.1;
+              const winnerPrize = totalPot - platformFee;
+              setWinningAmount(winnerPrize);
+            }
+            
+            // Show winner modal after delay
+            setTimeout(() => {
+              setShowWinnerModal(true);
+              setIsWinnerLoading(false);
+            }, 1500);
+          }
+        } catch (error) {
+          console.error('Failed to fetch winner info:', error);
+          setIsWinnerLoading(false);
+        }
+      }
+    };
+    
+    checkForWinner();
+    
+    return () => {
+      gameEndedCheckRef.current = false;
+    };
+  }, [game, getWinnerInfo, showWinnerModal]);
 
   // Countdown for winner modal
   useEffect(() => {
@@ -428,26 +338,11 @@ export default function GamePage() {
       
       if (data.success) {
         const letter = getNumberLetter(data.number);
-        
-        // Animate the new number
-        setIsAnimating(true);
         setCurrentCalledNumber({
           number: data.number,
-          letter: letter,
-          isNew: true
+          letter: letter
         });
-        
-        // Update called numbers
         setAllCalledNumbers(data.calledNumbers);
-        lastCalledNumbersRef.current = data.calledNumbers;
-        
-        // Clear animation after duration
-        setTimeout(() => {
-          setIsAnimating(false);
-          setCurrentCalledNumber(prev => 
-            prev ? { ...prev, isNew: false } : null
-          );
-        }, NUMBER_ANIMATION_DURATION);
         
         // Show notification
         console.log(`📢 ${letter}${data.number} called! Click it on your card to mark.`);
@@ -473,7 +368,7 @@ export default function GamePage() {
       if (response.data.success) {
         console.log(`✅ Successfully manually marked number: ${number}`);
         
-        // Update local bingo card state without reloading
+        // Update local bingo card state
         if (localBingoCard) {
           const numbers = localBingoCard.numbers.flat();
           const position = numbers.indexOf(number);
@@ -516,9 +411,9 @@ export default function GamePage() {
           prizeAmount: response.data.prizeAmount
         });
         
-        // Update game state without full refresh
+        // Update game state
         setTimeout(() => {
-          fetchGameUpdates();
+          refreshGame();
         }, 2000);
       } else {
         setClaimResult({
@@ -543,11 +438,6 @@ export default function GamePage() {
       clearInterval(countdownRef.current);
     }
     
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    
     setShowWinnerModal(false);
     setWinnerInfo(null);
     setIsUserWinner(false);
@@ -558,9 +448,6 @@ export default function GamePage() {
     setCountdown(5);
     
     gameEndedCheckRef.current = false;
-    isInitialLoadRef.current = true;
-    lastCalledNumbersRef.current = [];
-    lastGameStatusRef.current = '';
     
     router.push('/');
   };
@@ -571,26 +458,19 @@ export default function GamePage() {
       clearInterval(countdownRef.current);
     }
     
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    
     setShowWinnerModal(false);
     gameEndedCheckRef.current = false;
     setWinnerInfo(null);
     setIsUserWinner(false);
     setWinningAmount(0);
     setCountdown(5);
-    isInitialLoadRef.current = true;
-    lastCalledNumbersRef.current = [];
-    lastGameStatusRef.current = '';
+    refreshGame();
     
     // Navigate to main page to select a new card
     router.push('/');
   };
 
-  // Clean up timeouts and intervals on unmount
+  // Clean up timeouts on unmount
   useEffect(() => {
     return () => {
       if (animationTimeoutRef.current) {
@@ -598,10 +478,6 @@ export default function GamePage() {
       }
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
-      }
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
       }
     };
   }, []);
@@ -703,7 +579,7 @@ export default function GamePage() {
               <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
                 <h3 className="text-white font-bold mb-2">Current Number</h3>
                 <div className="text-center">
-                  <div className={`text-4xl font-bold text-yellow-300 mb-2 transition-all duration-300 ${isAnimating ? 'scale-110 animate-bounce' : 'scale-100'}`}>
+                  <div className="text-4xl font-bold text-yellow-300 mb-2">
                     {currentCalledNumber.letter}{currentCalledNumber.number}
                   </div>
                   <p className="text-white/70 text-sm">
@@ -1032,36 +908,21 @@ export default function GamePage() {
         )}
       </div>
 
-      {/* New Number Notification */}
-      {currentCalledNumber?.isNew && (
-        <motion.div 
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0, opacity: 0 }}
-          className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
-        >
+      {/* Called Number Notification */}
+      {currentCalledNumber && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
           <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-full shadow-lg">
             <div className="flex items-center gap-3">
-              <motion.span 
-                animate={{ rotate: [0, 360] }}
-                transition={{ duration: 0.5, repeat: 1 }}
-                className="text-2xl"
-              >
-                🔔
-              </motion.span>
+              <span className="text-2xl">🔔</span>
               <div>
-                <motion.div 
-                  initial={{ y: -20 }}
-                  animate={{ y: 0 }}
-                  className="font-bold text-lg"
-                >
+                <div className="font-bold text-lg">
                   {currentCalledNumber.letter}{currentCalledNumber.number} CALLED!
-                </motion.div>
+                </div>
                 <div className="text-sm opacity-90">Click it on your card to mark</div>
               </div>
             </div>
           </div>
-        </motion.div>
+        </div>
       )}
 
       <div className="grid grid-cols-4 gap-4">
@@ -1101,20 +962,13 @@ export default function GamePage() {
                       const isCurrent = currentCalledNumber?.number === number;
                       
                       return (
-                        <motion.div
+                        <div
                           key={number}
-                          layout
-                          initial={false}
-                          animate={{
-                            scale: isCurrent && currentCalledNumber?.isNew ? 1.1 : 1,
-                          }}
                           className={`
                             aspect-square rounded flex items-center justify-center 
                             transition-all duration-200 cursor-pointer relative
-                            ${isCurrent && currentCalledNumber?.isNew
-                              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-2 ring-yellow-400'
-                              : isCurrent
-                              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 ring-1 ring-yellow-400'
+                            ${isCurrent
+                              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-1 ring-yellow-400'
                               : isCalled
                               ? 'bg-gradient-to-br from-red-500 to-pink-600'
                               : 'bg-white/10'
@@ -1130,14 +984,10 @@ export default function GamePage() {
                             {number}
                           </span>
                           
-                          {isCurrent && currentCalledNumber?.isNew && (
-                            <motion.div 
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"
-                            />
+                          {isCurrent && (
+                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></div>
                           )}
-                        </motion.div>
+                        </div>
                       );
                     })}
                   </div>
@@ -1182,20 +1032,10 @@ export default function GamePage() {
             <div className={`text-center transition-all duration-300 ${isAnimating ? 'scale-110' : 'scale-100'}`}>
               {currentCalledNumber ? (
                 <div>
-                  <motion.div 
-                    animate={isAnimating ? {
-                      scale: [1, 1.2, 1],
-                      rotate: [0, 5, -5, 0]
-                    } : {}}
-                    transition={isAnimating ? {
-                      duration: 0.5,
-                      repeat: 1
-                    } : {}}
-                    className={`text-5xl font-bold mb-2`}
-                  >
+                  <div className={`text-5xl font-bold mb-2 transition-all duration-500 ${isAnimating ? 'animate-bounce' : ''}`}>
                     <span className="text-white mr-2">{currentCalledNumber.letter}</span>
                     <span className="text-yellow-300">{currentCalledNumber.number}</span>
-                  </motion.div>
+                  </div>
                   <p className="text-white/70 text-sm">
                     Click {currentCalledNumber.letter}{currentCalledNumber.number} on your card to mark it!
                   </p>
@@ -1266,17 +1106,8 @@ export default function GamePage() {
                       const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
                       return (
-                        <motion.div
+                        <div
                           key={`${rowIndex}-${colIndex}`}
-                          layout
-                          initial={false}
-                          animate={{
-                            scale: isCalled && !isMarked && game?.status === 'ACTIVE' ? 1.02 : 1,
-                          }}
-                          whileHover={isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' ? {
-                            scale: 1.05,
-                            backgroundColor: 'rgba(255, 255, 255, 0.25)'
-                          } : {}}
                           className={`
                             h-12 rounded-lg flex items-center justify-center 
                             font-bold transition-all duration-200 relative
@@ -1287,7 +1118,7 @@ export default function GamePage() {
                               : 'bg-white/15 text-white'
                             }
                             ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' 
-                              ? 'cursor-pointer' 
+                              ? 'cursor-pointer hover:scale-[1.02] hover:bg-white/25' 
                               : 'cursor-default'
                             }
                           `}
@@ -1314,24 +1145,14 @@ export default function GamePage() {
                                 {number}
                               </span>
                               {isCalled && !isMarked && game?.status === 'ACTIVE' && (
-                                <motion.div 
-                                  animate={{ scale: [1, 1.5, 1] }}
-                                  transition={{ repeat: Infinity, duration: 1 }}
-                                  className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full"
-                                />
+                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
                               )}
                               {isMarked && (
-                                <motion.div 
-                                  initial={{ scale: 0 }}
-                                  animate={{ scale: 1 }}
-                                  className="absolute top-1 right-1 text-[10px] opacity-90"
-                                >
-                                  ✓
-                                </motion.div>
+                                <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
                               )}
                             </>
                           )}
-                        </motion.div>
+                        </div>
                       );
                     })
                   )}
@@ -1395,10 +1216,10 @@ export default function GamePage() {
                   📖 Game Rules
                 </button>
                 <button
-                  onClick={fetchGameUpdates}
-                  className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all flex items-center justify-center gap-1"
+                  onClick={() => router.refresh()}
+                  className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all"
                 >
-                  ↻ Refresh Game Data
+                  ↻ Refresh Game
                 </button>
               </div>
             </div>
@@ -1448,17 +1269,14 @@ export default function GamePage() {
             
             {/* Claim Result Message */}
             {claimResult && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`
-                  mt-3 p-3 rounded-xl text-center text-sm font-medium w-full
-                  ${claimResult.success 
-                    ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
-                    : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                  }
-                `}
-              >
+              <div className={`
+                mt-3 p-3 rounded-xl text-center text-sm font-medium w-full
+                ${claimResult.success 
+                  ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
+                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                }
+                animate-fadeIn
+              `}>
                 {claimResult.message}
                 {claimResult.patternType && (
                   <div className="text-xs mt-1">
@@ -1470,7 +1288,7 @@ export default function GamePage() {
                     Prize: <span className="text-yellow-300">${claimResult.prizeAmount} ብር</span>
                   </div>
                 )}
-              </motion.div>
+              </div>
             )}
           </div>
         </div>
