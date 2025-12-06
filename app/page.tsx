@@ -743,22 +743,7 @@ export default function Home() {
             restartCooldownRemaining={restartCooldownRemaining}
           />
 
-          {/* AUTO-JOIN DIAGNOSTIC PANEL */}
-          <div className="mb-4 p-3 bg-black/30 rounded-xl border border-white/10 text-xs">
-            <div className="grid grid-cols-2 gap-2 text-white/70">
-              <div>Wallet Balance: <span className={effectiveWalletBalance >= 10 ? 'text-green-300' : 'text-red-300'}>{effectiveWalletBalance} ብር</span></div>
-              <div>Restart Cooldown: <span className={hasRestartCooldown ? 'text-yellow-300' : 'text-green-300'}>{hasRestartCooldown ? 'ACTIVE' : 'INACTIVE'}</span></div>
-              <div>Cooldown Remaining: <span className="text-yellow-300">{Math.ceil(restartCooldownRemaining/1000)}s</span></div>
-              <div>Auto-start Timer: <span className={hasAutoStartTimer ? 'text-yellow-300' : 'text-gray-400'}>{hasAutoStartTimer ? 'ACTIVE' : 'INACTIVE'}</span></div>
-              <div>Auto-start Remaining: <span className="text-yellow-300">{Math.ceil(autoStartTimeRemaining/1000)}s</span></div>
-              <div className="col-span-2 text-center pt-2 border-t border-white/10">
-                <div className="flex items-center justify-center gap-2">
-                  <Users className="w-3 h-3" />
-                  <span>Players with cards: <span className="font-bold">{playersWithCards}/2</span></span>
-                </div>
-              </div>
-            </div>
-          </div>
+     
 
           {/* Card Selection Status - UPDATED WITH RESTART COOLDOWN */}
           {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
@@ -1039,23 +1024,8 @@ export default function Home() {
         </div>
         
         <div className="space-y-2">
-          {/* Balance Information */}
-          <div className="flex justify-between items-center px-2">
-            <span className="text-white/70 text-sm">Your Balance:</span>
-            <div className="flex items-center gap-2">
-              <span className={`font-bold ${effectiveWalletBalance >= 10 ? 'text-green-300' : 'text-red-300'}`}>
-                {effectiveWalletBalance} ብር
-              </span>
-              <button
-                onClick={refreshWalletBalanceLocal}
-                disabled={isRefreshingBalance}
-                className="p-1 rounded-full bg-white/10 hover:bg-white/20 transition-all disabled:opacity-50"
-                title="Refresh balance"
-              >
-                <RefreshCw className={`w-3 h-3 ${isRefreshingBalance ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-          </div>
+       
+         
           
           {/* Dynamic game status message */}
           <p className={`text-sm text-center font-medium ${
