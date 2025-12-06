@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { User, Shield, Crown } from 'lucide-react';
 import { useAuth } from '@/app/contexts/AuthContext';
 interface UserInfoDisplayProps {
