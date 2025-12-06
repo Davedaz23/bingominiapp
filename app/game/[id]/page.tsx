@@ -1047,13 +1047,13 @@ export default function GamePage() {
       </div>
 
      {/* New Number Notification */}
-{currentCalledNumber?.isNew && (
+{/* {currentCalledNumber?.isNew && ( */}
   <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
     <div className="bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg font-bold">
-      🔔 {currentCalledNumber.letter}{currentCalledNumber.number}
+      🔔 {currentCalledNumber?.letter}{currentCalledNumber?.number} - New!
     </div>
   </div>
-)}
+{/* )} */}
 
       <div className="grid grid-cols-4 gap-4">
         {/* Left: Called Numbers */}
