@@ -521,7 +521,7 @@ export default function GamePage() {
   // Countdown for winner modal
   useEffect(() => {
     if (showWinnerModal && winnerInfo) {
-      setCountdown(5);
+      setCountdown(20);
       
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
@@ -699,7 +699,7 @@ export default function GamePage() {
     setCurrentCalledNumber(null);
     setAllCalledNumbers([]);
     setClaimResult(null);
-    setCountdown(5);
+    setCountdown(20);
     
     gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
@@ -724,7 +724,7 @@ export default function GamePage() {
     setWinnerInfo(null);
     setIsUserWinner(false);
     setWinningAmount(0);
-    setCountdown(5);
+    setCountdown(20);
     
     // Navigate to main page to select a new card
     router.push('/');
