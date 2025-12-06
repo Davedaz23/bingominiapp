@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - FIXED VERSION (No page reload, proper spectator mode)
+// app/game/[id]/page.tsx - UPDATED VERSION (Only winning line green)
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -93,7 +93,7 @@ export default function GamePage() {
   const [isWinnerLoading, setIsWinnerLoading] = useState(false);
   const [isUserWinner, setIsUserWinner] = useState(false);
   const [winningAmount, setWinningAmount] = useState(0);
-  const [countdown, setCountdown] = useState<number>(5);
+  const [countdown, setCountdown] = useState<number>(20); // Changed to 20 seconds
   
   // State for bingo claiming
   const [isClaimingBingo, setIsClaimingBingo] = useState<boolean>(false);
@@ -314,137 +314,6 @@ export default function GamePage() {
     }
   }, [getWinnerInfo]);
 
-  // Function to get winning pattern positions
-  const getWinningPatternPositions = useCallback((patternType?: string): number[] => {
-    if (!patternType) return [];
-    
-    const patternMap: Record<string, number[]> = {
-      // Rows (0-4)
-      'ROW_0': [0, 1, 2, 3, 4],           // Top row
-      'ROW_1': [5, 6, 7, 8, 9],           // Second row
-      'ROW_2': [10, 11, 12, 13, 14],      // Third row (with free space in middle)
-      'ROW_3': [15, 16, 17, 18, 19],      // Fourth row
-      'ROW_4': [20, 21, 22, 23, 24],      // Bottom row
-      
-      // Columns
-      'COLUMN_0': [0, 5, 10, 15, 20],     // First column (B)
-      'COLUMN_1': [1, 6, 11, 16, 21],     // Second column (I)
-      'COLUMN_2': [2, 7, 12, 17, 22],     // Third column (N)
-      'COLUMN_3': [3, 8, 13, 18, 23],     // Fourth column (G)
-      'COLUMN_4': [4, 9, 14, 19, 24],     // Fifth column (O)
-      
-      // Diagonals
-      'DIAGONAL_LEFT': [0, 6, 12, 18, 24],  // Top-left to bottom-right
-      'DIAGONAL_RIGHT': [4, 8, 12, 16, 20], // Top-right to bottom-left
-      
-      // Four corners
-      'FOUR_CORNERS': [0, 4, 20, 24],      // Four corners
-      
-      // Blackout (all cells except free space)
-      'BLACKOUT': Array.from({ length: 25 }, (_, i) => i).filter(i => i !== 12), // All except free space
-      
-      // Default BINGO (any row, column, or diagonal)
-      'BINGO': [], // This will be populated from API if available
-    };
-    
-    return patternMap[patternType] || [];
-  }, []);
-
-  // Helper function to check if a position is in winning pattern
-  const isWinningPosition = (rowIndex: number, colIndex: number): boolean => {
-    if (!winnerInfo?.winningPattern) return false;
-    
-    const flatIndex = rowIndex * 5 + colIndex;
-    const winningPositions = winnerInfo.winningCard?.winningPatternPositions || 
-                           getWinningPatternPositions(winnerInfo.winningPattern);
-    
-    return winningPositions.includes(flatIndex);
-  };
-
-  // Function to get winning pattern type name
-  const getPatternName = (patternType?: string): string => {
-    if (!patternType) return 'BINGO Line';
-    
-    const patternMap: Record<string, string> = {
-      'ROW_0': 'Top Row',
-      'ROW_1': 'Second Row',
-      'ROW_2': 'Third Row',
-      'ROW_3': 'Fourth Row',
-      'ROW_4': 'Bottom Row',
-      'COLUMN_0': 'First Column (B)',
-      'COLUMN_1': 'Second Column (I)',
-      'COLUMN_2': 'Third Column (N)',
-      'COLUMN_3': 'Fourth Column (G)',
-      'COLUMN_4': 'Fifth Column (O)',
-      'DIAGONAL_LEFT': 'Left Diagonal',
-      'DIAGONAL_RIGHT': 'Right Diagonal',
-      'FOUR_CORNERS': 'Four Corners',
-      'BLACKOUT': 'Blackout (Full Card)',
-      'BINGO': 'BINGO Line'
-    };
-    
-    return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
-  };
-
-  // Function to render pattern visualization
-  const renderPatternVisualization = () => {
-    if (!winnerInfo?.winningPattern) return null;
-    
-    const winningPositions = winnerInfo.winningCard?.winningPatternPositions || 
-                           getWinningPatternPositions(winnerInfo.winningPattern);
-    
-    return (
-      <div className="mt-4 bg-gray-900/50 rounded-xl p-4 border border-gray-700">
-        <h4 className="text-white font-bold mb-3 text-center">Winning Pattern</h4>
-        
-        {/* Mini BINGO grid */}
-        <div className="grid grid-cols-5 gap-1 max-w-xs mx-auto mb-4">
-          {Array.from({ length: 25 }).map((_, index) => {
-            const isWinningCell = winningPositions.includes(index);
-            const isFreeSpace = index === 12;
-            
-            return (
-              <div 
-                key={index}
-                className={`
-                  aspect-square rounded-md border flex items-center justify-center
-                  ${isWinningCell 
-                    ? 'bg-gradient-to-br from-yellow-500 to-orange-500 border-yellow-300 shadow-lg shadow-yellow-500/30 animate-pulse' 
-                    : isFreeSpace
-                    ? 'bg-gradient-to-br from-purple-700/40 to-pink-700/40 border-purple-500/30'
-                    : 'bg-gray-800/30 border-gray-700'
-                  }
-                `}
-              >
-                {isWinningCell && (
-                  <motion.div 
-                    animate={{ scale: [1, 1.2, 1] }}
-                    transition={{ duration: 1, repeat: Infinity }}
-                    className="w-2 h-2 bg-yellow-200 rounded-full"
-                  />
-                )}
-                {isFreeSpace && (
-                  <span className="text-[8px] text-white/70">FREE</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        
-        {/* Pattern description */}
-        <div className="text-center">
-          <div className="inline-flex items-center gap-2 bg-yellow-500/20 px-4 py-2 rounded-full">
-            <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-            <span className="text-yellow-300 font-medium">
-              {getPatternName(winnerInfo.winningPattern)}
-            </span>
-            <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // FIXED: Main initialization - properly checks for card
   useEffect(() => {
     const initializeGame = async () => {
@@ -518,10 +387,10 @@ export default function GamePage() {
     }
   }, [game, showWinnerModal, checkForWinner]);
 
-  // Countdown for winner modal
+  // Countdown for winner modal - UPDATED TO 20 SECONDS
   useEffect(() => {
     if (showWinnerModal && winnerInfo) {
-      setCountdown(20);
+      setCountdown(20); // Changed from 5 to 20
       
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
@@ -699,7 +568,7 @@ export default function GamePage() {
     setCurrentCalledNumber(null);
     setAllCalledNumbers([]);
     setClaimResult(null);
-    setCountdown(20);
+    setCountdown(20); // Changed from 5 to 20
     
     gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
@@ -724,7 +593,7 @@ export default function GamePage() {
     setWinnerInfo(null);
     setIsUserWinner(false);
     setWinningAmount(0);
-    setCountdown(20);
+    setCountdown(20); // Changed from 5 to 20
     
     // Navigate to main page to select a new card
     router.push('/');
@@ -759,6 +628,38 @@ export default function GamePage() {
                        (game.status === 'WAITING_FOR_PLAYERS' || 
                         game.status === 'CARD_SELECTION') &&
                        !localBingoCard;
+
+  // Helper function to check if a position is in winning pattern
+  const isWinningPosition = (rowIndex: number, colIndex: number): boolean => {
+    if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
+    const flatIndex = rowIndex * 5 + colIndex;
+    return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
+  };
+
+  // Function to get winning pattern type name
+  const getPatternName = (patternType?: string): string => {
+    if (!patternType) return 'BINGO Line';
+    
+    const patternMap: Record<string, string> = {
+      'ROW_0': 'Top Row',
+      'ROW_1': 'Second Row',
+      'ROW_2': 'Third Row',
+      'ROW_3': 'Fourth Row',
+      'ROW_4': 'Bottom Row',
+      'COLUMN_0': 'First Column (B)',
+      'COLUMN_1': 'Second Column (I)',
+      'COLUMN_2': 'Third Column (N)',
+      'COLUMN_3': 'Fourth Column (G)',
+      'COLUMN_4': 'Fifth Column (O)',
+      'DIAGONAL_LEFT': 'Left Diagonal',
+      'DIAGONAL_RIGHT': 'Right Diagonal',
+      'FOUR_CORNERS': 'Four Corners',
+      'BLACKOUT': 'Blackout (Full Card)',
+      'BINGO': 'BINGO Line'
+    };
+    
+    return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
+  };
 
   // FIXED: Show spectator mode ONLY when user truly doesn't have a card
   if (isSpectatorMode && !localBingoCard) {
@@ -955,7 +856,7 @@ export default function GamePage() {
                     </div>
                   </div>
 
-                  {/* Right: Winning Card Display */}
+                  {/* Right: Winning Card Display - UPDATED: Only winning line green */}
                   <div className="space-y-6">
                     {/* Card Title */}
                     <div className="flex items-center justify-between">
@@ -963,11 +864,11 @@ export default function GamePage() {
                         Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
                       </h3>
                       <div className="text-yellow-300 text-sm bg-yellow-500/20 px-3 py-1 rounded-full">
-                        Winning Pattern Highlighted
+                        Winning Line Highlighted in Green
                       </div>
                     </div>
 
-                    {/* Winning Card */}
+                    {/* Winning Card - UPDATED: Only winning positions in green */}
                     {winnerInfo.winningCard?.numbers && (
                       <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-6 border-2 border-yellow-500/50">
                         {/* BINGO Header */}
@@ -982,12 +883,11 @@ export default function GamePage() {
                           ))}
                         </div>
                         
-                        {/* Winning Card Numbers */}
+                        {/* Winning Card Numbers - UPDATED: Only winning positions green */}
                         <div className="grid grid-cols-5 gap-2">
                           {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
                             row.map((number: number | string, colIndex: number) => {
                               const flatIndex = rowIndex * 5 + colIndex;
-                              const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
                               const isWinningPos = isWinningPosition(rowIndex, colIndex);
                               const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
@@ -999,53 +899,30 @@ export default function GamePage() {
                                   transition={{ delay: rowIndex * 0.1 + colIndex * 0.02 }}
                                   className={`
                                     h-14 rounded-lg flex items-center justify-center 
-                                    font-bold transition-all duration-200 relative z-10
+                                    font-bold transition-all duration-200 relative
                                     ${isWinningPos
-                                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-lg shadow-yellow-500/50 border-2 border-yellow-300'
-                                      : isMarked
-                                      ? 'bg-gradient-to-br from-gray-700 to-gray-800 text-white/70 border border-gray-600'
+                                      ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-3 border-green-400 shadow-lg shadow-green-500/50'
                                       : isFreeSpace
-                                      ? 'bg-gradient-to-br from-purple-700/50 to-pink-700/50 text-white/80 border border-purple-600/30'
-                                      : 'bg-gray-800/50 text-white/40 border border-gray-700/50'
+                                      ? 'bg-gradient-to-br from-purple-700 to-pink-700 text-white border-2 border-purple-500'
+                                      : 'bg-gray-800/70 text-white/70 border border-gray-700'
                                     }
                                   `}
                                 >
                                   {isFreeSpace ? (
                                     <>
                                       <span className="text-xs font-bold">FREE</span>
-                                      <div className="absolute top-1 right-1 text-[10px] opacity-70">✓</div>
+                                      <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
                                     </>
                                   ) : (
                                     <>
-                                      <span className={`text-base ${isWinningPos ? 'font-black' : ''}`}>
+                                      <span className="text-base">
                                         {number}
                                       </span>
-                                      
-                                      {/* Special indicator for winning positions */}
                                       {isWinningPos && (
                                         <>
-                                          <motion.div 
-                                            animate={{ rotate: [0, 360] }}
-                                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                                            className="absolute inset-0 border-2 border-yellow-300 rounded-lg"
-                                          />
-                                          <div className="absolute -top-2 -right-2 w-4 h-4 bg-yellow-400 rounded-full animate-ping" />
+                                          <div className="absolute top-1 right-1 text-[10px] opacity-90 text-green-200">✓</div>
+                                          <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
                                         </>
-                                      )}
-                                      
-                                      {/* Checkmark for marked positions */}
-                                      {isMarked && (
-                                        <div className={`
-                                          absolute top-1 right-1 text-[10px]
-                                          ${isWinningPos ? 'text-yellow-200 font-black' : 'text-gray-400'}
-                                        `}>
-                                          ✓
-                                        </div>
-                                      )}
-                                      
-                                      {/* Glow effect for winning positions */}
-                                      {isWinningPos && (
-                                        <div className="absolute inset-0 rounded-lg bg-yellow-400/20 blur-sm animate-pulse" />
                                       )}
                                     </>
                                   )}
@@ -1055,79 +932,49 @@ export default function GamePage() {
                           )}
                         </div>
                         
-                        {/* Pattern Description */}
-                        <div className="mt-4 p-3 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 rounded-lg border border-yellow-500/20">
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="w-3 h-3 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-full animate-pulse" />
-                            <span className="text-white font-medium">
-                              Winning Pattern: <span className="text-yellow-300 font-bold">
-                                {getPatternName(winnerInfo.winningPattern)}
-                              </span>
-                            </span>
-                            <div className="w-3 h-3 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-full animate-pulse" />
-                          </div>
-                          
-                          {/* Visual pattern indicator */}
-                          <div className="mt-3 flex justify-center">
-                            <div className="grid grid-cols-5 gap-1 bg-black/30 p-2 rounded-lg">
-                              {Array.from({ length: 25 }).map((_, index) => {
-                                const winningPositions = winnerInfo.winningCard?.winningPatternPositions || 
-                                                       getWinningPatternPositions(winnerInfo.winningPattern);
-                                const isWinningCell = winningPositions.includes(index);
-                                const isFreeSpace = index === 12;
-                                
-                                return (
-                                  <div 
-                                    key={index}
-                                    className={`
-                                      w-4 h-4 rounded-sm border
-                                      ${isWinningCell 
-                                        ? 'bg-gradient-to-br from-yellow-500 to-orange-500 border-yellow-400 animate-pulse' 
-                                        : isFreeSpace
-                                        ? 'bg-purple-700/50 border-purple-600/50'
-                                        : 'bg-gray-800/30 border-gray-700/30'
-                                      }
-                                    `}
-                                  />
-                                );
-                              })}
-                            </div>
-                          </div>
+                        {/* Pattern Info */}
+                        <div className="mt-4 p-3 bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-lg border border-green-500/30">
+                          <p className="text-green-300 text-sm text-center">
+                            <span className="font-bold">Winning Pattern:</span> {getPatternName(winnerInfo.winningPattern)}
+                          </p>
+                          <p className="text-white/70 text-xs text-center mt-1">
+                            Only the winning line positions are highlighted in green
+                          </p>
                         </div>
                         
                         {/* Legend */}
                         <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
                           <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-gradient-to-br from-yellow-500 to-orange-500 animate-pulse"></div>
+                            <div className="w-3 h-3 rounded-full bg-gradient-to-br from-green-600 to-emerald-700"></div>
                             <span className="text-white/80">Winning Line</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded bg-gray-700 border border-gray-600"></div>
-                            <span className="text-white/60">Marked Numbers</span>
+                            <div className="w-3 h-3 rounded bg-gray-800/70 border border-gray-700"></div>
+                            <span className="text-white/60">Card Numbers</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded bg-gradient-to-br from-purple-700/50 to-pink-700/50"></div>
+                            <div className="w-3 h-3 rounded bg-gradient-to-br from-purple-700 to-pink-700"></div>
                             <span className="text-white/60">Free Space</span>
                           </div>
                         </div>
                       </div>
                     )}
-
-                    {/* Pattern Visualization */}
-                    {renderPatternVisualization()}
                   </div>
                 </div>
 
                 {/* Countdown and Action Buttons */}
                 <div className="mt-8 pt-6 border-t border-white/20">
-                  {/* Countdown */}
+                  {/* Countdown - UPDATED to 20 seconds */}
                   <div className="text-center mb-6">
                     <p className="text-white/70 text-sm mb-2">
-                      New game starts in:
+                      Modal closes in:
                     </p>
                     <div className="text-3xl font-bold text-yellow-300">
                       {countdown} seconds
                     </div>
+                    <p className="text-white/50 text-xs mt-1">
+                      (20 seconds total)
+                    </p>
                   </div>
 
                   {/* Action Buttons */}
