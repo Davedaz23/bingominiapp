@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/page.tsx - FIXED VERSION (Proper wallet balance handling)
+// app/page.tsx - UPDATED VERSION (Allow viewing active games)
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -21,7 +21,7 @@ import { GameControls } from '../components/game/GameControls';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
 import { useAccountStorage } from '../hooks/useAccountStorage';
-import { Clock, Play, Check, Rocket, AlertCircle, Users, RefreshCw } from 'lucide-react';
+import { Clock, Play, Check, Rocket, AlertCircle, Users, RefreshCw, Eye } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -48,7 +48,6 @@ export default function Home() {
     pageLoading,
     checkGameStatus,
     initializeGameState,
-    // ADD AUTO-START STATES
     autoStartTimeRemaining,
     hasAutoStartTimer
   } = useGameState();
@@ -73,15 +72,33 @@ export default function Home() {
   const [gameParticipants, setGameParticipants] = useState<any[]>([]);
   const [playersWithCards, setPlayersWithCards] = useState<number>(0);
   const [canStartGame, setCanStartGame] = useState<boolean>(false);
+  const [activeGames, setActiveGames] = useState<any[]>([]);
+  const [loadingActiveGames, setLoadingActiveGames] = useState<boolean>(false);
 
-  // ==================== ADD BALANCE REFRESH STATES ====================
+  // Balance refresh states
   const [localWalletBalance, setLocalWalletBalance] = useState<number>(0);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState<boolean>(false);
   const [balanceRefreshCounter, setBalanceRefreshCounter] = useState<number>(0);
 
-  // ==================== ADD MISSING RESTART COOLDOWN STATES ====================
+  // Restart cooldown states
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
   const [restartCooldownRemaining, setRestartCooldownRemaining] = useState<number>(0);
+
+  // ==================== NEW: LOAD ACTIVE GAMES ====================
+  const loadActiveGames = async () => {
+    try {
+      setLoadingActiveGames(true);
+      const response = await gameAPI.getActiveGames();
+      if (response.data.success) {
+        setActiveGames(response.data.games || []);
+        console.log('🎮 Active games loaded:', response.data.games.length);
+      }
+    } catch (error) {
+      console.error('❌ Failed to load active games:', error);
+    } finally {
+      setLoadingActiveGames(false);
+    }
+  };
 
   // ==================== FIXED: REFRESH WALLET BALANCE FUNCTION ====================
   const refreshWalletBalanceLocal = async () => {
@@ -89,13 +106,11 @@ export default function Home() {
       setIsRefreshingBalance(true);
       console.log('💰 Refreshing wallet balance...');
       
-      // First try to use the AuthContext's refresh function
       if (refreshWalletBalance) {
         await refreshWalletBalance();
         console.log('✅ Used AuthContext refreshWalletBalance');
       }
       
-      // Also fetch directly to ensure we have the latest balance
       const response = await fetch('/api/wallet/balance', {
         method: 'GET',
         headers: {
@@ -111,7 +126,6 @@ export default function Home() {
         }
       }
       
-      // Increment counter to trigger UI updates
       setBalanceRefreshCounter(prev => prev + 1);
     } catch (error) {
       console.error('❌ Failed to refresh wallet balance:', error);
@@ -121,13 +135,11 @@ export default function Home() {
   };
 
   // ==================== FIXED: USE CORRECT BALANCE SOURCE ====================
-  // Combine local balance with AuthContext balance for reliability
   const effectiveWalletBalance = localWalletBalance > 0 ? localWalletBalance : walletBalance;
 
   // ==================== UPDATE RESTART COOLDOWN FROM GAME DATA ====================
   useEffect(() => {
     if (gameData) {
-      // Check if game has restart cooldown data
       const cooldown = gameData.hasRestartCooldown || false;
       const cooldownRemaining = gameData.restartCooldownRemaining || 0;
       
@@ -153,7 +165,6 @@ export default function Home() {
             const playersWithCardsCount = participants.filter(p => p.hasCard).length;
             setPlayersWithCards(playersWithCardsCount);
             
-            // Check if game can start (minimum 2 players with cards)
             const canStart = playersWithCardsCount >= 2;
             setCanStartGame(canStart);
             
@@ -167,10 +178,18 @@ export default function Home() {
 
     fetchGameParticipants();
     
-    // Refresh participants every 5 seconds
     const interval = setInterval(fetchGameParticipants, 5000);
     return () => clearInterval(interval);
   }, [gameData?._id]);
+
+  // ==================== LOAD ACTIVE GAMES ON INITIALIZATION ====================
+  useEffect(() => {
+    loadActiveGames();
+    
+    // Refresh active games every 10 seconds
+    const interval = setInterval(loadActiveGames, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ==================== FIXED: MODIFIED AUTO-JOIN LOGIC WITH PROPER BALANCE CHECK ====================
   useEffect(() => {
@@ -213,19 +232,16 @@ export default function Home() {
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
 
-    // Only check auto-start if game is waiting and NOT in restart cooldown
     if (gameStatus === 'WAITING' && gameData?._id && !hasRestartCooldown) {
       intervalId = setInterval(async () => {
         try {
           console.log('🔄 Checking auto-start conditions...');
           
-          // Call the auto-start check API
           const response = await gameAPI.checkAutoStart(gameData._id);
           
           if (response.data.success) {
             console.log('🎮 Auto-start check response:', response.data);
             
-            // If game started via auto-start, refresh game state
             if (response.data.gameStarted) {
               console.log('🚀 Game auto-started! Refreshing...');
               await checkGameStatus();
@@ -236,7 +252,7 @@ export default function Home() {
         } catch (error) {
           console.error('❌ Auto-start check failed:', error);
         }
-      }, 5000); // Check every 5 seconds
+      }, 5000);
     }
 
     return () => {
@@ -246,16 +262,14 @@ export default function Home() {
 
   // ==================== FIXED: MODIFIED AUTO-JOIN FUNCTION WITH PROPER BALANCE CHECK ====================
   const handleAutoJoinGame = async () => {
-    if (!selectedNumber || !user?.id || hasRestartCooldown) return; // Don't auto-join during cooldown
+    if (!selectedNumber || !user?.id || hasRestartCooldown) return;
     
-    // Check if enough players before auto-joining
     if (playersWithCards < 2) {
       console.log(`❌ Not enough players with cards (${playersWithCards}/2). Cannot auto-join.`);
       setJoinError(`Need ${2 - playersWithCards} more player(s) to start the game`);
       return;
     }
 
-    // Check balance
     if (effectiveWalletBalance < 10) {
       console.log(`❌ Insufficient balance: ${effectiveWalletBalance} ብር (needs 10 ብር)`);
       setJoinError('Insufficient balance. Minimum 10 ብር required to play.');
@@ -265,7 +279,6 @@ export default function Home() {
     try {
       console.log('🤖 Auto-joining game...');
       
-      // Set showGameView to true to trigger the loading screen
       setShowGameView(true);
       
       const waitingGamesResponse = await gameAPI.getWaitingGames();
@@ -274,7 +287,6 @@ export default function Home() {
         const game = waitingGamesResponse.data.games[0];
         console.log('🎯 Joining waiting game:', game._id);
         
-        // Check game participants again before joining
         const participantsResponse = await gameAPI.getGameParticipants(game._id);
         const currentPlayersWithCards = participantsResponse.data.participants?.filter(p => p.hasCard).length || 0;
         
@@ -285,14 +297,12 @@ export default function Home() {
           return;
         }
         
-        // FIX: Use user.id (Telegram ID) instead of MongoDB ObjectId
         const joinResponse = await gameAPI.joinGame(game.code, user.id);
         
         if (joinResponse.data.success) {
           const updatedGame = joinResponse.data.game;
           console.log('✅ Auto-joined game successfully');
           
-          // Get the user's bingo card using Telegram ID
           try {
             const cardResponse = await gameAPI.getUserBingoCard(updatedGame._id, user.id);
             if (cardResponse.data.success && cardResponse.data.bingoCard) {
@@ -307,7 +317,6 @@ export default function Home() {
                 router.push(`/game/${updatedGame._id}?card=${encodedCardData}`);
               }, 1500);
             } else {
-              // Fallback: use generated bingo card
               const cardData = {
                 cardNumber: selectedNumber,
                 numbers: bingoCard
@@ -320,7 +329,6 @@ export default function Home() {
             }
           } catch (cardError) {
             console.error('Failed to fetch bingo card:', cardError);
-            // Fallback with generated card
             const cardData = {
               cardNumber: selectedNumber,
               numbers: bingoCard
@@ -362,6 +370,12 @@ export default function Home() {
     }
   };
 
+  // ==================== NEW: HANDLE VIEW ACTIVE GAME ====================
+  const handleViewActiveGame = (gameId: string) => {
+    console.log(`👁️ Viewing active game: ${gameId}`);
+    router.push(`/game/${gameId}?spectator=true`);
+  };
+
   // ==================== FIXED: MODIFIED JOIN GAME FUNCTION WITH PROPER BALANCE CHECK ====================
   const handleJoinGame = async () => {
     if (!selectedNumber || !user?.id) return;
@@ -370,19 +384,16 @@ export default function Home() {
     setJoinError('');
 
     try {
-      // Check if enough players before joining
       if (playersWithCards < 2) {
         setJoinError(`Need ${2 - playersWithCards} more player(s) to start the game`);
         setJoining(false);
         return;
       }
 
-      // Check balance using effective balance
       if (effectiveWalletBalance < 10) {
         setJoinError(`Insufficient balance. You have ${effectiveWalletBalance} ብር, minimum 10 ብር required.`);
         setJoining(false);
         
-        // Try to refresh balance before showing error
         setTimeout(() => {
           refreshWalletBalanceLocal();
         }, 1000);
@@ -395,7 +406,6 @@ export default function Home() {
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game = waitingGamesResponse.data.games[0];
         
-        // Check participants again before joining
         const participantsResponse = await gameAPI.getGameParticipants(game._id);
         const currentPlayersWithCards = participantsResponse.data.participants?.filter(p => p.hasCard).length || 0;
         
@@ -483,7 +493,6 @@ export default function Home() {
 
   // ==================== CONDITIONAL GAME INFO DISPLAY ====================
   const shouldDisplayGameInfo = () => {
-    // Only show full game info for active or waiting games with enough players
     if (gameStatus === 'ACTIVE') {
       return true;
     }
@@ -492,7 +501,6 @@ export default function Home() {
       return true;
     }
     
-    // For other statuses, show limited info
     return false;
   };
 
@@ -513,11 +521,9 @@ export default function Home() {
       }
 
       try {
-        // Refresh wallet balance FIRST
         console.log('💰 Initial balance refresh...');
         await refreshWalletBalanceLocal();
         
-        // Initialize game state
         await initializeGameState();
         
         console.log('✅ App initialization complete');
@@ -545,7 +551,7 @@ export default function Home() {
   useEffect(() => {
     const intervalId = setInterval(() => {
       refreshWalletBalanceLocal();
-    }, 30000); // Refresh every 30 seconds
+    }, 30000);
 
     return () => clearInterval(intervalId);
   }, []);
@@ -617,8 +623,6 @@ export default function Home() {
           
           {/* User Info with Role Badge and Balance Refresh */}
           <div className="flex items-center gap-3">
-          
-            
             <UserInfoDisplay user={user} userRole={userRole} />
           </div>
         </div>
@@ -639,6 +643,57 @@ export default function Home() {
           onModerateGames={() => {}} // FIXED: Removed undefined function
           onViewReports={() => {}}   // FIXED: Removed undefined function
         />
+      )}
+
+      {/* ==================== NEW: ACTIVE GAMES SECTION ==================== */}
+      {activeGames.length > 0 && (
+        <motion.div 
+          className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Eye className="w-5 h-5 text-blue-300" />
+              <h3 className="text-blue-300 font-bold">Active Games</h3>
+            </div>
+            <span className="text-blue-200 text-sm bg-blue-500/30 px-2 py-1 rounded-full">
+              {activeGames.length} game{activeGames.length > 1 ? 's' : ''} in progress
+            </span>
+          </div>
+          
+          <div className="space-y-3">
+            {activeGames.map((game) => (
+              <div 
+                key={game._id}
+                className="bg-blue-500/10 backdrop-blur-lg rounded-xl p-3 border border-blue-400/20 hover:bg-blue-500/15 transition-all"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Game #{game.code}</div>
+                    <div className="text-blue-200 text-xs flex items-center gap-2 mt-1">
+                      <Users className="w-3 h-3" />
+                      <span>{game.currentPlayers || 0} players</span>
+                      <span>•</span>
+                      <span>{game.numbersCalled?.length || 0}/75 numbers called</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleViewActiveGame(game._id)}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm transition-all flex items-center gap-2"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Watch Live
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <p className="text-blue-200 text-xs mt-3 text-center">
+            👁️ You can watch any active game even without a card or sufficient balance
+          </p>
+        </motion.div>
       )}
 
       {/* ==================== BALANCE WARNING ==================== */}
@@ -719,8 +774,6 @@ export default function Home() {
             hasRestartCooldown={hasRestartCooldown}
             restartCooldownRemaining={restartCooldownRemaining}
           />
-
-     
 
           {/* Card Selection Status - UPDATED WITH RESTART COOLDOWN */}
           {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
@@ -1001,9 +1054,6 @@ export default function Home() {
         </div>
         
         <div className="space-y-2">
-       
-         
-          
           {/* Dynamic game status message */}
           <p className={`text-sm text-center font-medium ${
             hasRestartCooldown ? 'text-purple-300' :
@@ -1024,6 +1074,16 @@ export default function Home() {
           <p className="text-white/40 text-xs text-center">
             Minimum 2 players required to start the game
           </p>
+          
+          {/* View Games Info */}
+          <div className="mt-3 p-2 bg-blue-500/10 rounded-lg border border-blue-500/20">
+            <p className="text-blue-300 text-xs text-center mb-1">
+              👁️ <span className="font-bold">Watch Live Games</span>
+            </p>
+            <p className="text-blue-200 text-xs text-center">
+              You can watch any active game as a spectator, even without balance or a card
+            </p>
+          </div>
           
           {/* Additional restart cooldown info */}
           {hasRestartCooldown && (
