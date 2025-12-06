@@ -2,7 +2,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Clock, Play, Copy, Share2, Crown, Zap, Sparkles, Gamepad2, Eye, Trophy } from 'lucide-react';
 import { Game, GamePlayer } from '../../types';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 interface GameLobbyProps {
   game: Game;
@@ -10,6 +10,145 @@ interface GameLobbyProps {
   onStartGame: () => void;
   onJoinAsSpectator?: () => void;
 }
+
+interface WinnerModalProps {
+  showWinnerModal: boolean;
+  winnerInfo: any;
+  onClose: () => void;
+}
+
+// Helper function to generate random values outside of React component
+const generateRandomBackgroundConfigs = (count: number) => {
+  const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 100;
+  const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 100;
+  
+  return Array.from({ length: count }, () => ({
+    initial: {
+      x: Math.random() * windowWidth,
+      y: Math.random() * windowHeight,
+    },
+    animate: {
+      y: [0, -100, 0],
+      opacity: [0.3, 0.8, 0.3],
+    },
+    transition: {
+      duration: 4 + Math.random() * 3,
+      repeat: Infinity,
+      delay: Math.random() * 2,
+    }
+  }));
+};
+
+// Helper function for confetti configs
+const generateRandomConfettiConfigs = (count: number) => {
+  return Array.from({ length: count }, () => ({
+    initialX: Math.random() * 300 - 150,
+    initialLeft: `${Math.random() * 100}%`,
+    duration: 2 + Math.random() * 1,
+    delay: Math.random() * 0.5,
+  }));
+};
+
+// Generate configs once outside the component
+const BACKGROUND_CONFIGS = generateRandomBackgroundConfigs(15);
+
+// Moved WinnerModal component outside
+const WinnerModal: React.FC<WinnerModalProps> = ({ showWinnerModal, winnerInfo, onClose }) => {
+  // Generate confetti configs outside of render using a constant
+  const CONFETTI_CONFIGS = useMemo(() => generateRandomConfettiConfigs(30), []);
+
+  return (
+    <AnimatePresence>
+      {showWinnerModal && winnerInfo && (
+        <motion.div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-3xl p-8 mx-4 text-center shadow-2xl border-2 border-white/30 w-full max-w-sm"
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          >
+            {/* Confetti Effect */}
+            <div className="absolute inset-0 overflow-hidden rounded-3xl">
+              {CONFETTI_CONFIGS.map((config, i) => (
+                <motion.div
+                  key={i}
+                  className="absolute text-2xl"
+                  initial={{
+                    x: config.initialX,
+                    y: -50,
+                    rotate: 0,
+                    scale: 0,
+                  }}
+                  animate={{
+                    y: 400,
+                    rotate: 360,
+                    scale: [0, 1, 0],
+                  }}
+                  transition={{
+                    duration: config.duration,
+                    delay: config.delay,
+                  }}
+                  style={{
+                    left: config.initialLeft,
+                  }}
+                >
+                  🎉
+                </motion.div>
+              ))}
+            </div>
+
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.3, type: "spring" }}
+              className="relative z-10"
+            >
+              <Trophy className="w-16 h-16 text-white mx-auto mb-4 drop-shadow-2xl" />
+              <h2 className="text-3xl font-black text-white mb-4 drop-shadow-lg">
+                GAME OVER!
+              </h2>
+              
+              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30">
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
+                  <h3 className="text-xl font-black text-white">
+                    {winnerInfo.winner.firstName || winnerInfo.winner.username}
+                  </h3>
+                </div>
+                <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
+                <div>
+                  <div className="font-bold">{winnerInfo.totalPlayers}</div>
+                  <div>Players</div>
+                </div>
+                <div>
+                  <div className="font-bold">{winnerInfo.numbersCalled}</div>
+                  <div>Numbers Called</div>
+                </div>
+              </div>
+              
+              <motion.button
+                onClick={onClose}
+                className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Continue
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
 export const GameLobby: React.FC<GameLobbyProps> = ({
   game,
@@ -46,8 +185,10 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
   const userInGame = isUserInGame();
 
   // Check for winner when game finishes
-  useEffect(() => {
-    if (game.status === 'FINISHED' && game.winner) {
+useEffect(() => {
+  if (game.status === 'FINISHED' && game.winner) {
+    // Use setTimeout to defer the state updates
+    const timer = setTimeout(() => {
       setWinnerInfo({
         winner: game.winner,
         gameCode: game.code,
@@ -55,14 +196,16 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         numbersCalled: game.numbersCalled?.length || 0
       });
       setShowWinnerModal(true);
-    }
-  }, [game.status, game.winner, game.code, game.currentPlayers, game.numbersCalled]);
+    }, 0);
+    
+    return () => clearTimeout(timer);
+  }
+}, [game.status, game.winner, game.code, game.currentPlayers, game.numbersCalled]);
 
   // Auto-start countdown effect for system games
-  useEffect(() => {
-    if (canStart && isAutoCreatedGame() && game.status === 'WAITING') {
-      setAutoStartCountdown(10); // 10 second countdown
-      
+   useEffect(() => {
+    // Only set up the interval if we have a countdown value
+    if (autoStartCountdown !== null && autoStartCountdown > 0) {
       const interval = setInterval(() => {
         setAutoStartCountdown((prev) => {
           if (prev === 1) {
@@ -74,12 +217,11 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
         });
       }, 1000);
 
-      return () => clearInterval(interval);
-    } else {
-      setAutoStartCountdown(null);
+      return () => {
+        clearInterval(interval);
+      };
     }
-  }, [canStart, game.status, onStartGame, isAutoCreatedGame]);
-
+  }, [autoStartCountdown, onStartGame]);
   const copyGameCode = async (): Promise<void> => {
     await navigator.clipboard.writeText(game.code);
     setCopied(true);
@@ -100,28 +242,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     } else {
       copyGameCode();
     }
-  };
-
-  // Fixed animation variants for background elements
-  const getBackgroundAnimation = (index: number) => {
-    const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 100;
-    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 100;
-    
-    return {
-      initial: {
-        x: Math.random() * windowWidth,
-        y: Math.random() * windowHeight,
-      },
-      animate: {
-        y: [0, -100, 0],
-        opacity: [0.3, 0.8, 0.3],
-      },
-      transition: {
-        duration: 4 + Math.random() * 3,
-        repeat: Infinity,
-        delay: Math.random() * 2,
-      }
-    };
   };
 
   // Get player display name
@@ -177,113 +297,24 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
     }
   };
 
-  // Winner Modal Component
-  const WinnerModal = () => (
-    <AnimatePresence>
-      {showWinnerModal && winnerInfo && (
-        <motion.div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            className="bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-3xl p-8 mx-4 text-center shadow-2xl border-2 border-white/30 w-full max-w-sm"
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 200, damping: 15 }}
-          >
-            {/* Confetti Effect */}
-            <div className="absolute inset-0 overflow-hidden rounded-3xl">
-              {[...Array(30)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="absolute text-2xl"
-                  initial={{
-                    x: Math.random() * 300 - 150,
-                    y: -50,
-                    rotate: 0,
-                    scale: 0,
-                  }}
-                  animate={{
-                    y: 400,
-                    rotate: 360,
-                    scale: [0, 1, 0],
-                  }}
-                  transition={{
-                    duration: 2 + Math.random() * 1,
-                    delay: Math.random() * 0.5,
-                  }}
-                  style={{
-                    left: `${Math.random() * 100}%`,
-                  }}
-                >
-                  🎉
-                </motion.div>
-              ))}
-            </div>
-
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.3, type: "spring" }}
-              className="relative z-10"
-            >
-              <Trophy className="w-16 h-16 text-white mx-auto mb-4 drop-shadow-2xl" />
-              <h2 className="text-3xl font-black text-white mb-4 drop-shadow-lg">
-                GAME OVER!
-              </h2>
-              
-              <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/30">
-                <div className="flex items-center justify-center gap-3 mb-3">
-                  <Crown className="w-8 h-8 fill-yellow-400 text-yellow-400" />
-                  <h3 className="text-xl font-black text-white">
-                    {winnerInfo.winner.firstName || winnerInfo.winner.username}
-                  </h3>
-                </div>
-                <p className="text-white/90 font-bold text-lg">is the Winner! 🏆</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm text-white/80 mb-6">
-                <div>
-                  <div className="font-bold">{winnerInfo.totalPlayers}</div>
-                  <div>Players</div>
-                </div>
-                <div>
-                  <div className="font-bold">{winnerInfo.numbersCalled}</div>
-                  <div>Numbers Called</div>
-                </div>
-              </div>
-              
-              <motion.button
-                onClick={() => setShowWinnerModal(false)}
-                className="w-full bg-white text-orange-600 py-4 rounded-2xl font-bold shadow-lg hover:shadow-xl transition-all"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Continue
-              </motion.button>
-            </motion.div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 relative overflow-hidden">
       {/* Winner Modal */}
-      <WinnerModal />
+      <WinnerModal 
+        showWinnerModal={showWinnerModal}
+        winnerInfo={winnerInfo}
+        onClose={() => setShowWinnerModal(false)}
+      />
 
       {/* Animated Background */}
       <div className="absolute inset-0">
-        {[...Array(15)].map((_, i) => (
+        {BACKGROUND_CONFIGS.map((config, i) => (
           <motion.div
             key={i}
             className="absolute w-4 h-4 bg-white/10 rounded-full"
-            initial={getBackgroundAnimation(i).initial}
-            animate={getBackgroundAnimation(i).animate}
-            transition={getBackgroundAnimation(i).transition}
+            initial={config.initial}
+            animate={config.animate}
+            transition={config.transition}
           />
         ))}
       </div>
@@ -368,7 +399,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                 Game {game.code}
               </motion.h1>
               <div className="flex items-center gap-2 text-white/80">
-                <span>System Managed Game</span>
+                <span>System&apos;s Managed Game</span>
                 {isAutoCreatedGame() && (
                   <span className="px-2 py-1 bg-green-500/20 text-green-300 text-xs rounded-full font-bold border border-green-500/30">
                     AUTO
@@ -684,7 +715,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
                   <Users className="w-6 h-6 text-green-400" />
                 </motion.div>
                 <h4 className="font-black text-white text-lg mb-2">
-                  You're in this game!
+                  You&apos;re in this game!
                 </h4>
                 <p className="text-white/70">
                   {userRole === 'SPECTATOR' 
@@ -740,7 +771,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
             </div>
             {game.status === 'ACTIVE' && (
               <div className="mt-2 text-blue-300 text-xs">
-                • Spectators can practice but can't win
+                • Spectators can practice but can&apos;t win
               </div>
             )}
           </div>
