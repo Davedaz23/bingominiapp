@@ -617,30 +617,7 @@ export default function Home() {
           
           {/* User Info with Role Badge and Balance Refresh */}
           <div className="flex items-center gap-3">
-            {/* Balance Display with Refresh Button */}
-            <div className="flex items-center gap-2">
-              <div className="text-right">
-                <p className="text-white font-bold text-lg">
-                  {isRefreshingBalance ? (
-                    <span className="flex items-center gap-1">
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Updating...
-                    </span>
-                  ) : (
-                    `${effectiveWalletBalance} ብር`
-                  )}
-                </p>
-                <p className="text-white/60 text-xs">Balance</p>
-              </div>
-              <button
-                onClick={refreshWalletBalanceLocal}
-                disabled={isRefreshingBalance}
-                className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-all disabled:opacity-50"
-                title="Refresh balance"
-              >
-                <RefreshCw className={`w-4 h-4 text-white ${isRefreshingBalance ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
+          
             
             <UserInfoDisplay user={user} userRole={userRole} />
           </div>
