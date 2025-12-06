@@ -661,77 +661,6 @@ export default function GamePage() {
     return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
   };
 
-  // FIXED: Show spectator mode ONLY when user truly doesn't have a card
-  if (isSpectatorMode && !localBingoCard) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
-          <h1 className="text-white font-bold text-xl mb-2">Spectator Mode</h1>
-          <p className="text-white/70 text-sm mb-4">
-            {spectatorMessage || 'You are watching the game as a spectator.'}
-          </p>
-          
-          {canSelectCard ? (
-            <button 
-              onClick={() => router.push('/')}
-              className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-6 py-3 rounded-xl font-bold mr-3"
-            >
-              Select a Card to Join
-            </button>
-          ) : (
-            <p className="text-yellow-300 text-sm mb-4">
-              Game is active. Please wait for the next game to play.
-            </p>
-          )}
-          
-          <button 
-            onClick={() => router.push('/')}
-            className="bg-gradient-to-r from-gray-600 to-gray-700 text-white px-6 py-3 rounded-xl font-bold"
-          >
-            Return to Lobby
-          </button>
-        </div>
-        
-        {/* Game info for spectators */}
-        {game && (
-          <div className="space-y-4">
-            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-              <h3 className="text-white font-bold mb-3">Game Info</h3>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <p className="text-white font-bold">{game.currentPlayers || 0}</p>
-                  <p className="text-white/60 text-xs">Players</p>
-                </div>
-                <div>
-                  <p className="text-white font-bold">{(game.currentPlayers || 0) * 10} ብር</p>
-                  <p className="text-white/60 text-xs">Pot</p>
-                </div>
-                <div>
-                  <p className="text-white font-bold">{allCalledNumbers.length}/75</p>
-                  <p className="text-white/60 text-xs">Called</p>
-                </div>
-              </div>
-            </div>
-            
-            {currentCalledNumber && (
-              <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
-                <h3 className="text-white font-bold mb-2">Current Number</h3>
-                <div className="text-center">
-                  <div className={`text-4xl font-bold text-yellow-300 mb-2 ${currentCalledNumber.isNew ? 'animate-bounce' : ''}`}>
-                    {currentCalledNumber.letter}{currentCalledNumber.number}
-                  </div>
-                  <p className="text-white/70 text-sm">
-                    Game is in progress. Join next game to play!
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
   if (isLoading || isLoadingCard) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
@@ -1049,8 +978,8 @@ export default function GamePage() {
      {/* New Number Notification */}
 {/* {currentCalledNumber?.isNew && ( */}
   <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
-    <div className="bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg font-bold">
-      🔔 {currentCalledNumber?.letter}{currentCalledNumber?.number} - New!
+    <div className="bg-yellow-500/50 text-white px-4 py-2 rounded-lg shadow-lg font-bold">
+      🔔 {currentCalledNumber?.letter}{currentCalledNumber?.number} 
     </div>
   </div>
 {/* )} */}
@@ -1136,35 +1065,7 @@ export default function GamePage() {
               })}
             </div>
             
-            {/* Call Number Button */}
-            {game.status === 'ACTIVE' && (
-              <div className="mt-3 pt-3 border-t border-white/20">
-                <button
-                  onClick={handleCallNumber}
-                  disabled={isCallingNumber}
-                  className={`
-                    w-full flex items-center justify-center gap-2 py-2 rounded font-medium text-sm
-                    transition-all duration-200
-                    ${isCallingNumber 
-                      ? 'bg-gray-600/50 text-gray-300 cursor-not-allowed' 
-                      : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white'
-                    }
-                  `}
-                >
-                  {isCallingNumber ? (
-                    <>
-                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                      Calling...
-                    </>
-                  ) : (
-                    <>
-                      <span>🎲</span>
-                      Call Next Number
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
+          
           </div>
           
           {/* Current Number Display */}
@@ -1208,6 +1109,7 @@ export default function GamePage() {
         </div>
 
         {/* Right: Bingo Card */}
+        
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <div className="flex justify-between items-center mb-4">
