@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { Target, Users, Play, Trophy, Clock } from 'lucide-react';
 
 interface GameStatusDisplayProps {
-  gameStatus: 'WAITING' | 'ACTIVE' | 'FINISHED' | 'RESTARTING';
+  gameStatus: 'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'RESTARTING';
   currentPlayers: number;
   restartCountdown: number;
   selectedNumber: number | null;
@@ -43,7 +43,7 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
       };
     }
     switch (gameStatus) {
-      case 'WAITING':
+      case 'WAITING_FOR_PLAYERS':
         const playersNeeded = Math.max(0, minPlayers - players);
         
         return {
@@ -149,7 +149,7 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
         </div>
       )}
       
-      {gameStatus === 'WAITING' && (
+      {gameStatus === 'WAITING_FOR_PLAYERS' && (
         <p className="text-yellow-300 text-sm text-center mt-2">
           ⏳ Need at least 2 players to start the game. Currently: {currentPlayers}/2
         </p>

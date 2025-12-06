@@ -7,7 +7,7 @@ import { Game } from '@/types';
 export const useGameState = () => {
   const { user, refreshWalletBalance } = useAuth();
   const [activeGame, setActiveGame] = useState<any>(null);
-  const [gameStatus, setGameStatus] = useState<'WAITING' | 'ACTIVE' | 'FINISHED' | 'RESTARTING'>('WAITING');
+  const [gameStatus, setGameStatus] = useState<'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'RESTARTING'>('WAITING_FOR_PLAYERS');
   const [restartCountdown, setRestartCountdown] = useState<number>(30);
   const [currentPlayers, setCurrentPlayers] = useState<number>(0);
   const [gameData, setGameData] = useState<Game | null>(null);
@@ -39,7 +39,7 @@ export const useGameState = () => {
         
       } else if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game: Game = waitingGamesResponse.data.games[0];
-        setGameStatus('WAITING');
+        setGameStatus('WAITING_FOR_PLAYERS');
         setCurrentPlayers(game.players?.length || 0);
         setGameData(game);
         setRestartCountdown(0);
@@ -147,7 +147,7 @@ export const useGameState = () => {
 
   // Poll for auto-start updates when game is WAITING
   useEffect(() => {
-    if (gameStatus === 'WAITING' && gameData?._id && !hasAutoStartTimer) {
+    if (gameStatus === 'WAITING_FOR_PLAYERS' && gameData?._id && !hasAutoStartTimer) {
       console.log('🔄 Starting auto-start polling for waiting game');
       
       // Check auto-start every 5 seconds
@@ -164,7 +164,7 @@ export const useGameState = () => {
 
   // Initial auto-start check when game status changes to WAITING
   useEffect(() => {
-    if (gameData?._id && gameStatus === 'WAITING') {
+    if (gameData?._id && gameStatus === 'WAITING_FOR_PLAYERS') {
       console.log('🔄 Initial auto-start check for waiting game');
       checkAutoStart(gameData._id);
     }
