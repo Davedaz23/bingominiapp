@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - COMPLETE UPDATED VERSION
+// app/game/[id]/page.tsx - UPDATED WITH CORRECT TYPES
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Game as ImportedGame } from '../../../types/index'; // Import the type from your types file
 
 // Types
 interface CardData {
@@ -44,19 +45,23 @@ interface WinnerInfo {
   };
 }
 
-interface Game {
+// Use the imported Game type OR create a compatible local interface
+type Game = {
   _id: string;
   code: string;
   status: string;
-  currentPlayers: number;
+  currentPlayers?: number;
   numbersCalled: number[];
   winnerId?: string;
-  startedAt?: Date;
-  endedAt?: Date;
+  startedAt?: string; // Changed from Date to string to match the imported type
+  endedAt?: string;   // Changed from Date to string to match the imported type
   players?: any[];
   potAmount?: number;
   message?: string;
-}
+};
+
+// Or better yet, just use the imported type directly
+// type Game = ImportedGame;
 
 export default function GamePage() {
   const params = useParams();
@@ -83,9 +88,10 @@ export default function GamePage() {
   const [isMarking, setIsMarking] = useState<boolean>(false);
   
   // Enhanced state for called numbers
-   const [currentCalledNumber, setCurrentCalledNumber] = useState<{
+  const [currentCalledNumber, setCurrentCalledNumber] = useState<{
     number: number;
     letter: string;
+    isNew?: boolean;
   } | null>(null);
   
   const [allCalledNumbers, setAllCalledNumbers] = useState<number[]>([]);
@@ -117,7 +123,12 @@ export default function GamePage() {
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameEndedCheckRef = useRef(false);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
-  const cardCheckAttempts = useRef(0);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const lastGameStateRef = useRef<any>(null);
+  const isInitialMount = useRef(true);
+
+  // Polling interval for real-time updates (5 seconds)
+  const POLL_INTERVAL = 5000;
 
   // Helper function to get BINGO letter for a number
   const getNumberLetter = (num: number): string => {
@@ -147,7 +158,7 @@ export default function GamePage() {
       if (!userId || !id) return false;
 
       const cardResponse = await gameAPI.getUserBingoCard(id, userId);
-return !!(cardResponse.data.success && cardResponse.data.bingoCard);
+      return !!(cardResponse.data.success && cardResponse.data.bingoCard);
     } catch (error) {
       console.error('Error checking user card:', error);
       return false;
@@ -200,6 +211,108 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
     }
   }, [game, id, checkUserHasCard]);
 
+  // Function to update game state without reloading page
+  const updateGameState = useCallback(async () => {
+    if (!id || showWinnerModal) return;
+    
+    try {
+      const response = await gameAPI.getGame(id);
+      const updatedGame = response.data.game as Game; // Type assertion
+      
+      if (updatedGame) {
+        // Update called numbers if they've changed
+        if (updatedGame.numbersCalled && updatedGame.numbersCalled.length > 0) {
+          const newNumbers = updatedGame.numbersCalled;
+          const oldNumbers = allCalledNumbers;
+          
+          // Check if numbers have actually changed
+          if (JSON.stringify(newNumbers) !== JSON.stringify(oldNumbers)) {
+            setAllCalledNumbers(newNumbers);
+            
+            // If there's a new number, animate it
+            const lastNewNumber = newNumbers[newNumbers.length - 1];
+            const lastOldNumber = oldNumbers[oldNumbers.length - 1];
+            
+            if (lastNewNumber !== lastOldNumber) {
+              setCurrentCalledNumber({
+                number: lastNewNumber,
+                letter: getNumberLetter(lastNewNumber),
+                isNew: true
+              });
+              
+              // Clear the "new" flag after animation
+              setTimeout(() => {
+                setCurrentCalledNumber(prev => 
+                  prev ? { ...prev, isNew: false } : null
+                );
+              }, 2000);
+            } else if (!currentCalledNumber) {
+              setCurrentCalledNumber({
+                number: lastNewNumber,
+                letter: getNumberLetter(lastNewNumber),
+                isNew: false
+              });
+            }
+          }
+        }
+        
+        // Update game status
+        if (updatedGame.status === 'FINISHED' && updatedGame.winnerId && !gameEndedCheckRef.current) {
+          gameEndedCheckRef.current = true;
+          checkForWinner(updatedGame);
+        }
+        
+        // Store current state for comparison
+        lastGameStateRef.current = updatedGame;
+      }
+    } catch (error) {
+      console.warn('Failed to update game state:', error);
+    }
+  }, [id, showWinnerModal, allCalledNumbers, currentCalledNumber]);
+
+  // Check for winner
+  const checkForWinner = useCallback(async (gameData?: Game) => {
+    if (!gameData) return;
+    
+    try {
+      setIsWinnerLoading(true);
+      const winnerData = await getWinnerInfo();
+      
+      if (winnerData) {
+        setWinnerInfo(winnerData);
+        
+        // Check if current user is the winner
+        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+        if (userId) {
+          const isWinner = winnerData.winner.telegramId === userId || 
+                          winnerData.winner._id.toString() === userId;
+          setIsUserWinner(isWinner);
+          
+          // Calculate winning amount
+          const totalPot = (gameData.currentPlayers || 0) * 10;
+          const platformFee = totalPot * 0.1;
+          const winnerPrize = totalPot - platformFee;
+          setWinningAmount(winnerPrize);
+        }
+        
+        // Show winner modal after delay
+        setTimeout(() => {
+          setShowWinnerModal(true);
+          setIsWinnerLoading(false);
+          
+          // Stop polling when game is finished
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('Failed to fetch winner info:', error);
+      setIsWinnerLoading(false);
+    }
+  }, [getWinnerInfo]);
+
   // Main initialization
   useEffect(() => {
     const initializeGame = async () => {
@@ -233,9 +346,18 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
           if (lastNumber) {
             setCurrentCalledNumber({
               number: lastNumber,
-              letter: getNumberLetter(lastNumber)
+              letter: getNumberLetter(lastNumber),
+              isNew: false
             });
           }
+        }
+
+        // Store initial game state
+        lastGameStateRef.current = game;
+
+        // Start polling for updates
+        if (!pollingRef.current) {
+          pollingRef.current = setInterval(updateGameState, POLL_INTERVAL);
         }
 
       } catch (error) {
@@ -245,57 +367,24 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
     };
 
     initializeGame();
-  }, [game, isLoading, loadWalletBalance, initializeUserCard, router]);
 
-  // Check for winner
-  useEffect(() => {
-    const checkForWinner = async () => {
-      if (!game || gameEndedCheckRef.current) return;
-      
-      if (game.status === 'FINISHED' && game.winnerId && !showWinnerModal) {
-        console.log('🏁 Game finished! Fetching winner info...');
-        gameEndedCheckRef.current = true;
-        
-        try {
-          setIsWinnerLoading(true);
-          const winnerData = await getWinnerInfo();
-          
-          if (winnerData) {
-            setWinnerInfo(winnerData);
-            
-            // Check if current user is the winner
-            const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-            if (userId) {
-              const isWinner = winnerData.winner.telegramId === userId || 
-                              winnerData.winner._id.toString() === userId;
-              setIsUserWinner(isWinner);
-              
-              // Calculate winning amount
-              const totalPot = (game.currentPlayers || 0) * 10;
-              const platformFee = totalPot * 0.1;
-              const winnerPrize = totalPot - platformFee;
-              setWinningAmount(winnerPrize);
-            }
-            
-            // Show winner modal after delay
-            setTimeout(() => {
-              setShowWinnerModal(true);
-              setIsWinnerLoading(false);
-            }, 1500);
-          }
-        } catch (error) {
-          console.error('Failed to fetch winner info:', error);
-          setIsWinnerLoading(false);
-        }
+    // Cleanup function
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
       }
     };
-    
-    checkForWinner();
-    
-    return () => {
-      gameEndedCheckRef.current = false;
-    };
-  }, [game, getWinnerInfo, showWinnerModal]);
+  }, [game, isLoading, loadWalletBalance, initializeUserCard, router, updateGameState]);
+
+  // Check for winner on game status change
+  useEffect(() => {
+    if (game && game.status === 'FINISHED' && game.winnerId && !showWinnerModal && !gameEndedCheckRef.current) {
+      console.log('🏁 Game finished! Fetching winner info...');
+      gameEndedCheckRef.current = true;
+      checkForWinner(game as Game); // Type assertion
+    }
+  }, [game, showWinnerModal, checkForWinner]);
 
   // Countdown for winner modal
   useEffect(() => {
@@ -338,11 +427,22 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
       
       if (data.success) {
         const letter = getNumberLetter(data.number);
+        
+        // Update state locally without page reload
         setCurrentCalledNumber({
           number: data.number,
-          letter: letter
+          letter: letter,
+          isNew: true
         });
+        
         setAllCalledNumbers(data.calledNumbers);
+        
+        // Clear animation after duration
+        setTimeout(() => {
+          setCurrentCalledNumber(prev => 
+            prev ? { ...prev, isNew: false } : null
+          );
+        }, 2000);
         
         // Show notification
         console.log(`📢 ${letter}${data.number} called! Click it on your card to mark.`);
@@ -354,7 +454,7 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
     }
   };
 
-  // Handle manual number marking
+  // Handle manual number marking - FIXED: No page reload
   const handleMarkNumber = async (number: number) => {
     if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
     
@@ -368,7 +468,7 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
       if (response.data.success) {
         console.log(`✅ Successfully manually marked number: ${number}`);
         
-        // Update local bingo card state
+        // Update local bingo card state WITHOUT calling refreshGame
         if (localBingoCard) {
           const numbers = localBingoCard.numbers.flat();
           const position = numbers.indexOf(number);
@@ -379,18 +479,28 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
               ...localBingoCard,
               markedPositions: updatedMarkedPositions
             });
+            
+            // Show visual feedback
+            setIsAnimating(true);
+            setTimeout(() => setIsAnimating(false), 500);
           }
         }
       }
     } catch (error: any) {
       console.error('Failed to mark number:', error);
-      // Show error message
+      // Show error message without page reload
+      setClaimResult({
+        success: false,
+        message: error.response?.data?.message || 'Failed to mark number'
+      });
+      
+      setTimeout(() => setClaimResult(null), 3000);
     } finally {
       setIsMarking(false);
     }
   };
 
-  // Handle manual Bingo claim
+  // Handle manual Bingo claim - FIXED: No page reload
   const handleClaimBingo = async () => {
     if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard) return;
     
@@ -411,10 +521,10 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
           prizeAmount: response.data.prizeAmount
         });
         
-        // Update game state
+        // Update game state WITHOUT full refresh - just poll for updates
         setTimeout(() => {
-          refreshGame();
-        }, 2000);
+          updateGameState();
+        }, 1000);
       } else {
         setClaimResult({
           success: false,
@@ -425,10 +535,15 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
       console.error('❌ Bingo claim failed:', error);
       setClaimResult({
         success: false,
-        message: error.message || 'Failed to claim bingo'
+        message: error.response?.data?.message || error.message || 'Failed to claim bingo'
       });
     } finally {
       setIsClaimingBingo(false);
+      
+      // Clear result after 5 seconds
+      setTimeout(() => {
+        setClaimResult(null);
+      }, 5000);
     }
   };
 
@@ -436,6 +551,11 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
   const handleReturnToLobby = () => {
     if (countdownRef.current) {
       clearInterval(countdownRef.current);
+    }
+    
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
     
     setShowWinnerModal(false);
@@ -458,13 +578,17 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
       clearInterval(countdownRef.current);
     }
     
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    
     setShowWinnerModal(false);
     gameEndedCheckRef.current = false;
     setWinnerInfo(null);
     setIsUserWinner(false);
     setWinningAmount(0);
     setCountdown(5);
-    refreshGame();
     
     // Navigate to main page to select a new card
     router.push('/');
@@ -479,8 +603,17 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
       if (countdownRef.current) {
         clearInterval(countdownRef.current);
       }
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
     };
   }, []);
+
+  // Manual refresh button - only updates state, doesn't reload page
+  const handleManualRefresh = () => {
+    updateGameState();
+  };
 
   // Use local card if available
   const displayBingoCard = localBingoCard || gameBingoCard;
@@ -579,7 +712,7 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
               <div className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 border border-yellow-500/30">
                 <h3 className="text-white font-bold mb-2">Current Number</h3>
                 <div className="text-center">
-                  <div className="text-4xl font-bold text-yellow-300 mb-2">
+                  <div className={`text-4xl font-bold text-yellow-300 mb-2 ${currentCalledNumber.isNew ? 'animate-bounce' : ''}`}>
                     {currentCalledNumber.letter}{currentCalledNumber.number}
                   </div>
                   <p className="text-white/70 text-sm">
@@ -908,21 +1041,36 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
         )}
       </div>
 
-      {/* Called Number Notification */}
-      {currentCalledNumber && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-pulse">
+      {/* New Number Notification */}
+      {currentCalledNumber?.isNew && (
+        <motion.div 
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0, opacity: 0 }}
+          className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
+        >
           <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-3 rounded-full shadow-lg">
             <div className="flex items-center gap-3">
-              <span className="text-2xl">🔔</span>
+              <motion.span 
+                animate={{ rotate: [0, 360] }}
+                transition={{ duration: 0.5, repeat: 1 }}
+                className="text-2xl"
+              >
+                🔔
+              </motion.span>
               <div>
-                <div className="font-bold text-lg">
+                <motion.div 
+                  initial={{ y: -20 }}
+                  animate={{ y: 0 }}
+                  className="font-bold text-lg"
+                >
                   {currentCalledNumber.letter}{currentCalledNumber.number} CALLED!
-                </div>
+                </motion.div>
                 <div className="text-sm opacity-90">Click it on your card to mark</div>
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       <div className="grid grid-cols-4 gap-4">
@@ -962,13 +1110,20 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
                       const isCurrent = currentCalledNumber?.number === number;
                       
                       return (
-                        <div
+                        <motion.div
                           key={number}
+                          layout
+                          initial={false}
+                          animate={{
+                            scale: isCurrent && currentCalledNumber?.isNew ? 1.1 : 1,
+                          }}
                           className={`
                             aspect-square rounded flex items-center justify-center 
                             transition-all duration-200 cursor-pointer relative
-                            ${isCurrent
-                              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-1 ring-yellow-400'
+                            ${isCurrent && currentCalledNumber?.isNew
+                              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 scale-105 ring-2 ring-yellow-400'
+                              : isCurrent
+                              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 ring-1 ring-yellow-400'
                               : isCalled
                               ? 'bg-gradient-to-br from-red-500 to-pink-600'
                               : 'bg-white/10'
@@ -984,10 +1139,14 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
                             {number}
                           </span>
                           
-                          {isCurrent && (
-                            <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-ping"></div>
+                          {isCurrent && currentCalledNumber?.isNew && (
+                            <motion.div 
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"
+                            />
                           )}
-                        </div>
+                        </motion.div>
                       );
                     })}
                   </div>
@@ -1032,10 +1191,20 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
             <div className={`text-center transition-all duration-300 ${isAnimating ? 'scale-110' : 'scale-100'}`}>
               {currentCalledNumber ? (
                 <div>
-                  <div className={`text-5xl font-bold mb-2 transition-all duration-500 ${isAnimating ? 'animate-bounce' : ''}`}>
+                  <motion.div 
+                    animate={currentCalledNumber.isNew ? {
+                      scale: [1, 1.2, 1],
+                      rotate: [0, 5, -5, 0]
+                    } : {}}
+                    transition={currentCalledNumber.isNew ? {
+                      duration: 0.5,
+                      repeat: 1
+                    } : {}}
+                    className={`text-5xl font-bold mb-2`}
+                  >
                     <span className="text-white mr-2">{currentCalledNumber.letter}</span>
                     <span className="text-yellow-300">{currentCalledNumber.number}</span>
-                  </div>
+                  </motion.div>
                   <p className="text-white/70 text-sm">
                     Click {currentCalledNumber.letter}{currentCalledNumber.number} on your card to mark it!
                   </p>
@@ -1106,8 +1275,17 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
                       const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
                       return (
-                        <div
+                        <motion.div
                           key={`${rowIndex}-${colIndex}`}
+                          layout
+                          initial={false}
+                          animate={{
+                            scale: isCalled && !isMarked && game?.status === 'ACTIVE' ? 1.02 : 1,
+                          }}
+                          whileHover={isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' ? {
+                            scale: 1.05,
+                            backgroundColor: 'rgba(255, 255, 255, 0.25)'
+                          } : {}}
                           className={`
                             h-12 rounded-lg flex items-center justify-center 
                             font-bold transition-all duration-200 relative
@@ -1118,7 +1296,7 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
                               : 'bg-white/15 text-white'
                             }
                             ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' 
-                              ? 'cursor-pointer hover:scale-[1.02] hover:bg-white/25' 
+                              ? 'cursor-pointer' 
                               : 'cursor-default'
                             }
                           `}
@@ -1145,14 +1323,24 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
                                 {number}
                               </span>
                               {isCalled && !isMarked && game?.status === 'ACTIVE' && (
-                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                                <motion.div 
+                                  animate={{ scale: [1, 1.5, 1] }}
+                                  transition={{ repeat: Infinity, duration: 1 }}
+                                  className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full"
+                                />
                               )}
                               {isMarked && (
-                                <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                                <motion.div 
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="absolute top-1 right-1 text-[10px] opacity-90"
+                                >
+                                  ✓
+                                </motion.div>
                               )}
                             </>
                           )}
-                        </div>
+                        </motion.div>
                       );
                     })
                   )}
@@ -1216,10 +1404,10 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
                   📖 Game Rules
                 </button>
                 <button
-                  onClick={() => router.refresh()}
-                  className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all"
+                  onClick={handleManualRefresh}
+                  className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all flex items-center justify-center gap-1"
                 >
-                  ↻ Refresh Game
+                  ↻ Refresh Game Data
                 </button>
               </div>
             </div>
@@ -1269,14 +1457,17 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
             
             {/* Claim Result Message */}
             {claimResult && (
-              <div className={`
-                mt-3 p-3 rounded-xl text-center text-sm font-medium w-full
-                ${claimResult.success 
-                  ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
-                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                }
-                animate-fadeIn
-              `}>
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`
+                  mt-3 p-3 rounded-xl text-center text-sm font-medium w-full
+                  ${claimResult.success 
+                    ? 'bg-green-500/20 text-green-300 border border-green-500/30' 
+                    : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                  }
+                `}
+              >
                 {claimResult.message}
                 {claimResult.patternType && (
                   <div className="text-xs mt-1">
@@ -1288,7 +1479,7 @@ return !!(cardResponse.data.success && cardResponse.data.bingoCard);
                     Prize: <span className="text-yellow-300">${claimResult.prizeAmount} ብር</span>
                   </div>
                 )}
-              </div>
+              </motion.div>
             )}
           </div>
         </div>
