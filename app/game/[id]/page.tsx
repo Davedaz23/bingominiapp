@@ -936,103 +936,109 @@ export default function GamePage() {
                     </div>
 
                     {/* Winning Card - FIXED: Proper diagonal display */}
-                    {winnerInfo.winningCard?.numbers && (
-                      <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-6 border-2 border-yellow-500/50">
-                        {/* BINGO Header */}
-                        <div className="grid grid-cols-5 gap-2 mb-4">
-                          {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                            <div 
-                              key={letter}
-                              className="h-12 rounded-lg flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-700 to-blue-800"
-                            >
-                              {letter}
-                            </div>
-                          ))}
-                        </div>
-                        
-                        {/* Winning Card Numbers */}
-                        <div className="grid grid-cols-5 gap-2">
-                          {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                            row.map((number: number | string, colIndex: number) => {
-                              const flatIndex = rowIndex * 5 + colIndex;
-                              const isWinningPos = isWinningPosition(rowIndex, colIndex);
-                              const isFreeSpace = rowIndex === 2 && colIndex === 2;
+                  {winnerInfo.winningCard?.numbers && (
+  <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-6 border-2 border-yellow-500/50">
+    {/* BINGO Header */}
+    <div className="grid grid-cols-5 gap-2 mb-4">
+      {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+        <div 
+          key={letter}
+          className="h-12 rounded-lg flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-700 to-blue-800"
+        >
+          {letter}
+        </div>
+      ))}
+    </div>
+    
+    {/* Winning Card Numbers */}
+    <div className="grid grid-cols-5 gap-2">
+      {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+        row.map((number: number | string, colIndex: number) => {
+          const flatIndex = rowIndex * 5 + colIndex;
+          const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
+          const isWinningPos = winnerInfo.winningCard?.winningPatternPositions?.includes(flatIndex); // Use stored winning positions
+          const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
-                              return (
-                                <motion.div
-                                  key={`${rowIndex}-${colIndex}`}
-                                  initial={{ scale: 0.8 }}
-                                  animate={{ scale: 1 }}
-                                  transition={{ delay: rowIndex * 0.1 + colIndex * 0.02 }}
-                                  className={`
-                                    h-14 rounded-lg flex items-center justify-center 
-                                    font-bold transition-all duration-200 relative
-                                    ${isWinningPos
-                                      ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-3 border-green-400 shadow-lg shadow-green-500/50'
-                                      : isFreeSpace
-                                      ? 'bg-gradient-to-br from-purple-700 to-pink-700 text-white border-2 border-purple-500'
-                                      : 'bg-gray-800/70 text-white/70 border border-gray-700'
-                                    }
-                                  `}
-                                >
-                                  {isFreeSpace ? (
-                                    <>
-                                      <span className="text-xs font-bold">FREE</span>
-                                      <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <span className="text-base">
-                                        {number}
-                                      </span>
-                                      {isWinningPos && (
-                                        <>
-                                          <div className="absolute top-1 right-1 text-[10px] opacity-90 text-green-200">✓</div>
-                                          <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
-                                        </>
-                                      )}
-                                    </>
-                                  )}
-                                </motion.div>
-                              );
-                            })
-                          )}
-                        </div>
-                        
-                        {/* Pattern Visualization */}
-                        {winnerInfo.winningPattern && (
-                          <div className="mt-4 p-3 bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-lg border border-green-500/30">
-                            <p className="text-green-300 text-sm text-center mb-2">
-                              <span className="font-bold">Pattern: </span>
-                              {getPatternName(winnerInfo.winningPattern)}
-                            </p>
-                            
-                            {/* Mini pattern visualization */}
-                            <div className="grid grid-cols-5 gap-1 max-w-xs mx-auto">
-                              {Array.from({ length: 25 }).map((_, index) => {
-                                const isWinningCell = isWinningPosition(
-                                  Math.floor(index / 5),
-                                  index % 5
-                                );
-                                
-                                return (
-                                  <div 
-                                    key={index}
-                                    className={`
-                                      aspect-square rounded-sm border
-                                      ${isWinningCell
-                                        ? 'bg-gradient-to-br from-green-600 to-emerald-700 border-green-400'
-                                        : 'bg-gray-800/50 border-gray-700'
-                                      }
-                                    `}
-                                  />
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
+          return (
+            <motion.div
+              key={`${rowIndex}-${colIndex}`}
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: rowIndex * 0.1 + colIndex * 0.02 }}
+              className={`
+                h-14 rounded-lg flex items-center justify-center 
+                font-bold transition-all duration-200 relative
+                ${isWinningPos
+                  ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-emerald-400 shadow-lg shadow-emerald-500/30'
+                  : isMarked && !isWinningPos
+                  ? 'bg-gray-800 text-white/70 border border-gray-700'
+                  : isFreeSpace
+                  ? 'bg-gray-800/80 text-white/60 border border-gray-700'
+                  : 'bg-gray-900 text-white/50 border border-gray-800'
+                }
+              `}
+            >
+              {isFreeSpace ? (
+                <>
+                  <span className="text-xs font-bold">FREE</span>
+                  <div className="absolute top-1 right-1 text-[10px] opacity-60">✓</div>
+                </>
+              ) : (
+                <>
+                  <span className={`text-base ${isMarked && !isWinningPos ? 'opacity-70' : ''}`}>
+                    {number}
+                  </span>
+                  
+                  {/* Show checkmark for all marked positions */}
+                  {isMarked && (
+                    <div className={`
+                      absolute top-1 right-1 text-[10px]
+                      ${isWinningPos ? 'text-emerald-300 opacity-90' : 'text-gray-400 opacity-60'}
+                    `}>
+                      ✓
+                    </div>
+                  )}
+                  
+                  {/* Animated pulse effect for winning line positions - 15 seconds duration */}
+                  {isWinningPos && (
+                    <motion.div 
+                      animate={{ 
+                        scale: [1, 1.1, 1],
+                        boxShadow: [
+                          '0 0 0 0 rgba(34, 197, 94, 0.7)',
+                          '0 0 0 10px rgba(34, 197, 94, 0)',
+                          '0 0 0 0 rgba(34, 197, 94, 0)'
+                        ]
+                      }}
+                      transition={{ 
+                        duration: 15, // 15 seconds for a complete cycle
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                      className="absolute inset-0 rounded-lg border-2 border-emerald-400/50"
+                    />
+                  )}
+                </>
+              )}
+            </motion.div>
+          );
+        })
+      )}
+    </div>
+    
+    {/* Winning Pattern Info */}
+    {winnerInfo.winningPattern && (
+      <div className="mt-4 text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-900/30 rounded-full border border-emerald-700/50">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+          <span className="text-sm text-emerald-300 font-medium">
+            Winning Pattern: {winnerInfo.winningPattern}
+          </span>
+        </div>
+      </div>
+    )}
+  </div>
+)}
                   </div>
                 </div>
 
