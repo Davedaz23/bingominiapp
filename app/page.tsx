@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/page.tsx - REDIRECT ONLY FOR ACTIVE GAMES
+// app/page.tsx - FIXED VERSION (Auto-join immediately when conditions met)
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { gameAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
@@ -18,7 +18,7 @@ import { ModeratorControls } from '../components/admin/ModeratorControls';
 // Import hooks
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
-import { Clock, AlertCircle, RefreshCw } from 'lucide-react';
+import { Clock, AlertCircle, RefreshCw, Users } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -33,6 +33,11 @@ export default function Home() {
   } = useAuth();
 
   const router = useRouter();
+  
+  // Use refs to track state without causing re-renders
+  const isAutoJoiningRef = useRef(false);
+  const autoRedirectedRef = useRef(false);
+  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Use custom hooks
   const {
@@ -62,7 +67,6 @@ export default function Home() {
   } = useCardSelection(gameData, gameStatus);
 
   const [joinError, setJoinError] = useState<string>('');
-  const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
   const [gameParticipants, setGameParticipants] = useState<any[]>([]);
   const [playersWithCards, setPlayersWithCards] = useState<number>(0);
   const [canStartGame, setCanStartGame] = useState<boolean>(false);
@@ -75,18 +79,16 @@ export default function Home() {
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
   const [restartCooldownRemaining, setRestartCooldownRemaining] = useState<number>(0);
 
-  // Auto-join tracking
+  // Auto-join tracking - local state for UI
   const [isAutoJoining, setIsAutoJoining] = useState<boolean>(false);
 
-  // ==================== REFRESH WALLET BALANCE FUNCTION ====================
-  const refreshWalletBalanceLocal = async () => {
+  // ==================== MEMOIZED FUNCTIONS ====================
+  const refreshWalletBalanceLocal = useCallback(async () => {
     try {
       setIsRefreshingBalance(true);
-      console.log('💰 Refreshing wallet balance...');
       
       if (refreshWalletBalance) {
         await refreshWalletBalance();
-        console.log('✅ Used AuthContext refreshWalletBalance');
       }
       
       const response = await fetch('/api/wallet/balance', {
@@ -94,13 +96,13 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
+        cache: 'no-store'
       });
       
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
           setLocalWalletBalance(data.balance);
-          console.log(`💰 Direct balance fetch: ${data.balance} ብር`);
         }
       }
     } catch (error) {
@@ -108,10 +110,148 @@ export default function Home() {
     } finally {
       setIsRefreshingBalance(false);
     }
-  };
+  }, [refreshWalletBalance]);
 
   // ==================== USE CORRECT BALANCE SOURCE ====================
   const effectiveWalletBalance = localWalletBalance > 0 ? localWalletBalance : walletBalance;
+
+  // ==================== CHECK FOR ACTIVE GAMES ====================
+  const checkAndRedirectToActiveGames = useCallback(async () => {
+    if (isAutoJoiningRef.current || autoRedirectedRef.current || selectedNumber) return;
+    
+    try {
+      const response = await gameAPI.getActiveGames();
+      
+      if (response.data.success && response.data.games.length > 0) {
+        const activeGame = response.data.games.find((game: any) => game.status === 'ACTIVE');
+        
+        if (activeGame) {
+          console.log('🎮 Redirecting to active game as spectator');
+          isAutoJoiningRef.current = true;
+          autoRedirectedRef.current = true;
+          setIsAutoJoining(true);
+          
+          router.push(`/game/${activeGame._id}?spectator=true`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to check active games:', error);
+    }
+  }, [selectedNumber, router]);
+
+  // ==================== FIXED: SIMPLIFIED AUTO-JOIN FUNCTION ====================
+  const handleAutoJoinGame = useCallback(async () => {
+    if (!selectedNumber || !user?.id || hasRestartCooldown || isAutoJoiningRef.current) {
+      console.log('Auto-join conditions not met:', {
+        selectedNumber,
+        userId: user?.id,
+        hasRestartCooldown,
+        isAutoJoining: isAutoJoiningRef.current
+      });
+      return;
+    }
+    
+    try {
+      console.log('🤖 Attempting auto-join...');
+      isAutoJoiningRef.current = true;
+      setIsAutoJoining(true);
+      
+      // 1. First check if there are any waiting games
+      const waitingGamesResponse = await gameAPI.getWaitingGames();
+      console.log('Waiting games:', waitingGamesResponse.data);
+      
+      if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
+        const waitingGame = waitingGamesResponse.data.games[0];
+        console.log('🎯 Found waiting game:', waitingGame._id);
+        
+        // Join the waiting game
+        const joinResponse = await gameAPI.joinGame(waitingGame.code, user.id);
+        
+        if (joinResponse.data.success) {
+          const updatedGame = joinResponse.data.game;
+          console.log('✅ Successfully joined waiting game:', updatedGame._id);
+          autoRedirectedRef.current = true;
+          
+          // Redirect to the game page
+          router.push(`/game/${updatedGame._id}`);
+          return;
+        }
+      }
+      
+      // 2. If no waiting games, check for active games
+      const activeGamesResponse = await gameAPI.getActiveGames();
+      console.log('Active games:', activeGamesResponse.data);
+      
+      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+        const activeGame = activeGamesResponse.data.games[0];
+        console.log('🎮 Found active game, joining as participant:', activeGame._id);
+        
+        // Try to join as participant
+        try {
+          const joinResponse = await gameAPI.joinGame(activeGame.code, user.id);
+          
+          if (joinResponse.data.success) {
+            const updatedGame = joinResponse.data.game;
+            console.log('✅ Successfully joined active game:', updatedGame._id);
+            autoRedirectedRef.current = true;
+            
+            router.push(`/game/${updatedGame._id}`);
+            return;
+          }
+        } catch (joinError) {
+          console.log('⚠️ Could not join as participant, trying as spectator');
+        }
+        
+        // If can't join as participant, join as spectator
+        console.log('👁️ Joining as spectator');
+        autoRedirectedRef.current = true;
+        router.push(`/game/${activeGame._id}?spectator=true`);
+        return;
+      }
+      
+      // 3. If no games at all, create a new waiting game
+      console.log('🆕 No games found, creating new waiting game');
+      
+      // Generate a unique game code
+      // const gameCode = `GAME${Math.floor(1000 + Math.random() * 9000)}`;
+      
+      // const createResponse = await gameAPI.createGame({
+      //   name: `Bingo Game ${gameCode}`,
+      //   code: gameCode,
+      //   status: 'WAITING_FOR_PLAYERS',
+      //   entryFee: 10,
+      //   maxPlayers: 400,
+      //   minPlayers: 2
+      // });
+      
+      // if (createResponse.data.success) {
+      //   const newGame = createResponse.data.game;
+      //   console.log('✅ Created new waiting game:', newGame._id);
+        
+      //   // Join the new game
+      //   const joinResponse = await gameAPI.joinGame(newGame.code, user.id);
+        
+      //   if (joinResponse.data.success) {
+      //     const updatedGame = joinResponse.data.game;
+      //     console.log('✅ Successfully joined new game:', updatedGame._id);
+      //     autoRedirectedRef.current = true;
+          
+      //     router.push(`/game/${updatedGame._id}`);
+      //     return;
+      //   }
+      // }
+      
+      console.log('❌ Failed to create or join any game');
+      setJoinError('Failed to join any game. Please try again.');
+      
+    } catch (error: any) {
+      console.error('Auto-join failed:', error);
+      setJoinError(error.response?.data?.message || 'Failed to join game');
+    } finally {
+      isAutoJoiningRef.current = false;
+      setIsAutoJoining(false);
+    }
+  }, [selectedNumber, user?.id, hasRestartCooldown, router]);
 
   // ==================== UPDATE RESTART COOLDOWN FROM GAME DATA ====================
   useEffect(() => {
@@ -121,14 +261,10 @@ export default function Home() {
       
       setHasRestartCooldown(cooldown);
       setRestartCooldownRemaining(cooldownRemaining);
-      
-      if (cooldown && cooldownRemaining > 0) {
-        console.log(`⏳ Restart cooldown active: ${Math.ceil(cooldownRemaining/1000)}s remaining`);
-      }
     }
   }, [gameData]);
 
-  // ==================== FETCH GAME PARTICIPANTS AND CHECK CONDITIONS ====================
+  // ==================== FETCH GAME PARTICIPANTS ====================
   useEffect(() => {
     const fetchGameParticipants = async () => {
       if (gameData?._id) {
@@ -144,7 +280,11 @@ export default function Home() {
             const canStart = playersWithCardsCount >= 2;
             setCanStartGame(canStart);
             
-            console.log(`👥 Game participants: ${participants.length}, Players with cards: ${playersWithCardsCount}, Can start: ${canStart}`);
+            console.log('👥 Game participants:', {
+              total: participants.length,
+              withCards: playersWithCardsCount,
+              canStart: canStart
+            });
           }
         } catch (error) {
           console.error('❌ Failed to fetch game participants:', error);
@@ -154,186 +294,90 @@ export default function Home() {
 
     fetchGameParticipants();
     
-    const interval = setInterval(fetchGameParticipants, 5000);
+    const interval = setInterval(fetchGameParticipants, 5000); // Every 5 seconds
+    
     return () => clearInterval(interval);
   }, [gameData?._id]);
 
-  // ==================== CHECK AND REDIRECT TO ACTIVE GAMES ====================
-  const checkAndRedirectToActiveGames = async () => {
-    // Don't redirect if we're already in the process or if user has selected a card
-    if (isAutoJoining || autoRedirected || selectedNumber) return;
-    
-    try {
-      console.log('🔍 Checking for active games...');
-      const response = await gameAPI.getActiveGames();
-      
-      if (response.data.success && response.data.games.length > 0) {
-        const activeGame = response.data.games.find((game: any) => game.status === 'ACTIVE');
-        
-        // Only redirect if there's an ACTIVE game
-        if (activeGame) {
-          console.log('🎮 ACTIVE game found, redirecting as spectator...');
-          setIsAutoJoining(true);
-          setAutoRedirected(true);
-          
-          // Redirect to the active game as spectator
-          setTimeout(() => {
-            router.push(`/game/${activeGame._id}?spectator=true`);
-          }, 500);
-        } else {
-          console.log('⏳ No ACTIVE games found, staying on page');
-        }
-      }
-    } catch (error) {
-      console.error('❌ Failed to check active games:', error);
-    }
-  };
-
-  // ==================== MAIN AUTO-REDIRECT LOGIC ====================
+  // ==================== FIXED: MAIN AUTO-JOIN TRIGGER ====================
   useEffect(() => {
-    // Check for active games immediately and then regularly
-    checkAndRedirectToActiveGames();
+    if (isAutoJoiningRef.current || autoRedirectedRef.current) return;
     
-    // Set up interval to check for active games regularly
-    const intervalId = setInterval(() => {
-      checkAndRedirectToActiveGames();
-    }, 3000); // Check every 3 seconds
+    console.log('🔍 Checking auto-join conditions:', {
+      selectedNumber,
+      effectiveWalletBalance,
+      hasRestartCooldown,
+      playersWithCards,
+      gameStatus
+    });
     
-    return () => clearInterval(intervalId);
-  }, [isAutoJoining, autoRedirected, selectedNumber]);
-
-  // ==================== AUTO-START CHECK ====================
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-
-    if (gameStatus === 'WAITING' && gameData?._id && !hasRestartCooldown) {
-      intervalId = setInterval(async () => {
-        try {
-          const response = await gameAPI.checkAutoStart(gameData._id);
-          
-          if (response.data.success && response.data.gameStarted) {
-            console.log('🚀 Game auto-started!');
-            await checkGameStatus();
-          }
-        } catch (error) {
-          console.error('❌ Auto-start check failed:', error);
-        }
-      }, 5000);
-    }
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [gameStatus, gameData?._id, checkGameStatus, hasRestartCooldown]);
-
-  // ==================== AUTO-JOIN FUNCTION ====================
-  const handleAutoJoinGame = async () => {
-    if (!selectedNumber || !user?.id || hasRestartCooldown || isAutoJoining) return;
-    
-    try {
-      console.log('🤖 Auto-joining game...');
-      setIsAutoJoining(true);
-      
-      const waitingGamesResponse = await gameAPI.getWaitingGames();
-      
-      if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
-        const game = waitingGamesResponse.data.games[0];
-        console.log('🎯 Joining waiting game:', game._id);
-        
-        const participantsResponse = await gameAPI.getGameParticipants(game._id);
-        const currentPlayersWithCards = participantsResponse.data.participants?.filter(p => p.hasCard).length || 0;
-        
-        if (currentPlayersWithCards < 2) {
-          console.log(`❌ Not enough players to join (${currentPlayersWithCards}/2)`);
-          setJoinError(`Need ${2 - currentPlayersWithCards} more player(s) to start the game`);
-          setIsAutoJoining(false);
-          return;
-        }
-        
-        const joinResponse = await gameAPI.joinGame(game.code, user.id);
-        
-        if (joinResponse.data.success) {
-          const updatedGame = joinResponse.data.game;
-          console.log('✅ Auto-joined game successfully');
-          setAutoRedirected(true);
-          
-          // Redirect to game page
-          setTimeout(() => {
-            router.push(`/game/${updatedGame._id}`);
-          }, 500);
-        } else {
-          console.log('⚠️ Auto-join failed');
-          setIsAutoJoining(false);
-        }
-      } else {
-        console.log('❌ No waiting games available');
-        setIsAutoJoining(false);
-      }
-    } catch (error: any) {
-      console.error('Auto-join failed:', error);
-      setIsAutoJoining(false);
-    }
-  };
-
-  // ==================== AUTO-JOIN WHEN CONDITIONS MET ====================
-  useEffect(() => {
-    if (isAutoJoining || autoRedirected) return;
-    
-    // Check if conditions are met for auto-joining with card
+    // Check if conditions are met for auto-joining
     const conditionsMet = 
-      cardSelectionStatus.timeRemaining <= 0 && 
-      cardSelectionStatus.isSelectionActive && 
       selectedNumber && 
       effectiveWalletBalance >= 10 &&
-      !hasRestartCooldown &&
-      playersWithCards >= 2;
+      !hasRestartCooldown;
     
     if (conditionsMet) {
-      console.log('🚀 All conditions met for auto-join!');
+      console.log('🚀 Auto-join conditions met! Triggering auto-join...');
+      
+      // Don't wait for minimum players - just try to join immediately
+      // The game will handle waiting for other players
       handleAutoJoinGame();
     }
   }, [
-    cardSelectionStatus.timeRemaining,
-    cardSelectionStatus.isSelectionActive,
     selectedNumber,
     effectiveWalletBalance,
     hasRestartCooldown,
     playersWithCards,
-    isAutoJoining,
-    autoRedirected
+    gameStatus,
+    handleAutoJoinGame
   ]);
 
-  // ==================== MAIN INITIALIZATION WITH BALANCE REFRESH ====================
+  // ==================== CHECK FOR ACTIVE GAMES ====================
+  useEffect(() => {
+    if (isAutoJoiningRef.current || autoRedirectedRef.current || selectedNumber) return;
+    
+    checkAndRedirectToActiveGames();
+    
+    if (checkIntervalRef.current) {
+      clearInterval(checkIntervalRef.current);
+    }
+    
+    checkIntervalRef.current = setInterval(() => {
+      checkAndRedirectToActiveGames();
+    }, 5000);
+    
+    return () => {
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+        checkIntervalRef.current = null;
+      }
+    };
+  }, [checkAndRedirectToActiveGames, selectedNumber]);
+
+  // ==================== MAIN INITIALIZATION ====================
   useEffect(() => {
     const initializeApp = async () => {
-      console.log('🚀 Starting app initialization...');
-      
-      if (authLoading) {
-        console.log('⏳ Waiting for auth to load...');
-        return;
-      }
+      if (authLoading) return;
 
       if (!isAuthenticated || !user) {
-        console.log('⚠️ User not authenticated, showing limited UI');
         await initializeGameState();
         return;
       }
 
       try {
-        console.log('💰 Initial balance refresh...');
         await refreshWalletBalanceLocal();
-        
         await initializeGameState();
         
         console.log('✅ App initialization complete');
-        console.log(`💰 User balance: ${effectiveWalletBalance} ብር`);
+        console.log('💰 User balance:', effectiveWalletBalance, 'ብር');
       } catch (error) {
         console.error('❌ Initialization error:', error);
       }
     };
 
     initializeApp();
-  }, [authLoading, isAuthenticated, user]);
+  }, [authLoading, isAuthenticated, user, initializeGameState, refreshWalletBalanceLocal]);
 
   // ==================== PERIODIC BALANCE REFRESH ====================
   useEffect(() => {
@@ -342,7 +386,7 @@ export default function Home() {
     }, 30000);
 
     return () => clearInterval(intervalId);
-  }, []);
+  }, [refreshWalletBalanceLocal]);
 
   // Auto-join loading screen
   if (isAutoJoining) {
@@ -366,8 +410,16 @@ export default function Home() {
           <p className="text-green-200 text-center mb-4">
             {selectedNumber 
               ? `Joining with Card #${selectedNumber}`
-              : 'Redirecting to game...'}
+              : 'Looking for available games...'}
           </p>
+          <div className="text-center text-green-300 text-sm">
+            <Users className="inline-block w-4 h-4 mr-2" />
+            {playersWithCards >= 2 ? (
+              <span>✅ Enough players to start!</span>
+            ) : (
+              <span>⏳ Waiting for other players... ({playersWithCards}/2)</span>
+            )}
+          </div>
         </div>
 
         {selectedNumber && (
@@ -409,6 +461,9 @@ export default function Home() {
           {/* User Info */}
           <div className="flex items-center gap-3">
             <UserInfoDisplay user={user} userRole={userRole} />
+            <div className="text-white/70 text-xs bg-white/10 px-3 py-1.5 rounded-full">
+              {effectiveWalletBalance} ብር
+            </div>
           </div>
         </div>
       </div>
@@ -465,6 +520,52 @@ export default function Home() {
               )}
             </button>
           </div>
+        </motion.div>
+      )}
+
+      {/* PLAYERS STATUS */}
+      {selectedNumber && (
+        <motion.div 
+          className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-blue-300" />
+              <p className="text-blue-300 font-bold text-sm">
+                Game Status
+              </p>
+            </div>
+            <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+              playersWithCards >= 2 
+                ? 'bg-green-500/20 text-green-300' 
+                : 'bg-yellow-500/20 text-yellow-300'
+            }`}>
+              {playersWithCards >= 2 ? 'Ready to Start' : 'Waiting for Players'}
+            </div>
+          </div>
+          
+          <div className="mt-2">
+            <div className="flex justify-between text-xs text-blue-200 mb-1">
+              <span>Players with cards:</span>
+              <span>{playersWithCards}/2</span>
+            </div>
+            <div className="w-full bg-blue-400/20 rounded-full h-2">
+              <div 
+                className="bg-gradient-to-r from-blue-400 to-cyan-400 h-2 rounded-full transition-all duration-300"
+                style={{ 
+                  width: `${(playersWithCards / 2) * 100}%` 
+                }}
+              />
+            </div>
+          </div>
+          
+          {playersWithCards < 2 && (
+            <p className="text-blue-200 text-xs mt-2 text-center">
+              Need {2 - playersWithCards} more player(s) to start the game
+            </p>
+          )}
         </motion.div>
       )}
 
