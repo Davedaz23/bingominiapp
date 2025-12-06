@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
 import { gameAPI } from '../services/api';
 import { useAuth } from '@/app/contexts/AuthContext';

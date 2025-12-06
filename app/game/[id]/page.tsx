@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - SIMPLIFIED WINNER MODAL
+// app/game/[id]/page.tsx - SIMPLIFIED WINNER MODAL (Only winning line green)
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -863,12 +863,11 @@ export default function GamePage() {
                         ))}
                       </div>
                       
-                      {/* Winning Card Numbers - Only highlight winning line */}
+                      {/* Winning Card Numbers - Only winning line in green, others white */}
                       <div className="grid grid-cols-5 gap-1">
                         {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
                           row.map((number: number | string, colIndex: number) => {
                             const flatIndex = rowIndex * 5 + colIndex;
-                            const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
                             const isWinningPos = isWinningPosition(rowIndex, colIndex);
                             const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
@@ -879,12 +878,10 @@ export default function GamePage() {
                                   h-8 rounded flex items-center justify-center 
                                   font-bold text-xs relative
                                   ${isWinningPos
-                                    ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border border-yellow-300'
-                                    : isMarked
-                                    ? 'bg-gray-700 text-white/70'
+                                    ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'
                                     : isFreeSpace
-                                    ? 'bg-purple-700/50 text-white/70'
-                                    : 'bg-gray-800 text-white/50'
+                                    ? 'bg-gradient-to-br from-purple-700 to-blue-800 text-white'
+                                    : 'bg-white text-gray-800'
                                   }
                                 `}
                               >
@@ -892,14 +889,9 @@ export default function GamePage() {
                                   <span className="text-[10px]">FREE</span>
                                 ) : (
                                   <>
-                                    <span className={isMarked && !isWinningPos ? 'line-through' : ''}>
-                                      {number}
-                                    </span>
-                                    {isMarked && !isWinningPos && (
-                                      <div className="absolute top-0.5 right-0.5 text-[8px] opacity-70">✓</div>
-                                    )}
+                                    <span>{number}</span>
                                     {isWinningPos && (
-                                      <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-yellow-300 rounded-full animate-ping"></div>
+                                      <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
                                     )}
                                   </>
                                 )}

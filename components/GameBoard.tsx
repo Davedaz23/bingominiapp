@@ -137,15 +137,7 @@ export default function GameBoard({ gameState, userCard, onBingo, onCallNumber }
         </div>
       </div>
 
-      {/* Manual test button - remove in production */}
-      <div className="text-center">
-        <button
-          onClick={handleManualCall}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-        >
-          Manual Call Number (Test)
-        </button>
-      </div>
+
 
       <div className="text-center">
         <div className="bg-yellow-500 text-white px-4 py-2 rounded-full inline-block">
