@@ -385,15 +385,15 @@ export const walletAPIAuto = {
       }
 
       // Strategy 3: Try direct API call with fallback
-      console.log('💰 Strategy 3: Trying direct balance endpoint');
-      try {
-        // Use a generic endpoint that handles both ID types
-        const response = await api.get('/wallet/balance/auto');
-        console.log('💰 Direct balance response:', response.data);
-        return { data: response.data };
-      } catch (error: any) {
-        console.warn('💰 Direct balance strategy failed:', error.message);
-      }
+      // console.log('💰 Strategy 3: Trying direct balance endpoint');
+      // try {
+      //   // Use a generic endpoint that handles both ID types
+      //   const response = await api.get('/wallet/balance');
+      //   console.log('💰 Direct balance response:', response.data);
+      //   return { data: response.data };
+      // } catch (error: any) {
+      //   console.warn('💰 Direct balance strategy failed:', error.message);
+      // }
 
       throw new Error('No valid user ID found for wallet balance');
     } catch (error) {

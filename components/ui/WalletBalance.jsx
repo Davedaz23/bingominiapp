@@ -32,19 +32,25 @@ export function WalletBalance() {
         return;
       }
 
-      const response = await fetch('/api/wallet/balance', {
-        headers: {
-          'user-id': userId,
-          'Content-Type': 'application/json'
-        }
-      });
+      // const response = await fetch('/api/wallet/balance', {
+      //   headers: {
+      //     'user-id': userId,
+      //     'Content-Type': 'application/json'
+      //   }
+      // });
+
+       const walletResponse = await walletAPIAuto.getBalance();
+            if (walletResponse.data.success) {
+              setBalance(walletResponse.data.balance);
+            }
       
-      const data = await response.json();
-      if (data.success) {
-        setBalance(data.balance);
-      } else {
-        console.error('Failed to fetch balance:', data.error);
-      }
+      // const data = await response.json();
+      // if (data.success) {
+      //   setBalance(data.balance);
+      // } 
+      // else {
+      //   console.error('Failed to fetch balance:', data.error);
+      // }
     } catch (error) {
       console.error('Error fetching balance:', error);
     }
