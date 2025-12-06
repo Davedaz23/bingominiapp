@@ -414,11 +414,11 @@ export default function Home() {
           </div>
         </div>
 
-        {selectedNumber && (
+        {/* {selectedNumber && (
           <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
             <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard!} />
           </div>
-        )}
+        )} */}
       </div>
     );
   }
