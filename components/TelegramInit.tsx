@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/components/TelegramInit.tsx - FIXED
 'use client';
 
