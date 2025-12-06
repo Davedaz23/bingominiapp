@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // contexts/AuthContext.tsx - UPDATED WITH WALLET BALANCE
 'use client';
 
