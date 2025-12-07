@@ -307,48 +307,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Add method to refresh wallet balance
-  // Update refreshWalletBalance function in AuthContext
-const refreshWalletBalance = async (): Promise<void> => {
-  if (!user) return;
-  
-  try {
-    console.log('💰 Refreshing wallet balance...');
+  const refreshWalletBalance = async (): Promise<void> => {
+    if (!user) return;
     
-    // Fetch fresh balance from API
-    const balance = await fetchWalletBalanceForUser(user.id);
-    
-    // Update wallet balance state
-    setWalletBalance(balance);
-    
-    // Also update the user object with new balance
-    setUser(prev => prev ? {
-      ...prev,
-      walletBalance: balance
-    } : null);
-    
-    // Update localStorage
-    localStorage.setItem('wallet_balance', balance.toString());
-    
-    // Update user in localStorage with new balance
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      const userData = JSON.parse(storedUser);
-      userData.walletBalance = balance;
-      localStorage.setItem('user', JSON.stringify(userData));
+    try {
+      const balance = await fetchWalletBalanceForUser(user.id);
+      setWalletBalance(balance);
+      localStorage.setItem('wallet_balance', balance.toString());
+      console.log('💰 Wallet balance refreshed:', balance);
+    } catch (error) {
+      console.error('❌ Error refreshing wallet balance:', error);
     }
-    
-    console.log('✅ Wallet balance refreshed:', balance);
-  } catch (error) {
-    console.error('❌ Error refreshing wallet balance:', error);
-    // Try to use cached balance as fallback
-    const storedBalance = localStorage.getItem('wallet_balance');
-    if (storedBalance) {
-      const fallbackBalance = parseFloat(storedBalance);
-      setWalletBalance(fallbackBalance);
-      console.log('⚠️ Using cached balance as fallback:', fallbackBalance);
-    }
-  }
-};
+  };
 
   const isAuthenticated = !!user;
   const isAdmin = user?.role === 'admin';

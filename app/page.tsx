@@ -395,7 +395,7 @@ export default function Home() {
       } else {
         // No waiting games, check active games
         const activeGamesResponse = await gameAPI.getActiveGames();
-        if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0 && activeGamesResponse.data.games[0].status=="ACTIVE") {
+        if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
           console.log('🎯 No waiting games, joining active game as spectator');
           setAutoRedirected(true);
           setTimeout(() => {
@@ -413,7 +413,7 @@ export default function Home() {
       
       // Try to join as spectator if join fails
       const activeGamesResponse = await gameAPI.getActiveGames();
-      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0 && activeGamesResponse.data.games[0].status=="ACTIVE" ) {
+      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0  ) {
         setAutoRedirected(true);
         setTimeout(() => {
           router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
