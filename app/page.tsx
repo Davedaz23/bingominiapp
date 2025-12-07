@@ -184,87 +184,112 @@ export default function Home() {
   }, []);
 
   // ==================== MAIN AUTO-REDIRECT LOGIC ====================
-  useEffect(() => {
-    // Don't auto-join if we're already in the process
-    if (isAutoJoining || autoRedirected) return;
-    
-    // Check if there are any active games to join as spectator
-    if (activeGames.length > 0 && !selectedNumber) {
-      const now = Date.now();
-      // Only attempt auto-join once every 5 seconds
-      if (now - lastAutoJoinAttempt > 5000) {
-        console.log('🎮 Active games available, redirecting as spectator...');
-        setLastAutoJoinAttempt(now);
-        setIsAutoJoining(true);
-        
-        // Redirect to the first active game as spectator
-        setTimeout(() => {
-          router.push(`/game/${activeGames[0]._id}?spectator=true`);
-          setAutoRedirected(true);
-        }, 1000);
-      }
-      return;
+ useEffect(() => {
+  // Don't auto-join if we're already in the process
+  if (isAutoJoining || autoRedirected) return;
+  
+  // Check if there are any active games to join as spectator
+  if (activeGames.length > 0 && !selectedNumber) {
+    const now = Date.now();
+    // Only attempt auto-join once every 5 seconds
+    if (now - lastAutoJoinAttempt > 5000) {
+      console.log('🎮 Active games available, redirecting as spectator...');
+      setLastAutoJoinAttempt(now);
+      setIsAutoJoining(true);
+      
+      // Redirect to the first active game as spectator
+      setTimeout(() => {
+        router.push(`/game/${activeGames[0]._id}?spectator=true`);
+        setAutoRedirected(true);
+      }, 1000);
     }
-    
-    // Check if conditions are met for auto-joining with card
+    return;
+  }
+  
+  // Only auto-join when game status is ACTIVE
+  if (gameStatus === 'ACTIVE') {
     const conditionsMet = 
-      cardSelectionStatus.timeRemaining <= 0 && 
-      cardSelectionStatus.isSelectionActive && 
+      selectedNumber && 
+      effectiveWalletBalance >= 10 &&
+      !hasRestartCooldown;
+    
+    if (conditionsMet && !isAutoJoining && !autoRedirected) {
+      console.log('🚀 Game is ACTIVE! Auto-joining with card...');
+      setIsAutoJoining(true);
+      handleAutoJoinGame();
+    }
+  }
+  
+  // For WAITING_FOR_PLAYERS status, just show waiting message but don't redirect
+  if (gameStatus === 'WAITING_FOR_PLAYERS') {
+    const conditionsMet = 
       selectedNumber && 
       effectiveWalletBalance >= 10 &&
       !hasRestartCooldown &&
       playersWithCards >= 2;
     
     if (conditionsMet && !isAutoJoining && !autoRedirected) {
-      console.log('🚀 All conditions met for auto-join!');
-      setIsAutoJoining(true);
-      handleAutoJoinGame();
+      console.log('⏳ Game is WAITING_FOR_PLAYERS, waiting for game to start...');
+      // Don't redirect yet, just show waiting message
+      // The auto-start timer will handle the transition to ACTIVE
     }
-  }, [
-    activeGames,
-    cardSelectionStatus.timeRemaining,
-    cardSelectionStatus.isSelectionActive,
-    selectedNumber,
-    effectiveWalletBalance,
-    hasRestartCooldown,
-    playersWithCards,
-    isAutoJoining,
-    autoRedirected,
-    lastAutoJoinAttempt
-  ]);
+  }
+}, [
+  activeGames,
+  gameStatus,  // Added this dependency
+  selectedNumber,
+  effectiveWalletBalance,
+  hasRestartCooldown,
+  playersWithCards,
+  isAutoJoining,
+  autoRedirected,
+  lastAutoJoinAttempt
+]);
+
 
   // ==================== AUTO-START CHECK ====================
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout;
+useEffect(() => {
+  let intervalId: NodeJS.Timeout;
 
-    if (gameStatus === 'WAITING_FOR_PLAYERS' && gameData?._id && !hasRestartCooldown) {
-      intervalId = setInterval(async () => {
-        try {
-          console.log('🔄 Checking auto-start conditions...');
+  if (gameStatus === 'WAITING_FOR_PLAYERS' && gameData?._id && !hasRestartCooldown) {
+    intervalId = setInterval(async () => {
+      try {
+        console.log('🔄 Checking auto-start conditions...');
+        
+        const response = await gameAPI.checkAutoStart(gameData._id);
+        
+        if (response.data.success) {
+          console.log('🎮 Auto-start check response:', response.data);
           
-          const response = await gameAPI.checkAutoStart(gameData._id);
-          
-          if (response.data.success) {
-            console.log('🎮 Auto-start check response:', response.data);
+          if (response.data.gameStarted) {
+            console.log('🚀 Game auto-started! Refreshing game status...');
+            // Refresh game status when auto-start happens
+            await checkGameStatus();
             
-            if (response.data.gameStarted) {
-              console.log('🚀 Game auto-started! Refreshing...');
-              await checkGameStatus();
-            } else if (response.data.autoStartInfo) {
-              console.log('⏳ Auto-start info:', response.data.autoStartInfo);
+            // If we have a selected card and the game is now active, trigger auto-join
+            if (selectedNumber && effectiveWalletBalance >= 10) {
+              console.log('🎯 Game is now ACTIVE, triggering auto-join...');
+              // Small delay to ensure state is updated
+              setTimeout(() => {
+                if (gameStatus.includes('ACTIVE') && !isAutoJoining && !autoRedirected) {
+                  handleAutoJoinGame();
+                }
+              }, 1000);
             }
+          } else if (response.data.autoStartInfo) {
+            console.log('⏳ Auto-start info:', response.data.autoStartInfo);
           }
-        } catch (error) {
-          console.error('❌ Auto-start check failed:', error);
         }
-      }, 5000);
-    }
+      } catch (error) {
+        console.error('❌ Auto-start check failed:', error);
+      }
+    }, 5000);
+  }
 
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [gameStatus, gameData?._id, checkGameStatus, hasRestartCooldown]);
-
+  return () => {
+    if (intervalId) clearInterval(intervalId);
+  };
+}, [gameStatus, gameData?._id, checkGameStatus, hasRestartCooldown, selectedNumber, effectiveWalletBalance, isAutoJoining, autoRedirected]);
   // ==================== AUTO-JOIN FUNCTION ====================
   const handleAutoJoinGame = async () => {
     if (!selectedNumber || !user?.id || hasRestartCooldown || isAutoJoining) return;
@@ -472,11 +497,7 @@ export default function Home() {
           </div>
         </motion.div>
 
-        {selectedNumber && (
-          <div className="bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-            <BingoCardPreview cardNumber={selectedNumber} numbers={bingoCard!} />
-          </div>
-        )}
+      
       </div>
     );
   }

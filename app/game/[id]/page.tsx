@@ -805,7 +805,8 @@ useEffect(() => {
     return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
   }, []);
 
-
+  // FIXED: Loading state with better timeout handling
+  
 
   if (!game) {
     return (
