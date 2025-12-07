@@ -1419,7 +1419,7 @@ export default function GamePage() {
       </div>
 
       {/* Claim Bingo Button - Fixed Position */}
-      {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && (
+      {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode &&  allCalledNumbers.length>0 && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 w-full max-w-md">
           <div className="flex flex-col items-center">
             <div className="mb-2 text-center">
