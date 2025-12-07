@@ -136,8 +136,8 @@ export default function GamePage() {
   const hasInitializedRef = useRef(false);
 
   // Polling intervals
-  const POLL_INTERVAL = 10000;
-  const MIN_UPDATE_INTERVAL = 3000;
+const POLL_INTERVAL = 3000; // Reduced from 10000 to 3000ms (3 seconds)
+const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
 
   // Helper function to get BINGO letter
   const getNumberLetter = (num: number): string => {
@@ -411,6 +411,9 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
     abortControllerRef.current = null;
   }
 }, [getWinnerInfo, showWinnerModal]);
+
+
+
 
   // FIXED: Update game state
   const updateGameState = useCallback(async (force = false) => {
