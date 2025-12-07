@@ -115,7 +115,7 @@ export interface Game {
   // Add restart cooldown properties
   hasRestartCooldown?: boolean;
   restartCooldownRemaining?: number;
-  
+  cooldownEndTime?: string;   // For cooldown/restart timer
   // Add game statistics properties
   playersWithCards?: number;
   minPlayersRequired?: number;

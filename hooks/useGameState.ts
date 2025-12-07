@@ -7,7 +7,7 @@ import { Game } from '@/types';
 export const useGameState = () => {
   const { user, refreshWalletBalance } = useAuth();
   const [activeGame, setActiveGame] = useState<any>(null);
-  const [gameStatus, setGameStatus] = useState<'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'RESTARTING'>('WAITING_FOR_PLAYERS');
+  const [gameStatus, setGameStatus] = useState<'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'RESTARTING' | 'COOLDOWN' | 'CARD_SELECTION'>('WAITING_FOR_PLAYERS');
   const [restartCountdown, setRestartCountdown] = useState<number>(30);
   const [currentPlayers, setCurrentPlayers] = useState<number>(0);
   const [gameData, setGameData] = useState<Game | null>(null);
@@ -16,57 +16,143 @@ export const useGameState = () => {
   const [autoStartTimeRemaining, setAutoStartTimeRemaining] = useState<number>(0);
   const [hasAutoStartTimer, setHasAutoStartTimer] = useState<boolean>(false);
   const [playersWithCards, setPlayersWithCards] = useState<number>(0);
+  const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
+  const [restartCooldownRemaining, setRestartCooldownRemaining] = useState<number>(0);
 
-  // Main game status check
+  // Helper function to fetch and process game data
+  const fetchGameData = useCallback(async (game: Game) => {
+    // Set basic game data
+    setGameData(game);
+    setCurrentPlayers(game.currentPlayers || 0);
+    
+    // Update called numbers
+    if (game.numbersCalled) {
+      setCalledNumbers(game.numbersCalled);
+    }
+    
+    // Check for cooldown timer
+    if (game.status === 'COOLDOWN' && game.cooldownEndTime) {
+      const now = new Date();
+      const cooldownEnd = new Date(game.cooldownEndTime);
+      const remaining = Math.max(0, cooldownEnd.getTime() - now.getTime());
+      
+      setHasRestartCooldown(true);
+      setRestartCooldownRemaining(remaining);
+      setRestartCountdown(Math.ceil(remaining / 1000));
+      
+      console.log(`⏳ Cooldown timer: ${Math.ceil(remaining/1000)}s remaining`);
+    } else if (game.status === 'FINISHED') {
+      // Check for finished game with cooldown
+      if (game.cooldownEndTime) {
+        const now = new Date();
+        const cooldownEnd = new Date(game.cooldownEndTime);
+        const remaining = Math.max(0, cooldownEnd.getTime() - now.getTime());
+        
+        setHasRestartCooldown(true);
+        setRestartCooldownRemaining(remaining);
+        setRestartCountdown(Math.ceil(remaining / 1000));
+        
+        console.log(`⏳ Next game starts in: ${Math.ceil(remaining/1000)}s`);
+      } else {
+        // Default to 30 seconds if no cooldown time is set
+        setHasRestartCooldown(true);
+        setRestartCooldownRemaining(30000);
+        setRestartCountdown(30);
+        console.log('⏳ Default 30s cooldown for next game');
+      }
+    } else {
+      setHasRestartCooldown(false);
+      setRestartCooldownRemaining(0);
+    }
+    
+    // Check for auto-start timer
+    if (game.hasAutoStartTimer && game.autoStartTimeRemaining) {
+      setHasAutoStartTimer(true);
+      setAutoStartTimeRemaining(game.autoStartTimeRemaining);
+      console.log(`⏰ Auto-start timer: ${Math.ceil(game.autoStartTimeRemaining/1000)}s`);
+    } else {
+      setHasAutoStartTimer(false);
+      setAutoStartTimeRemaining(0);
+    }
+    
+    // Update players with cards count
+    if (game.playersWithCards !== undefined) {
+      setPlayersWithCards(game.playersWithCards);
+    }
+  }, []);
+
+  // Main game status check - UPDATED VERSION without getMainGame
   const checkGameStatus = useCallback(async () => {
     try {
       console.log('🎮 Checking game status...');
       
-      const waitingGamesResponse = await gameAPI.getWaitingGames();
+      // Try to get active games first
       const activeGamesResponse = await gameAPI.getActiveGames();
-
+      
       if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
         const game: Game = activeGamesResponse.data.games[0];
         setGameStatus('ACTIVE');
-        setCurrentPlayers(game.players?.length || 0);
-        setGameData(game);
-        setRestartCountdown(0);
+        await fetchGameData(game);
         console.log('✅ Active game found:', game._id);
-        
-        // Reset auto-start timer for active games
-        setHasAutoStartTimer(false);
-        setAutoStartTimeRemaining(0);
-        
-      } else if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
-        const game: Game = waitingGamesResponse.data.games[0];
-        setGameStatus('WAITING_FOR_PLAYERS');
-        setCurrentPlayers(game.players?.length || 0);
-        setGameData(game);
-        setRestartCountdown(0);
-        console.log('✅ Waiting game found:', game._id);
-        
-        // Check auto-start status for waiting games
-        checkAutoStart(game._id);
-        
-      } else {
-        setGameStatus('FINISHED');
-        setRestartCountdown(30);
-        setCurrentPlayers(0);
-        setHasAutoStartTimer(false);
-        setAutoStartTimeRemaining(0);
-        console.log('✅ No active games, status set to FINISHED');
+        return true;
       }
       
+      // If no active games, try waiting games
+      const waitingGamesResponse = await gameAPI.getWaitingGames();
+      
+      if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
+        const game: Game = waitingGamesResponse.data.games[0];
+        setGameStatus('WAITING_FOR_PLAYERS');
+        await fetchGameData(game);
+        console.log('✅ Waiting game found:', game._id);
+        
+        // Check auto-start status
+        if (game._id) {
+          checkAutoStart(game._id);
+        }
+        return true;
+      }
+      
+      // If no games found, check if there's a specific game ID we should check
+      if (gameData?._id) {
+        try {
+          const gameResponse = await gameAPI.getGame(gameData._id);
+          if (gameResponse.data.success && gameResponse.data.game) {
+            const game: Game = gameResponse.data.game;
+            setGameStatus(game.status as any);
+            await fetchGameData(game);
+            console.log('✅ Found existing game:', game._id, game.status);
+            return true;
+          }
+        } catch (error) {
+          console.log('⚠️ Could not fetch existing game:', error);
+        }
+      }
+      
+      // No games found at all
+      console.log('🎮 No games found, creating default state');
+      setGameStatus('FINISHED');
+      setRestartCountdown(30);
+      setCurrentPlayers(0);
+      setHasAutoStartTimer(false);
+      setAutoStartTimeRemaining(0);
+      setHasRestartCooldown(true);
+      setRestartCooldownRemaining(30000);
+      setGameData(null);
+      
       return true;
+      
     } catch (error) {
       console.error('❌ Error checking game status:', error);
       setGameStatus('FINISHED');
       setRestartCountdown(30);
       setHasAutoStartTimer(false);
       setAutoStartTimeRemaining(0);
+      setHasRestartCooldown(true);
+      setRestartCooldownRemaining(30000);
       return false;
     }
-  }, []);
+  }, [gameData, fetchGameData]);
 
   // Auto-start check function
   const checkAutoStart = useCallback(async (gameId: string) => {
@@ -110,6 +196,30 @@ export const useGameState = () => {
       setAutoStartTimeRemaining(0);
     }
   }, []);
+
+  // Real-time countdown for restart cooldown
+  useEffect(() => {
+    if (!hasRestartCooldown || restartCooldownRemaining <= 0) return;
+    
+    const intervalId = setInterval(() => {
+      setRestartCooldownRemaining(prev => {
+        const newValue = prev - 1000;
+        if (newValue <= 0) {
+          clearInterval(intervalId);
+          setHasRestartCooldown(false);
+          setRestartCountdown(0);
+          // Refresh game status when cooldown ends
+          checkGameStatus();
+          return 0;
+        }
+        // Update restartCountdown in seconds
+        setRestartCountdown(Math.ceil(newValue / 1000));
+        return newValue;
+      });
+    }, 1000);
+    
+    return () => clearInterval(intervalId);
+  }, [hasRestartCooldown, restartCooldownRemaining, checkGameStatus]);
 
   // Auto-start timer countdown
   useEffect(() => {
@@ -170,19 +280,18 @@ export const useGameState = () => {
     }
   }, [gameData, gameStatus, checkAutoStart]);
 
-  // Handle restart countdown
+  // Handle RESTARTING state countdown (legacy - for backward compatibility)
   useEffect(() => {
     let countdownInterval: NodeJS.Timeout;
 
-    if (gameStatus === 'FINISHED' && restartCountdown > 0) {
+    if (gameStatus === 'RESTARTING' && restartCountdown > 0) {
       console.log('🔄 Starting restart countdown:', restartCountdown);
       
       countdownInterval = setInterval(() => {
         setRestartCountdown(prev => {
           if (prev <= 1) {
             clearInterval(countdownInterval);
-            setGameStatus('RESTARTING');
-            console.log('🔄 Restarting game...');
+            console.log('🔄 Game restart complete');
             setTimeout(() => checkGameStatus(), 1000);
             return 0;
           }
@@ -246,6 +355,24 @@ export const useGameState = () => {
     }
   };
 
+  // Function to get a game by ID (for manual refresh)
+  const refreshGameById = async (gameId: string) => {
+    try {
+      console.log(`🔄 Refreshing game by ID: ${gameId}`);
+      const response = await gameAPI.getGame(gameId);
+      if (response.data.success && response.data.game) {
+        const game: Game = response.data.game;
+        setGameStatus(game.status as any);
+        await fetchGameData(game);
+        return game;
+      }
+      return null;
+    } catch (error) {
+      console.error('❌ Error refreshing game:', error);
+      return null;
+    }
+  };
+
   return {
     activeGame,
     gameStatus,
@@ -257,11 +384,14 @@ export const useGameState = () => {
     autoStartTimeRemaining,
     hasAutoStartTimer,
     playersWithCards,
+    hasRestartCooldown,
+    restartCooldownRemaining,
     checkGameStatus,
     initializeGameState,
+    refreshGameById,
     setGameData,
     setGameStatus,
     manualTriggerAutoStart,
-    checkAutoStart // Export for external use
+    checkAutoStart
   };
 };

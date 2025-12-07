@@ -273,6 +273,52 @@ export default function Home() {
       if (intervalId) clearInterval(intervalId);
     };
   }, [gameStatus, gameData?._id, checkGameStatus, hasRestartCooldown]);
+useEffect(() => {
+  const checkGameStatus = async () => {
+    if (!gameData?._id) return;
+    
+    try {
+      const response = await gameAPI.getGame(gameData._id);
+      if (response.data.success) {
+        const game = response.data.game;
+        
+        // Update timers from game data
+        if (game.cooldownEndTime) {
+          const now = new Date();
+          const cooldownEnd = new Date(game.cooldownEndTime);
+          const remaining = Math.max(0, cooldownEnd.getTime() - now.getTime());
+          
+          setHasRestartCooldown(remaining > 0);
+          setRestartCooldownRemaining(remaining);
+          
+          console.log(`⏳ Cooldown timer: ${Math.ceil(remaining/1000)}s remaining`);
+        }
+        
+        // Also update auto-start timer if available
+        if (game.autoStartEndTime) {
+          const now = new Date();
+          const autoStartEnd = new Date(game.autoStartEndTime);
+          const remaining = Math.max(0, autoStartEnd.getTime() - now.getTime());
+          
+          console.log(`🚀 Auto-start timer: ${Math.ceil(remaining/1000)}s remaining`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to check game status:', error);
+    }
+  };
+  
+  // Check more frequently when in cooldown
+  let intervalId: NodeJS.Timeout;
+  if (hasRestartCooldown && restartCooldownRemaining > 0) {
+    intervalId = setInterval(checkGameStatus, 1000);
+  } else {
+    intervalId = setInterval(checkGameStatus, 5000);
+  }
+  
+  return () => clearInterval(intervalId);
+}, [gameData?._id, hasRestartCooldown, restartCooldownRemaining]);
+
 
   // ==================== AUTO-JOIN FUNCTION ====================
   const handleAutoJoinGame = async () => {

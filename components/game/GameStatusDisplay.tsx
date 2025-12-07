@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { Target, Users, Play, Trophy, Clock } from 'lucide-react';
 
 interface GameStatusDisplayProps {
-  gameStatus: 'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'RESTARTING';
+  gameStatus: 'WAITING_FOR_PLAYERS' | 'ACTIVE'|'CARD_SELECTION' |'COOLDOWN'| 'FINISHED' | 'RESTARTING';
   currentPlayers: number;
   restartCountdown: number;
   selectedNumber: number | null;
