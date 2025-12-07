@@ -1225,167 +1225,167 @@ useEffect(() => {
         </div>
 
         {/* Right: Bingo Card */}
-        <div className="col-span-2">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-3">
-                <h3 className="text-white font-bold text-xl">Your Bingo Card</h3>
-                {selectedNumber && (
-                  <span className="text-white/90 text-sm bg-gradient-to-r from-purple-500/30 to-blue-500/30 px-4 py-1.5 rounded-full font-medium">
-                    Card #{selectedNumber}
-                  </span>
-                )}
-              </div>
-              <div className="text-white/70 text-sm bg-white/10 px-4 py-1.5 rounded-full">
-                Marked: <span className="text-white font-bold ml-1">{displayBingoCard?.markedPositions?.length || 0}</span>/24
-              </div>
+    <div className="col-span-2">
+  <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+    <div className="flex justify-between items-center mb-4">
+      <div className="flex items-center gap-3">
+        <h3 className="text-white font-bold text-xl">Your Bingo Card</h3>
+        {selectedNumber && (
+          <span className="text-white/90 text-sm bg-gradient-to-r from-purple-500/30 to-blue-500/30 px-4 py-1.5 rounded-full font-medium">
+            Card #{selectedNumber}
+          </span>
+        )}
+      </div>
+      <div className="text-white/70 text-sm bg-white/10 px-4 py-1.5 rounded-full">
+        Marked: <span className="text-white font-bold ml-1">{displayBingoCard?.markedPositions?.length || 0}</span>/24
+      </div>
+    </div>
+    
+    {displayBingoCard ? (
+      <div className="mb-4">
+        {/* BINGO Header - Fixed square dimensions */}
+        <div className="grid grid-cols-5 gap-1 mb-2">
+          {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+            <div 
+              key={letter}
+              className="aspect-square rounded-lg flex items-center justify-center font-bold text-lg text-white bg-gradient-to-b from-purple-600 to-blue-700"
+            >
+              {letter}
             </div>
-            
-            {displayBingoCard ? (
-              <div className="mb-4">
-                {/* BINGO Header */}
-                <div className="grid grid-cols-5 gap-1 mb-2">
-                  {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                    <div 
-                      key={letter}
-                      className="h-10 rounded-lg flex items-center justify-center font-bold text-lg text-white bg-gradient-to-b from-purple-600 to-blue-700"
-                    >
-                      {letter}
-                    </div>
-                  ))}
-                </div>
-                
-                {/* Card Numbers */}
-                <div className="grid grid-cols-5 gap-1">
-                  {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                    row.map((number: number | string, colIndex: number) => {
-                      const flatIndex = rowIndex * 5 + colIndex;
-                      const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
-                      const isCalled = allCalledNumbers.includes(number as number);
-                      const isFreeSpace = rowIndex === 2 && colIndex === 2;
+          ))}
+        </div>
+        
+        {/* Card Numbers - Fixed square grid */}
+        <div className="grid grid-cols-5 gap-1">
+          {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+            row.map((number: number | string, colIndex: number) => {
+              const flatIndex = rowIndex * 5 + colIndex;
+              const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
+              const isCalled = allCalledNumbers.includes(number as number);
+              const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
-                      return (
-                        <motion.div
-                          key={`${rowIndex}-${colIndex}`}
-                          layout
-                          initial={false}
-                          animate={{
-                            scale: isCalled && !isMarked && game?.status === 'ACTIVE' ? 1.02 : 1,
-                          }}
-                          whileHover={isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' ? {
-                            scale: 1.05,
-                            backgroundColor: 'rgba(255, 255, 255, 0.25)'
-                          } : {}}
-                          className={`
-                            h-12 rounded-lg flex items-center justify-center 
-                            font-bold transition-all duration-200 relative
-                            ${isMarked
-                              ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'
-                              : isFreeSpace
-                              ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white border-2 border-purple-400'
-                              : 'bg-white/15 text-white'
-                            }
-                            ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' 
-                              ? 'cursor-pointer' 
-                              : 'cursor-default'
-                            }
-                          `}
-                          onClick={() => {
-                            if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
-                              handleMarkNumber(number as number);
-                            }
-                          }}
-                          title={
-                            isFreeSpace ? 'FREE SPACE (Always marked)' :
-                            isMarked ? `Marked: ${number}` :
-                            isCalled ? `Click to mark ${number}` :
-                            `${number} (Not called yet)`
-                          }
-                        >
-                          {isFreeSpace ? (
-                            <>
-                              <span className="text-xs font-bold">FREE</span>
-                              <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-                            </>
-                          ) : (
-                            <>
-                              <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
-                                {number}
-                              </span>
-                              {isCalled && !isMarked && game?.status === 'ACTIVE' && (
-                                <motion.div 
-                                  animate={{ scale: [1, 1.5, 1] }}
-                                  transition={{ repeat: Infinity, duration: 1 }}
-                                  className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-400 rounded-full"
-                                />
-                              )}
-                              {isMarked && (
-                                <motion.div 
-                                  initial={{ scale: 0 }}
-                                  animate={{ scale: 1 }}
-                                  className="absolute top-1 right-1 text-[10px] opacity-90"
-                                >
-                                  ✓
-                                </motion.div>
-                              )}
-                            </>
-                          )}
-                        </motion.div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center text-white/70 py-8">
-                <p className="text-lg mb-2">No bingo card found</p>
-                <p className="text-sm mb-6">{spectatorMessage || 'Join the game to get a card'}</p>
-                {game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION' ? (
-                  <button 
-                    onClick={() => router.push('/')}
-                    className="bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-6 py-2.5 rounded-lg hover:from-purple-500/40 hover:to-blue-500/40 transition-all"
-                  >
-                    Select a Card
-                  </button>
-                ) : (
-                  <p className="text-white/50 text-sm">
-                    Game has already started. You can watch as a spectator.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Game Controls */}
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
-              <h4 className="text-white font-bold mb-2">How to Win</h4>
-              <div className="space-y-2 text-xs text-white/80">
-                <div className="flex items-start gap-2">
-                  <span className="text-green-400">1.</span>
-                  <span>Listen for called numbers</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-yellow-400">2.</span>
-                  <span><span className="font-bold">Click</span> called numbers on your card</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-red-400">3.</span>
-                  <span>Complete a line (row, column, diagonal)</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <span className="text-purple-400">4.</span>
-                  <span><span className="font-bold">First</span> to claim with valid line wins!</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
-              <h4 className="text-white font-bold mb-2">Quick Actions</h4>
-              <div className="space-y-1.5">
-                <button
+              return (
+                <motion.div
+                  key={`${rowIndex}-${colIndex}`}
+                  layout
+                  initial={false}
+                  animate={{
+                    scale: isCalled && !isMarked && game?.status === 'ACTIVE' ? 1.02 : 1,
+                  }}
+                  whileHover={isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' ? {
+                    scale: 1.05,
+                    backgroundColor: 'rgba(255, 255, 255, 0.25)'
+                  } : {}}
+                  className={`
+                    aspect-square rounded-lg flex items-center justify-center 
+                    font-bold transition-all duration-200 relative
+                    ${isMarked
+                      ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'
+                      : isFreeSpace
+                      ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white border-2 border-purple-400'
+                      : 'bg-white/15 text-white'
+                    }
+                    ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' 
+                      ? 'cursor-pointer' 
+                      : 'cursor-default'
+                    }
+                  `}
                   onClick={() => {
-                    alert(`🎮 MANUAL BINGO GAME RULES:
+                    if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
+                      handleMarkNumber(number as number);
+                    }
+                  }}
+                  title={
+                    isFreeSpace ? 'FREE SPACE (Always marked)' :
+                    isMarked ? `Marked: ${number}` :
+                    isCalled ? `Click to mark ${number}` :
+                    `${number} (Not called yet)`
+                  }
+                >
+                  {isFreeSpace ? (
+                    <div className="flex flex-col items-center justify-center w-full h-full p-1">
+                      <span className="text-xs font-bold">FREE</span>
+                      <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center w-full h-full p-1 relative">
+                      <span className={`text-base md:text-lg lg:text-xl ${isMarked ? 'line-through' : ''}`}>
+                        {number}
+                      </span>
+                      {isCalled && !isMarked && game?.status === 'ACTIVE' && (
+                        <motion.div 
+                          animate={{ scale: [1, 1.5, 1] }}
+                          transition={{ repeat: Infinity, duration: 1 }}
+                          className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full"
+                        />
+                      )}
+                      {isMarked && (
+                        <motion.div 
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="absolute top-1 right-1 text-[10px] opacity-90"
+                        >
+                          ✓
+                        </motion.div>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    ) : (
+      <div className="text-center text-white/70 py-8">
+        <p className="text-lg mb-2">No bingo card found</p>
+        <p className="text-sm mb-6">{spectatorMessage || 'Join the game to get a card'}</p>
+        {game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION' ? (
+          <button 
+            onClick={() => router.push('/')}
+            className="bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-6 py-2.5 rounded-lg hover:from-purple-500/40 hover:to-blue-500/40 transition-all"
+          >
+            Select a Card
+          </button>
+        ) : (
+          <p className="text-white/50 text-sm">
+            Game has already started. You can watch as a spectator.
+          </p>
+        )}
+      </div>
+    )}
+  </div>
+
+  {/* Game Controls - Improved layout */}
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+    <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
+      <h4 className="text-white font-bold mb-2">How to Win</h4>
+      <div className="space-y-2 text-xs text-white/80">
+        <div className="flex items-start gap-2">
+          <span className="text-green-400">1.</span>
+          <span>Listen for called numbers</span>
+        </div>
+        <div className="flex items-start gap-2">
+          <span className="text-yellow-400">2.</span>
+          <span><span className="font-bold">Click</span> called numbers on your card</span>
+        </div>
+        <div className="flex items-start gap-2">
+          <span className="text-red-400">3.</span>
+          <span>Complete a line (row, column, diagonal)</span>
+        </div>
+        <div className="flex items-start gap-2">
+          <span className="text-purple-400">4.</span>
+          <span><span className="font-bold">First</span> to claim with valid line wins!</span>
+        </div>
+      </div>
+    </div>
+
+    <div className="bg-white/10 backdrop-blur-lg rounded-xl p-3 border border-white/20">
+      <h4 className="text-white font-bold mb-2">Quick Actions</h4>
+      <div className="space-y-1.5">
+        <button
+          onClick={() => {
+            alert(`🎮 MANUAL BINGO GAME RULES:
 
 • Numbers are called automatically every 5-8 seconds
 • YOU must click each called number on YOUR card
@@ -1394,21 +1394,21 @@ useEffect(() => {
 • First player with valid claim wins the prize!
 
 ⚡ TIP: Be quick! Other players are marking manually too!`);
-                  }}
-                  className="w-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-white py-1.5 rounded text-xs hover:from-blue-500/30 hover:to-purple-500/30 transition-all border border-blue-400/30"
-                >
-                  📖 Game Rules
-                </button>
-                <button
-                  onClick={handleManualRefresh}
-                  className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all flex items-center justify-center gap-1"
-                >
-                  ↻ Refresh Game Data
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+          }}
+          className="w-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-white py-1.5 rounded text-xs hover:from-blue-500/30 hover:to-purple-500/30 transition-all border border-blue-400/30"
+        >
+          📖 Game Rules
+        </button>
+        <button
+          onClick={handleManualRefresh}
+          className="w-full bg-white/15 text-white py-1.5 rounded text-xs hover:bg-white/25 transition-all flex items-center justify-center gap-1"
+        >
+          ↻ Refresh Game Data
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
       </div>
 
       {/* Claim Bingo Button - Fixed Position */}
@@ -1482,26 +1482,7 @@ useEffect(() => {
       )}
 
       {/* Spectator Mode Notice */}
-      {isSpectatorMode && game?.status === 'ACTIVE' && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 w-full max-w-md">
-          <div className="bg-blue-500/20 border border-blue-500/30 rounded-2xl p-4 text-center backdrop-blur-sm">
-            <p className="text-blue-300 text-sm font-medium">
-              👁️ You are in Spectator Mode
-            </p>
-            <p className="text-white/60 text-xs mt-1">
-              You can watch the game but cannot participate.
-            </p>
-            {/* {game.status === 'WA' && (
-              <button 
-                onClick={() => router.push('/')}
-                className="mt-3 bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 transition-all"
-              >
-                Join Next Game
-              </button>
-            )} */}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
