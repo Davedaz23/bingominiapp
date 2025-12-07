@@ -1312,13 +1312,13 @@ useEffect(() => {
                       <span className={`text-base md:text-lg lg:text-xl ${isMarked ? 'line-through' : ''}`}>
                         {number}
                       </span>
-                      {isCalled && !isMarked && game?.status === 'ACTIVE' && (
+                      {/* {isCalled && !isMarked && game?.status === 'ACTIVE' && (
                         <motion.div 
                           animate={{ scale: [1, 1.5, 1] }}
                           transition={{ repeat: Infinity, duration: 1 }}
                           className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full"
                         />
-                      )}
+                      )} */}
                       {isMarked && (
                         <motion.div 
                           initial={{ scale: 0 }}
