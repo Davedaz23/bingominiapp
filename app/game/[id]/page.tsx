@@ -805,28 +805,7 @@ useEffect(() => {
     return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
   }, []);
 
-  // FIXED: Loading state with better timeout handling
-  if ((isLoading || isLoadingCard) && !cardError) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Loading game...</p>
-          {isLoadingCard && <p className="text-sm mt-2">Loading your bingo card...</p>}
-          <p className="text-white/60 text-sm mt-4">This may take a few seconds...</p>
-          <button
-            onClick={() => {
-              setIsLoadingCard(false);
-              setCardError('Loading interrupted. Please refresh or check connection.');
-            }}
-            className="mt-4 bg-white/20 text-white px-4 py-2 rounded-lg text-sm hover:bg-white/30 transition-all"
-          >
-            Cancel Loading
-          </button>
-        </div>
-      </div>
-    );
-  }
+
 
   if (!game) {
     return (
@@ -1248,7 +1227,8 @@ useEffect(() => {
         )}
       </div>
 
-      {/* New Number Notification */}
+      {/* Remove this section - it's no longer needed here */}
+      {/* 
       {currentCalledNumber?.isNew && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -1260,6 +1240,7 @@ useEffect(() => {
           </div>
         </motion.div>
       )}
+      */}
 
       <div className="grid grid-cols-4 gap-4">
         {/* Left: Called Numbers */}
@@ -1385,6 +1366,26 @@ useEffect(() => {
 
         {/* Right: Bingo Card */}
         <div className="col-span-2">
+          {/* Permanent Current Called Number Display - Added here */}
+          {currentCalledNumber && (
+            <div className="mb-3 sm:mb-4">
+              <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-4 py-3 rounded-2xl shadow-lg font-bold text-center">
+                <div className="flex items-center justify-center gap-3">
+                  <span className="text-2xl">🔔</span>
+                  <div>
+                    <div className="text-xl sm:text-2xl">
+                      {currentCalledNumber.letter}{currentCalledNumber.number}
+                    </div>
+                    <div className="text-sm text-white/90 font-normal mt-1">
+                      Current Called Number
+                    </div>
+                  </div>
+                  <span className="text-2xl">🔔</span>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 sm:p-4 border border-white/20">
             <div className="flex justify-between items-center mb-3 sm:mb-4">
               <div className="flex items-center gap-2 sm:gap-3">
