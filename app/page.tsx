@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/page.tsx - FIXED VERSION (No hydration errors, no infinite reloads)
+// app/page.tsx - UPDATED VERSION (Auto-redirect when conditions met)
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
-import { gameAPI, walletAPIAuto } from '../services/api';
+import { gameAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 
@@ -19,7 +19,8 @@ import { GameStatusDisplay } from '../components/game/GameStatusDisplay';
 // Import hooks
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
-import { Clock, Play, Check, Rocket, AlertCircle, RefreshCw } from 'lucide-react';
+import { useAccountStorage } from '../hooks/useAccountStorage';
+import { Clock, Play, Check, Rocket, AlertCircle, Users, RefreshCw, Eye } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -84,34 +85,24 @@ export default function Home() {
   const [isAutoJoining, setIsAutoJoining] = useState<boolean>(false);
   const [lastAutoJoinAttempt, setLastAutoJoinAttempt] = useState<number>(0);
 
-  // Refs to prevent infinite loops
-  const isInitialized = useRef(false);
-  const activeGamesLoaded = useRef(false);
-  const participantsIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const autoStartIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const gameStatusIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const activeGamesIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
   // ==================== LOAD ACTIVE GAMES ====================
-  const loadActiveGames = useCallback(async () => {
+  const loadActiveGames = async () => {
     try {
       setLoadingActiveGames(true);
       const response = await gameAPI.getActiveGames();
-      if (response.data.success) {
-        const games = response.data.games || [];
-        setActiveGames(games);
-        activeGamesLoaded.current = true;
-        console.log('🎮 Active games loaded:', games.length);
+      if (response.data.success && response.data.games[0].status=="ACTIVE") {
+        setActiveGames(response.data.games || []);
+        console.log('🎮 Active games loaded:', response.data.games.length);
       }
     } catch (error) {
       console.error('❌ Failed to load active games:', error);
     } finally {
       setLoadingActiveGames(false);
     }
-  }, []);
+  };
 
   // ==================== REFRESH WALLET BALANCE FUNCTION ====================
-  const refreshWalletBalanceLocal = useCallback(async () => {
+  const refreshWalletBalanceLocal = async () => {
     try {
       setIsRefreshingBalance(true);
       console.log('💰 Refreshing wallet balance...');
@@ -121,22 +112,35 @@ export default function Home() {
         console.log('✅ Used AuthContext refreshWalletBalance');
       }
       
-      const response = await walletAPIAuto.getBalance();
-      setLocalWalletBalance(response.data.balance);
+      const response = await fetch('/api/wallet/balance', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setLocalWalletBalance(data.balance);
+          console.log(`💰 Direct balance fetch: ${data.balance} ብር`);
+        }
+      }
+      
       setBalanceRefreshCounter(prev => prev + 1);
     } catch (error) {
       console.error('❌ Failed to refresh wallet balance:', error);
     } finally {
       setIsRefreshingBalance(false);
     }
-  }, [refreshWalletBalance]);
+  };
 
   // ==================== USE CORRECT BALANCE SOURCE ====================
   const effectiveWalletBalance = localWalletBalance > 0 ? localWalletBalance : walletBalance;
 
   // ==================== UPDATE RESTART COOLDOWN FROM GAME DATA ====================
   useEffect(() => {
-    if (gameData && !isInitialized.current) {
+    if (gameData) {
       const cooldown = gameData.hasRestartCooldown || false;
       const cooldownRemaining = gameData.restartCooldownRemaining || 0;
       
@@ -159,7 +163,7 @@ export default function Home() {
             const participants = response.data.participants || [];
             setGameParticipants(participants);
             
-            const playersWithCardsCount = participants.filter((p: any) => p.hasCard).length;
+            const playersWithCardsCount = participants.filter(p => p.hasCard).length;
             setPlayersWithCards(playersWithCardsCount);
             
             const canStart = playersWithCardsCount >= 2;
@@ -175,130 +179,18 @@ export default function Home() {
 
     fetchGameParticipants();
     
-    // Clean up previous interval
-    if (participantsIntervalRef.current) {
-      clearInterval(participantsIntervalRef.current);
-    }
-    
-    participantsIntervalRef.current = setInterval(fetchGameParticipants, 5000);
-    
-    return () => {
-      if (participantsIntervalRef.current) {
-        clearInterval(participantsIntervalRef.current);
-      }
-    };
+    const interval = setInterval(fetchGameParticipants, 5000);
+    return () => clearInterval(interval);
   }, [gameData?._id]);
 
   // ==================== LOAD ACTIVE GAMES ON INITIALIZATION ====================
   useEffect(() => {
-    if (!activeGamesLoaded.current) {
-      loadActiveGames();
-    }
+    loadActiveGames();
     
-    // Clean up previous interval
-    if (activeGamesIntervalRef.current) {
-      clearInterval(activeGamesIntervalRef.current);
-    }
-    
-    activeGamesIntervalRef.current = setInterval(loadActiveGames, 10000);
-    
-    return () => {
-      if (activeGamesIntervalRef.current) {
-        clearInterval(activeGamesIntervalRef.current);
-      }
-    };
-  }, [loadActiveGames]);
-
-  // ==================== AUTO-START CHECK ====================
-  useEffect(() => {
-    const checkAutoStart = async () => {
-      if (gameStatus === 'WAITING_FOR_PLAYERS' && gameData?._id && !hasRestartCooldown) {
-        try {
-          console.log('🔄 Checking auto-start conditions...');
-          
-          const response = await gameAPI.checkAutoStart(gameData._id);
-          
-          if (response.data.success) {
-            console.log('🎮 Auto-start check response:', response.data);
-            
-            if (response.data.gameStarted) {
-              console.log('🚀 Game auto-started! Refreshing...');
-              await checkGameStatus();
-            } else if (response.data.autoStartInfo) {
-              console.log('⏳ Auto-start info:', response.data.autoStartInfo);
-            }
-          }
-        } catch (error) {
-          console.error('❌ Auto-start check failed:', error);
-        }
-      }
-    };
-
-    // Clean up previous interval
-    if (autoStartIntervalRef.current) {
-      clearInterval(autoStartIntervalRef.current);
-    }
-    
-    autoStartIntervalRef.current = setInterval(checkAutoStart, 5000);
-    
-    return () => {
-      if (autoStartIntervalRef.current) {
-        clearInterval(autoStartIntervalRef.current);
-      }
-    };
-  }, [gameStatus, gameData?._id, checkGameStatus, hasRestartCooldown]);
-
-  // ==================== GAME STATUS CHECK ====================
-  useEffect(() => {
-    const checkGameStatusInterval = async () => {
-      if (!gameData?._id) return;
-      
-      try {
-        const response = await gameAPI.getGame(gameData._id);
-        if (response.data.success) {
-          const game = response.data.game;
-          
-          // Update timers from game data
-          if (game.cooldownEndTime) {
-            const now = new Date();
-            const cooldownEnd = new Date(game.cooldownEndTime);
-            const remaining = Math.max(0, cooldownEnd.getTime() - now.getTime());
-            
-            setHasRestartCooldown(remaining > 0);
-            setRestartCooldownRemaining(remaining);
-            
-            console.log(`⏳ Cooldown timer: ${Math.ceil(remaining/1000)}s remaining`);
-          }
-          
-          // Also update auto-start timer if available
-          if (game.autoStartEndTime) {
-            const now = new Date();
-            const autoStartEnd = new Date(game.autoStartEndTime);
-            const remaining = Math.max(0, autoStartEnd.getTime() - now.getTime());
-            
-            console.log(`🚀 Auto-start timer: ${Math.ceil(remaining/1000)}s remaining`);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Failed to check game status:', error);
-      }
-    };
-    
-    // Clean up previous interval
-    if (gameStatusIntervalRef.current) {
-      clearInterval(gameStatusIntervalRef.current);
-    }
-    
-    // Check more frequently when in cooldown
-    const intervalTime = hasRestartCooldown && restartCooldownRemaining > 0 ? 1000 : 5000;
-    gameStatusIntervalRef.current = setInterval(checkGameStatusInterval, intervalTime);
-    
-    return () => {
-      if (gameStatusIntervalRef.current) {
-        clearInterval(gameStatusIntervalRef.current);
-      }
-    };
-  }, [gameData?._id, hasRestartCooldown, restartCooldownRemaining]);
+    // Refresh active games every 10 seconds
+    const interval = setInterval(loadActiveGames, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ==================== MAIN AUTO-REDIRECT LOGIC ====================
   useEffect(() => {
@@ -347,12 +239,43 @@ export default function Home() {
     playersWithCards,
     isAutoJoining,
     autoRedirected,
-    lastAutoJoinAttempt,
-    router
+    lastAutoJoinAttempt
   ]);
 
+  // ==================== AUTO-START CHECK ====================
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (gameStatus === 'WAITING_FOR_PLAYERS' && gameData?._id && !hasRestartCooldown) {
+      intervalId = setInterval(async () => {
+        try {
+          console.log('🔄 Checking auto-start conditions...');
+          
+          const response = await gameAPI.checkAutoStart(gameData._id);
+          
+          if (response.data.success) {
+            console.log('🎮 Auto-start check response:', response.data);
+            
+            if (response.data.gameStarted) {
+              console.log('🚀 Game auto-started! Refreshing...');
+              await checkGameStatus();
+            } else if (response.data.autoStartInfo) {
+              console.log('⏳ Auto-start info:', response.data.autoStartInfo);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Auto-start check failed:', error);
+        }
+      }, 5000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [gameStatus, gameData?._id, checkGameStatus, hasRestartCooldown]);
+
   // ==================== AUTO-JOIN FUNCTION ====================
-  const handleAutoJoinGame = useCallback(async () => {
+  const handleAutoJoinGame = async () => {
     if (!selectedNumber || !user?.id || hasRestartCooldown || isAutoJoining) return;
     
     try {
@@ -365,7 +288,7 @@ export default function Home() {
         console.log('🎯 Joining waiting game:', game._id);
         
         const participantsResponse = await gameAPI.getGameParticipants(game._id);
-        const currentPlayersWithCards = participantsResponse.data.participants?.filter((p: any) => p.hasCard).length || 0;
+        const currentPlayersWithCards = participantsResponse.data.participants?.filter(p => p.hasCard).length || 0;
         
         if (currentPlayersWithCards < 2) {
           console.log(`❌ Not enough players to join (${currentPlayersWithCards}/2)`);
@@ -375,8 +298,8 @@ export default function Home() {
         }
         
         const joinResponse = await gameAPI.joinGame(game.code, user.id);
-        //if (response.data.success && response.data.games[0].status=="ACTIVE") {
-        if (joinResponse.data.success && joinResponse.data.game.status=="ACTIVE") {
+        
+        if (joinResponse.data.success) {
           const updatedGame = joinResponse.data.game;
           console.log('✅ Auto-joined game successfully');
           setAutoRedirected(true);
@@ -413,17 +336,17 @@ export default function Home() {
       
       // Try to join as spectator if join fails
       const activeGamesResponse = await gameAPI.getActiveGames();
-      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0  ) {
+      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
         setAutoRedirected(true);
         setTimeout(() => {
           router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
         }, 1000);
       }
     }
-  }, [selectedNumber, user?.id, hasRestartCooldown, isAutoJoining, router]);
+  };
 
   // ==================== FIXED: GAME INFO FOOTER MESSAGE ====================
-  const getGameStatusMessage = useCallback(() => {
+  const getGameStatusMessage = () => {
     if (hasRestartCooldown) {
       return `🔄 Game restarting in ${Math.ceil(restartCooldownRemaining / 1000)}s - Select your card now!`;
     }
@@ -469,19 +392,10 @@ export default function Home() {
     }
 
     return '';
-  }, [
-    hasRestartCooldown,
-    restartCooldownRemaining,
-    isAutoJoining,
-    selectedNumber,
-    effectiveWalletBalance,
-    gameStatus,
-    restartCountdown,
-    playersWithCards
-  ]);
+  };
 
   // ==================== CONDITIONAL GAME INFO DISPLAY ====================
-  const shouldDisplayGameInfo = useCallback(() => {
+  const shouldDisplayGameInfo = () => {
     if (gameStatus === 'ACTIVE') {
       return true;
     }
@@ -491,12 +405,10 @@ export default function Home() {
     }
     
     return false;
-  }, [gameStatus, playersWithCards]);
+  };
 
   // ==================== MAIN INITIALIZATION WITH BALANCE REFRESH ====================
   useEffect(() => {
-    if (isInitialized.current) return;
-    
     const initializeApp = async () => {
       console.log('🚀 Starting app initialization...');
       
@@ -508,7 +420,6 @@ export default function Home() {
       if (!isAuthenticated || !user) {
         console.log('⚠️ User not authenticated, showing limited UI');
         await initializeGameState();
-        isInitialized.current = true;
         return;
       }
 
@@ -520,37 +431,21 @@ export default function Home() {
         
         console.log('✅ App initialization complete');
         console.log(`💰 User balance: ${effectiveWalletBalance} ብር`);
-        isInitialized.current = true;
       } catch (error) {
         console.error('❌ Initialization error:', error);
-        isInitialized.current = true;
       }
     };
 
     initializeApp();
-    
-    return () => {
-      // Cleanup function
-      isInitialized.current = false;
-    };
-  }, [
-    authLoading,
-    effectiveWalletBalance,
-    initializeGameState,
-    isAuthenticated,
-    user,
-    refreshWalletBalanceLocal
-  ]);
+  }, [authLoading, isAuthenticated, user]);
 
-  // ==================== CLEANUP ALL INTERVALS ====================
+  // ==================== PERIODIC BALANCE REFRESH ====================
   useEffect(() => {
-    return () => {
-      // Clean up all intervals on unmount
-      if (participantsIntervalRef.current) clearInterval(participantsIntervalRef.current);
-      if (autoStartIntervalRef.current) clearInterval(autoStartIntervalRef.current);
-      if (gameStatusIntervalRef.current) clearInterval(gameStatusIntervalRef.current);
-      if (activeGamesIntervalRef.current) clearInterval(activeGamesIntervalRef.current);
-    };
+    const intervalId = setInterval(() => {
+      refreshWalletBalanceLocal();
+    }, 30000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   // Auto-join loading screen
@@ -644,6 +539,53 @@ export default function Home() {
           onModerateGames={() => {}} // Placeholder functions
           onViewReports={() => {}}
         />
+      )}
+
+      {/* ACTIVE GAMES SECTION */}
+      {activeGames.length > 0 && (
+        <motion.div 
+          className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Eye className="w-5 h-5 text-blue-300" />
+              <h3 className="text-blue-300 font-bold">Active Games</h3>
+            </div>
+            <span className="text-blue-200 text-sm bg-blue-500/30 px-2 py-1 rounded-full">
+              {activeGames.length} live game{activeGames.length > 1 ? 's' : ''}
+            </span>
+          </div>
+          
+          <div className="space-y-3">
+            {activeGames.map((game) => (
+              <div 
+                key={game._id}
+                className="bg-blue-500/10 backdrop-blur-lg rounded-xl p-3 border border-blue-400/20"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Game #{game.code}</div>
+                    <div className="text-blue-200 text-xs flex items-center gap-2 mt-1">
+                      <Users className="w-3 h-3" />
+                      <span>{game.currentPlayers || 0} players</span>
+                      <span>•</span>
+                      <span>{game.numbersCalled?.length || 0}/75 numbers called</span>
+                    </div>
+                  </div>
+                  <div className="text-blue-300 text-xs px-3 py-1 bg-blue-500/20 rounded-full">
+                    Watching automatically...
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <p className="text-blue-200 text-xs mt-3 text-center">
+            👁️ You will be automatically redirected to watch live games
+          </p>
+        </motion.div>
       )}
 
       {/* BALANCE WARNING */}
