@@ -92,6 +92,12 @@ export default function GamePage() {
   const [winningAmount, setWinningAmount] = useState(0);
   const [countdown, setCountdown] = useState<number>(5);
   
+
+  //retry
+  const [retryCount, setRetryCount] = useState(0);
+const [autoRetryInProgress, setAutoRetryInProgress] = useState(false);
+const MAX_RETRY_ATTEMPTS = 3;
+
   const [isClaimingBingo, setIsClaimingBingo] = useState<boolean>(false);
   const [claimResult, setClaimResult] = useState<{
     success: boolean;
@@ -143,103 +149,161 @@ export default function GamePage() {
   }, []);
 
   // FIXED: Check if user has a bingo card - simplified
-  const checkUserHasCard = useCallback(async (forceCheck = false): Promise<boolean> => {
-    // Don't check if already checked and not forcing
-    if (hasCardCheckedRef.current && !forceCheck) {
-      return !!localBingoCard;
+const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false): Promise<boolean> => {
+  // If auto-retry in progress, skip additional calls
+  if (autoRetryInProgress && !isRetry) return false;
+  
+  // Don't check if already checked and not forcing
+  if (hasCardCheckedRef.current && !forceCheck && !isRetry) {
+    return !!localBingoCard;
+  }
+  
+  try {
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    if (!userId || !id) {
+      setIsSpectatorMode(true);
+      setSpectatorMessage('Please login to join the game.');
+      hasCardCheckedRef.current = true;
+      return false;
+    }
+
+    const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+    
+    if (cardResponse.data.success && cardResponse.data.bingoCard) {
+      const apiCard = cardResponse.data.bingoCard;
+      const newCard = {
+        cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
+        numbers: apiCard.numbers || [],
+        markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
+        selected: (apiCard as any).selected
+      };
+      
+      // Update states
+      setLocalBingoCard(newCard);
+      setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
+      setIsSpectatorMode(false);
+      setSpectatorMessage('');
+      setCardError('');
+      setRetryCount(0); // Reset retry count on success
+      hasCardCheckedRef.current = true;
+      return true;
     }
     
-    try {
-      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      if (!userId || !id) {
-        setIsSpectatorMode(true);
-        setSpectatorMessage('Please login to join the game.');
-        return false;
-      }
-
-      const cardResponse = await gameAPI.getUserBingoCard(id, userId);
-      
-      if (cardResponse.data.success && cardResponse.data.bingoCard) {
-        const apiCard = cardResponse.data.bingoCard;
-        const newCard = {
-          cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
-          numbers: apiCard.numbers || [],
-          markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
-          selected: (apiCard as any).selected
-        };
-        
-        // Update states
-        setLocalBingoCard(newCard);
-        setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
-        setIsSpectatorMode(false);
-        setSpectatorMessage('');
-        
-        hasCardCheckedRef.current = true;
-        return true;
-      }
-      
+    // No card found
+    setIsSpectatorMode(true);
+    setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
+    hasCardCheckedRef.current = true;
+    return false;
+    
+  } catch (error: any) {
+    console.error('Error checking user card:', error);
+    
+    // Handle specific error cases
+    if (error.response?.status === 404) {
       // No card found
       setIsSpectatorMode(true);
       setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
       hasCardCheckedRef.current = true;
       return false;
-      
-    } catch (error: any) {
-      console.error('Error checking user card:', error);
-      
-      // Handle specific error cases
-      if (error.response?.status === 404) {
-        // No card found
-        setIsSpectatorMode(true);
-        setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
-      } else {
-        setCardError('Failed to load your card. Please try again.');
+    } else {
+      // Network or server error - we'll auto-retry this
+      if (isRetry) {
+        // This is already a retry attempt, update error state
+        setCardError('Failed to load your card. Please check your connection.');
       }
-      
-      hasCardCheckedRef.current = true;
+      // Return false to trigger retry logic
       return false;
     }
-  }, [id, localBingoCard]);
+  }
+}, [id, localBingoCard, autoRetryInProgress]);
 
   // FIXED: Initialize user card - simplified with timeout
-  const initializeUserCard = useCallback(async (forceCheck = false) => {
-    if (updateInProgressRef.current && !forceCheck) return;
+const initializeUserCard = useCallback(async (forceCheck = false) => {
+  if (updateInProgressRef.current && !forceCheck) return;
+  
+  try {
+    updateInProgressRef.current = true;
     
-    try {
-      updateInProgressRef.current = true;
+    // If we're already in spectator mode from a previous attempt, don't retry
+    if (isSpectatorMode && !forceCheck) {
+      setIsLoadingCard(false);
+      return;
+    }
+    
+    // Auto-retry logic for loading errors
+    let attempts = 0;
+    const maxAttempts = 3;
+    let success = false;
+    
+    while (attempts < maxAttempts && !success && !isSpectatorMode) {
+      attempts++;
+      setRetryCount(attempts);
       
-      // Set a timeout to ensure we don't get stuck in loading state
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Card loading timeout')), 10000);
-      });
-      
-      await Promise.race([
-        checkUserHasCard(forceCheck),
-        timeoutPromise
-      ]);
-      
-    } catch (error: any) {
-      console.error('Failed to initialize user card:', error);
-      
-      // Set appropriate error message
-      if (error.message === 'Card loading timeout') {
-        setCardError('Loading card timed out. Please refresh the page.');
-      } else {
-        setCardError('Failed to load your card. Watching as spectator.');
+      if (attempts > 1) {
+        console.log(`🔄 Auto-retry attempt ${attempts} for card loading...`);
+        setAutoRetryInProgress(true);
       }
       
-      // Fallback to spectator mode
+      try {
+        success = await checkUserHasCard(forceCheck, attempts > 1);
+        
+        if (success) {
+          console.log('✅ Card loaded successfully on attempt', attempts);
+          setAutoRetryInProgress(false);
+          break;
+        }
+        
+        // If failed and not the last attempt, wait before retrying
+        if (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+        }
+      } catch (retryError) {
+        console.error(`Retry attempt ${attempts} failed:`, retryError);
+        if (attempts === maxAttempts) {
+          throw retryError;
+        }
+      }
+    }
+    
+    // If all retries failed and we're not in spectator mode, fall back to spectator
+    if (!success && !isSpectatorMode) {
+      console.log('⚠️ All retry attempts failed, falling back to spectator mode');
       setIsSpectatorMode(true);
       setSpectatorMessage('Unable to load your card. Watching as spectator.');
-      hasCardCheckedRef.current = true;
-      
-    } finally {
-      // Always set loading to false
-      setIsLoadingCard(false);
-      updateInProgressRef.current = false;
+      setCardError('');
     }
-  }, [checkUserHasCard]);
-
+    
+  } catch (error: any) {
+    console.error('Failed to initialize user card:', error);
+    
+    // Fallback to spectator mode
+    if (!isSpectatorMode) {
+      setIsSpectatorMode(true);
+      setSpectatorMessage('Unable to load your card. Watching as spectator.');
+      setCardError('');
+    }
+    
+  } finally {
+    // Always set loading to false
+    setIsLoadingCard(false);
+    setAutoRetryInProgress(false);
+    updateInProgressRef.current = false;
+  }
+}, [checkUserHasCard, isSpectatorMode]);
+useEffect(() => {
+  // Auto-retry card loading if we have an error
+  if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS) {
+    const timer = setTimeout(() => {
+      console.log('🔄 Auto-retrying card loading...');
+      setIsLoadingCard(true);
+      setCardError('');
+      hasCardCheckedRef.current = false;
+      initializeUserCard(true);
+    }, 2000); // Wait 2 seconds before auto-retry
+    
+    return () => clearTimeout(timer);
+  }
+}, [cardError, localBingoCard, isLoadingCard, retryCount, initializeUserCard]);
   // FIXED: Check for winner
   const checkForWinner = useCallback(async (gameData?: Game) => {
     if (!gameData || abortControllerRef.current || showWinnerModal) return;
@@ -711,60 +775,6 @@ export default function GamePage() {
     );
   }
 
-  // FIXED: Show error state if card loading failed
-  if (cardError && !localBingoCard) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 max-w-2xl mx-auto mt-8">
-          <div className="text-center">
-            <div className="text-4xl mb-4">⚠️</div>
-            <h2 className="text-xl font-bold text-white mb-2">Card Loading Error</h2>
-            <p className="text-white/70 mb-6">{cardError}</p>
-            
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <button 
-                onClick={() => {
-                  setIsLoadingCard(true);
-                  setCardError('');
-                  hasCardCheckedRef.current = false;
-                  initializeUserCard(true);
-                }}
-                className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-medium hover:from-blue-600 hover:to-purple-600 transition-all"
-              >
-                Try Again
-              </button>
-              
-              <button 
-                onClick={() => {
-                  setIsSpectatorMode(true);
-                  setCardError('');
-                  setIsLoadingCard(false);
-                }}
-                className="bg-white/20 text-white px-6 py-3 rounded-xl font-medium hover:bg-white/30 transition-all"
-              >
-                Watch as Spectator
-              </button>
-              
-              <button 
-                onClick={() => router.push('/')}
-                className="bg-white text-purple-600 px-6 py-3 rounded-xl font-medium hover:bg-purple-50 transition-all"
-              >
-                Back to Lobby
-              </button>
-            </div>
-            
-            {isSpectatorMode && (
-              <div className="mt-6 p-4 bg-blue-500/20 rounded-lg border border-blue-500/30">
-                <p className="text-blue-300 text-sm">
-                  You are now in spectator mode. You can watch the game but cannot participate.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Main game render
   return (
