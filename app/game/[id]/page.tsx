@@ -7,6 +7,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useCardSelection } from '@/hooks/useCardSelection';
+import { useGameState } from '@/hooks/useGameState';
 
 // Types
 interface LocalBingoCard {
@@ -67,9 +69,19 @@ export default function GamePage() {
     manualCallNumber,
     getWinnerInfo,
   } = useGame(id);
+  const {
+    gameStatus,
+
+    gameData,
+
+  } = useGameState();
+   const {
+      selectedNumber,
+     
+    } = useCardSelection(gameData, gameStatus);
   
   const [walletBalance, setWalletBalance] = useState<number>(0);
-  const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
+
   const [localBingoCard, setLocalBingoCard] = useState<LocalBingoCard | null>(null);
   const [isLoadingCard, setIsLoadingCard] = useState<boolean>(true);
   const [cardError, setCardError] = useState<string>('');
@@ -181,7 +193,7 @@ const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false)
       const oldSaved = localStorage.getItem('selected_number');
       // Update states
       setLocalBingoCard(newCard);
-      setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex ||oldSaved|| null);
+      // setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex ||oldSaved|| null);
       setIsSpectatorMode(false);
       setSpectatorMessage('');
       setCardError('');
