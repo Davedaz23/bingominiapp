@@ -412,9 +412,6 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
   }
 }, [getWinnerInfo, showWinnerModal]);
 
-
-
-
   // FIXED: Update game state
   const updateGameState = useCallback(async (force = false) => {
     if (updateInProgressRef.current && !force) return;
