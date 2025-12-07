@@ -541,52 +541,7 @@ export default function Home() {
         />
       )}
 
-      {/* ACTIVE GAMES SECTION */}
-      {activeGames.length > 0 && (
-        <motion.div 
-          className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Eye className="w-5 h-5 text-blue-300" />
-              <h3 className="text-blue-300 font-bold">Active Games</h3>
-            </div>
-            <span className="text-blue-200 text-sm bg-blue-500/30 px-2 py-1 rounded-full">
-              {activeGames.length} live game{activeGames.length > 1 ? 's' : ''}
-            </span>
-          </div>
-          
-          <div className="space-y-3">
-            {activeGames.map((game) => (
-              <div 
-                key={game._id}
-                className="bg-blue-500/10 backdrop-blur-lg rounded-xl p-3 border border-blue-400/20"
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-white font-medium">Game #{game.code}</div>
-                    <div className="text-blue-200 text-xs flex items-center gap-2 mt-1">
-                      <Users className="w-3 h-3" />
-                      <span>{game.currentPlayers || 0} players</span>
-                      <span>•</span>
-                      <span>{game.numbersCalled?.length || 0}/75 numbers called</span>
-                    </div>
-                  </div>
-                  <div className="text-blue-300 text-xs px-3 py-1 bg-blue-500/20 rounded-full">
-                    Watching automatically...
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          
-          <p className="text-blue-200 text-xs mt-3 text-center">
-            👁️ You will be automatically redirected to watch live games
-          </p>
-        </motion.div>
-      )}
+   
 
       {/* BALANCE WARNING */}
       {effectiveWalletBalance < 10 && (
