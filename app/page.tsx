@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
-import { gameAPI } from '../services/api';
+import { gameAPI, walletAPIAuto } from '../services/api';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 
@@ -112,20 +112,11 @@ export default function Home() {
         console.log('✅ Used AuthContext refreshWalletBalance');
       }
       
-      const response = await fetch('/api/wallet/balance', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await walletAPIAuto.getBalance();
+          setLocalWalletBalance(( response).data.balance);
+          
+        
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setLocalWalletBalance(data.balance);
-          console.log(`💰 Direct balance fetch: ${data.balance} ብር`);
-        }
-      }
       
       setBalanceRefreshCounter(prev => prev + 1);
     } catch (error) {
