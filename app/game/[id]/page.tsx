@@ -177,10 +177,11 @@ const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false)
         markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
         selected: (apiCard as any).selected
       };
-      
+      //const oldKey = 'selected_number';
+      const oldSaved = localStorage.getItem('selected_number');
       // Update states
       setLocalBingoCard(newCard);
-      setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
+      setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex ||oldSaved|| null);
       setIsSpectatorMode(false);
       setSpectatorMessage('');
       setCardError('');
