@@ -102,7 +102,7 @@ export default function Home() {
   };
 
   // ==================== REFRESH WALLET BALANCE FUNCTION ====================
-  const refreshWalletBalanceLocal = async () => {
+ const refreshWalletBalanceLocal = async () => {
     try {
       setIsRefreshingBalance(true);
       console.log('💰 Refreshing wallet balance...');
@@ -307,8 +307,6 @@ useEffect(() => {
   
   return () => clearInterval(intervalId);
 }, [gameData?._id, hasRestartCooldown, restartCooldownRemaining]);
-
-
   // ==================== AUTO-JOIN FUNCTION ====================
   const handleAutoJoinGame = async () => {
     if (!selectedNumber || !user?.id || hasRestartCooldown || isAutoJoining) return;
