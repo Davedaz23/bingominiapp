@@ -2,13 +2,11 @@
 // app/game/[id]/page.tsx - FIXED VERSION (No page reloads)
 'use client';
 
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
-
-// Types
 interface LocalBingoCard {
   cardNumber?: number;
   numbers: (number | string)[][];
@@ -53,10 +51,12 @@ interface Game {
   message?: string;
 }
 
+
+// Types (keep as is)
+
 export default function GamePage() {
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const id = params.id as string;
   
   const { 
@@ -76,7 +76,6 @@ export default function GamePage() {
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
   
-  // Enhanced state for called numbers
   const [currentCalledNumber, setCurrentCalledNumber] = useState<{
     number: number;
     letter: string;
@@ -87,7 +86,6 @@ export default function GamePage() {
   const [isCallingNumber, setIsCallingNumber] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   
-  // Winner modal state
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [winnerInfo, setWinnerInfo] = useState<WinnerInfo | null>(null);
   const [isWinnerLoading, setIsWinnerLoading] = useState(false);
@@ -95,7 +93,6 @@ export default function GamePage() {
   const [winningAmount, setWinningAmount] = useState(0);
   const [countdown, setCountdown] = useState<number>(5);
   
-  // State for bingo claiming
   const [isClaimingBingo, setIsClaimingBingo] = useState<boolean>(false);
   const [claimResult, setClaimResult] = useState<{
     success: boolean;
@@ -104,11 +101,10 @@ export default function GamePage() {
     prizeAmount?: number;
   } | null>(null);
 
-  // Spectator mode state
   const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(false);
   const [spectatorMessage, setSpectatorMessage] = useState<string>('');
 
-  // Refs - OPTIMIZED: Add debounce ref and last update time
+  // Refs - FIXED: Optimized refs to prevent reloads
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameEndedCheckRef = useRef(false);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
@@ -118,13 +114,15 @@ export default function GamePage() {
   const updateInProgressRef = useRef(false);
   const lastUpdateTimeRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const initialLoadRef = useRef(false);
+  const cardUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Polling interval for real-time updates (5 seconds)
-  const POLL_INTERVAL = 5000;
-  // Minimum time between updates to prevent rapid re-renders
-  const MIN_UPDATE_INTERVAL = 1000;
+  // Polling intervals
+  const POLL_INTERVAL = 10000; // Increased to 10 seconds
+  const MIN_UPDATE_INTERVAL = 3000; // Increased to 3 seconds
+  const CARD_CHECK_INTERVAL = 30000; // Check card every 30 seconds
 
-  // Helper function to get BINGO letter for a number - MOVED outside to prevent recreation
+  // Helper function to get BINGO letter
   const getNumberLetter = (num: number): string => {
     if (num <= 15) return 'B';
     if (num <= 30) return 'I';
@@ -133,7 +131,7 @@ export default function GamePage() {
     return 'O';
   };
 
-  // Load wallet balance - OPTIMIZED with useMemo
+  // FIXED: Load wallet balance - only once on mount
   const loadWalletBalance = useCallback(async () => {
     try {
       const walletResponse = await walletAPIAuto.getBalance();
@@ -145,8 +143,13 @@ export default function GamePage() {
     }
   }, []);
 
-  // FIXED: Check if user has a bingo card for this game - OPTIMIZED
+  // FIXED: Check if user has a bingo card - optimized with caching
   const checkUserHasCard = useCallback(async (forceCheck = false): Promise<boolean> => {
+    // Don't check if we're in winner modal or game is finished
+    if (showWinnerModal || (game?.status === 'FINISHED' && !forceCheck)) {
+      return !!localBingoCard;
+    }
+    
     if (hasCardCheckedRef.current && !forceCheck) {
       return !!localBingoCard;
     }
@@ -165,8 +168,11 @@ export default function GamePage() {
           selected: (apiCard as any).selected
         };
         
-        // Only update if card actually changed
-        if (JSON.stringify(newCard) !== JSON.stringify(localBingoCard)) {
+        // Deep comparison to avoid unnecessary updates
+        const currentCardStr = JSON.stringify(localBingoCard);
+        const newCardStr = JSON.stringify(newCard);
+        
+        if (currentCardStr !== newCardStr) {
           setLocalBingoCard(newCard);
         }
         
@@ -179,30 +185,39 @@ export default function GamePage() {
         hasCardCheckedRef.current = true;
         return true;
       }
+      
+      // If no card found, set spectator mode
+      if (!hasCardCheckedRef.current || forceCheck) {
+        setIsSpectatorMode(true);
+        hasCardCheckedRef.current = true;
+      }
+      
       return false;
     } catch (error) {
       console.error('Error checking user card:', error);
       return false;
     }
-  }, [id, localBingoCard, selectedNumber]);
+  }, [id, localBingoCard, selectedNumber, game?.status, showWinnerModal]);
 
-  // FIXED: Initialize user card with better logic
+  // FIXED: Initialize user card - only once or when game status changes
   const initializeUserCard = useCallback(async (forceCheck = false) => {
+    // Prevent multiple simultaneous initializations
+    if (updateInProgressRef.current && !forceCheck) return;
+    
     try {
+      updateInProgressRef.current = true;
       setIsLoadingCard(true);
       setCardError('');
       
       const hasCard = await checkUserHasCard(forceCheck);
       
-      if (!hasCard) {
-        if (game) {
-          if (game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION') {
-            setIsSpectatorMode(false);
-            setSpectatorMessage('Select a card number to join the game.');
-          } else if (game.status === 'ACTIVE' || game.status === 'FINISHED') {
-            setIsSpectatorMode(true);
-            setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
-          }
+      if (!hasCard && game) {
+        if (game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION') {
+          setIsSpectatorMode(false);
+          setSpectatorMessage('Select a card number to join the game.');
+        } else if (game.status === 'ACTIVE' || game.status === 'FINISHED') {
+          setIsSpectatorMode(true);
+          setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
         }
       } else {
         setIsSpectatorMode(false);
@@ -213,12 +228,13 @@ export default function GamePage() {
       setCardError('Failed to load your card. Please try again.');
     } finally {
       setIsLoadingCard(false);
+      updateInProgressRef.current = false;
     }
   }, [game, checkUserHasCard]);
 
-  // Check for winner - OPTIMIZED with abort controller
+  // FIXED: Check for winner - optimized
   const checkForWinner = useCallback(async (gameData?: Game) => {
-    if (!gameData || abortControllerRef.current) return;
+    if (!gameData || abortControllerRef.current || showWinnerModal) return;
     
     try {
       setIsWinnerLoading(true);
@@ -244,6 +260,7 @@ export default function GamePage() {
           setShowWinnerModal(true);
           setIsWinnerLoading(false);
           
+          // Stop all polling when winner is found
           if (pollingRef.current) {
             clearInterval(pollingRef.current);
             pollingRef.current = null;
@@ -258,14 +275,15 @@ export default function GamePage() {
     } finally {
       abortControllerRef.current = null;
     }
-  }, [getWinnerInfo]);
+  }, [getWinnerInfo, showWinnerModal]);
 
-  // FIXED: Update game state without reloading page - OPTIMIZED with debounce
+  // FIXED: Update game state - optimized with better debouncing
   const updateGameState = useCallback(async (force = false) => {
+    // Prevent multiple updates and updates during winner modal
     if (updateInProgressRef.current && !force) return;
-    if (!id || showWinnerModal) return;
+    if (!id || showWinnerModal || (game?.status === 'FINISHED' && !force)) return;
     
-    // Debounce: Prevent too frequent updates
+    // Throttle updates
     const now = Date.now();
     if (!force && now - lastUpdateTimeRef.current < MIN_UPDATE_INTERVAL) {
       return;
@@ -280,13 +298,16 @@ export default function GamePage() {
       
       if (updatedGame) {
         const currentState = lastGameStateRef.current;
-        const stateChanged = !currentState || 
-          JSON.stringify(currentState.numbersCalled) !== JSON.stringify(updatedGame.numbersCalled) ||
-          currentState.status !== updatedGame.status ||
-          currentState.winnerId !== updatedGame.winnerId;
         
-        if (stateChanged || force) {
-          // Update called numbers - batch updates
+        // Only update if there are meaningful changes
+        const numbersChanged = !currentState || 
+          JSON.stringify(currentState.numbersCalled) !== JSON.stringify(updatedGame.numbersCalled);
+        
+        const statusChanged = currentState?.status !== updatedGame.status;
+        const winnerChanged = currentState?.winnerId !== updatedGame.winnerId;
+        
+        if (numbersChanged || statusChanged || winnerChanged || force) {
+          // Update called numbers
           if (updatedGame.numbersCalled && updatedGame.numbersCalled.length > 0) {
             const newNumbers = updatedGame.numbersCalled;
             const oldNumbers = allCalledNumbers;
@@ -294,48 +315,54 @@ export default function GamePage() {
             if (JSON.stringify(newNumbers) !== JSON.stringify(oldNumbers)) {
               setAllCalledNumbers(newNumbers);
               
+              // Update current called number only if it's actually new
               const lastNewNumber = newNumbers[newNumbers.length - 1];
               const lastOldNumber = oldNumbers[oldNumbers.length - 1];
               
-              if (lastNewNumber !== lastOldNumber) {
+              if (lastNewNumber !== lastOldNumber || !currentCalledNumber) {
                 setCurrentCalledNumber({
                   number: lastNewNumber,
                   letter: getNumberLetter(lastNewNumber),
                   isNew: true
                 });
                 
+                // Clear previous animation timeout
                 if (animationTimeoutRef.current) {
                   clearTimeout(animationTimeoutRef.current);
                 }
+                
+                // Set animation timeout
                 animationTimeoutRef.current = setTimeout(() => {
                   setCurrentCalledNumber(prev => 
                     prev ? { ...prev, isNew: false } : null
                   );
                 }, 2000);
-              } else if (!currentCalledNumber) {
-                setCurrentCalledNumber({
-                  number: lastNewNumber,
-                  letter: getNumberLetter(lastNewNumber),
-                  isNew: false
-                });
               }
             }
           }
           
-          // Check for winner
+          // Check for winner (only if status changed to FINISHED)
           if (updatedGame.status === 'FINISHED' && updatedGame.winnerId && !gameEndedCheckRef.current) {
             gameEndedCheckRef.current = true;
-            checkForWinner(updatedGame);
+            await checkForWinner(updatedGame);
           }
           
+          // Update game state ref
           lastGameStateRef.current = updatedGame;
           
-          // Re-check card if needed (but less frequently)
+          // Update user card less frequently
           if (isSpectatorMode && (updatedGame.status === 'WAITING_FOR_PLAYERS' || updatedGame.status === 'CARD_SELECTION')) {
-            // Only force check every 30 seconds in spectator mode
-            const shouldCheck = force || Math.random() < 0.2; // 20% chance on each poll
-            if (shouldCheck) {
-              await initializeUserCard(true);
+            // Only check card occasionally in spectator mode
+            const shouldCheckCard = force || Math.random() < 0.1; // 10% chance
+            if (shouldCheckCard) {
+              // Debounce card check
+              if (cardUpdateTimeoutRef.current) {
+                clearTimeout(cardUpdateTimeoutRef.current);
+              }
+              
+              cardUpdateTimeoutRef.current = setTimeout(() => {
+                initializeUserCard(true);
+              }, 1000);
             }
           }
         }
@@ -345,25 +372,39 @@ export default function GamePage() {
     } finally {
       updateInProgressRef.current = false;
     }
-  }, [id, showWinnerModal, allCalledNumbers, currentCalledNumber, isSpectatorMode, initializeUserCard, checkForWinner, MIN_UPDATE_INTERVAL]);
+  }, [
+    id, showWinnerModal, game?.status, allCalledNumbers, 
+    currentCalledNumber, isSpectatorMode, initializeUserCard, 
+    checkForWinner, MIN_UPDATE_INTERVAL
+  ]);
 
-  // FIXED: Start polling with proper cleanup - OPTIMIZED
+  // FIXED: Start polling with proper cleanup
   const startPolling = useCallback(() => {
+    // Clear existing interval
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
     
+    // Don't start polling if game is finished
+    if (game?.status === 'FINISHED' && !gameEndedCheckRef.current) {
+      return;
+    }
+    
+    // Start new polling interval
     pollingRef.current = setInterval(() => {
       updateGameState();
     }, POLL_INTERVAL);
-  }, [updateGameState, POLL_INTERVAL]);
+  }, [updateGameState, game?.status, POLL_INTERVAL]);
 
-  // FIXED: Main initialization - properly checks for card - OPTIMIZED
+  // FIXED: Main initialization - runs only once
   useEffect(() => {
+    if (initialLoadRef.current) return;
+    
     const initializeGame = async () => {
       try {
         console.log('🎮 Initializing game page...');
+        initialLoadRef.current = true;
         
         await loadWalletBalance();
         
@@ -378,8 +419,10 @@ export default function GamePage() {
           return;
         }
 
+        // Initialize user card
         await initializeUserCard();
 
+        // Set initial called numbers
         if (game.numbersCalled && game.numbersCalled.length > 0) {
           setAllCalledNumbers(game.numbersCalled);
           
@@ -393,8 +436,13 @@ export default function GamePage() {
           }
         }
 
+        // Store initial game state
         lastGameStateRef.current = game;
-        startPolling();
+        
+        // Start polling if game is active
+        if (game.status !== 'FINISHED') {
+          startPolling();
+        }
 
       } catch (error) {
         console.error('Failed to initialize game:', error);
@@ -416,16 +464,32 @@ export default function GamePage() {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
+      if (cardUpdateTimeoutRef.current) {
+        clearTimeout(cardUpdateTimeoutRef.current);
+      }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-      updateInProgressRef.current = false;
-      gameEndedCheckRef.current = false;
-      hasCardCheckedRef.current = false;
     };
   }, [game, isLoading, loadWalletBalance, initializeUserCard, router, startPolling]);
 
-  // Check for winner on game status change - OPTIMIZED with dependency array
+  // FIXED: Update polling when game status changes
+  useEffect(() => {
+    if (!game) return;
+    
+    // Restart polling if game becomes active
+    if (game.status === 'ACTIVE' && !pollingRef.current && !showWinnerModal) {
+      startPolling();
+    }
+    
+    // Stop polling if game is finished
+    if (game.status === 'FINISHED' && pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, [game?.status, startPolling, showWinnerModal]);
+
+  // Check for winner on game status change
   useEffect(() => {
     if (game && game.status === 'FINISHED' && game.winnerId && !showWinnerModal && !gameEndedCheckRef.current) {
       console.log('🏁 Game finished! Fetching winner info...');
@@ -434,7 +498,7 @@ export default function GamePage() {
     }
   }, [game, showWinnerModal, checkForWinner]);
 
-  // Countdown for winner modal - OPTIMIZED
+  // Countdown for winner modal
   useEffect(() => {
     if (showWinnerModal && winnerInfo) {
       setCountdown(5);
@@ -464,48 +528,6 @@ export default function GamePage() {
     };
   }, [showWinnerModal, winnerInfo]);
 
-  // FIXED: Handle manual number call - optimized state updates
-  const handleCallNumber = async () => {
-    if (isCallingNumber || !id || game?.status !== 'ACTIVE') return;
-    
-    try {
-      setIsCallingNumber(true);
-      const response = await gameAPI.callNumber(id);
-      const data = response.data;
-      
-      if (data.success) {
-        const letter = getNumberLetter(data.number);
-        
-        // Batch state updates
-        setCurrentCalledNumber({
-          number: data.number,
-          letter: letter,
-          isNew: true
-        });
-        
-        setAllCalledNumbers(data.calledNumbers);
-        
-        // Clear animation timeout
-        if (animationTimeoutRef.current) {
-          clearTimeout(animationTimeoutRef.current);
-        }
-        
-        animationTimeoutRef.current = setTimeout(() => {
-          setCurrentCalledNumber(prev => 
-            prev ? { ...prev, isNew: false } : null
-          );
-        }, 2000);
-        
-        // Update game state after a delay
-        setTimeout(() => updateGameState(true), 500);
-      }
-    } catch (error) {
-      console.error('❌ Failed to call number:', error);
-    } finally {
-      setIsCallingNumber(false);
-    }
-  };
-
   // FIXED: Handle manual number marking - optimized
   const handleMarkNumber = async (number: number) => {
     if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
@@ -520,7 +542,7 @@ export default function GamePage() {
       if (response.data.success) {
         console.log(`✅ Successfully manually marked number: ${number}`);
         
-        // Optimistically update UI without waiting for server
+        // Optimistically update UI
         if (localBingoCard) {
           const numbers = localBingoCard.numbers.flat();
           const position = numbers.indexOf(number);
@@ -537,8 +559,8 @@ export default function GamePage() {
           }
         }
         
-        // Update game state after marking
-        setTimeout(() => updateGameState(true), 300);
+        // Update game state after a delay (don't force immediate update)
+        setTimeout(() => updateGameState(), 1000);
       }
     } catch (error: any) {
       console.error('Failed to mark number:', error);
@@ -553,7 +575,7 @@ export default function GamePage() {
     }
   };
 
-  // FIXED: Handle manual Bingo claim - optimized
+  // FIXED: Handle manual Bingo claim
   const handleClaimBingo = async () => {
     if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard) return;
     
@@ -580,9 +602,10 @@ export default function GamePage() {
           pollingRef.current = null;
         }
         
+        // Force update to check for winner
         setTimeout(() => {
           updateGameState(true);
-        }, 1000);
+        }, 2000);
       } else {
         setClaimResult({
           success: false,
@@ -604,43 +627,8 @@ export default function GamePage() {
     }
   };
 
-  // Handle returning to lobby - OPTIMIZED
+  // Handle returning to lobby
   const handleReturnToLobby = () => {
-    // Cleanup all intervals and timeouts
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-    }
-    
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    
-    // Reset states in batch
-    setShowWinnerModal(false);
-    setWinnerInfo(null);
-    setIsUserWinner(false);
-    setWinningAmount(0);
-    setCurrentCalledNumber(null);
-    setAllCalledNumbers([]);
-    setClaimResult(null);
-    setCountdown(5);
-    
-    // Reset refs
-    gameEndedCheckRef.current = false;
-    hasCardCheckedRef.current = false;
-    updateInProgressRef.current = false;
-    lastUpdateTimeRef.current = 0;
-    
-    router.push('/');
-  };
-
-  // Handle play again - OPTIMIZED
-  const handlePlayAgain = () => {
     // Cleanup
     if (countdownRef.current) {
       clearInterval(countdownRef.current);
@@ -655,21 +643,36 @@ export default function GamePage() {
       abortControllerRef.current.abort();
     }
     
+    if (cardUpdateTimeoutRef.current) {
+      clearTimeout(cardUpdateTimeoutRef.current);
+    }
+    
     // Reset states
     setShowWinnerModal(false);
+    setWinnerInfo(null);
+    setIsUserWinner(false);
+    setWinningAmount(0);
+    setCurrentCalledNumber(null);
+    setAllCalledNumbers([]);
+    setClaimResult(null);
+    setCountdown(5);
+    
+    // Reset refs
+    initialLoadRef.current = false;
     gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
     updateInProgressRef.current = false;
     lastUpdateTimeRef.current = 0;
-    setWinnerInfo(null);
-    setIsUserWinner(false);
-    setWinningAmount(0);
-    setCountdown(5);
     
     router.push('/');
   };
 
-  // Clean up timeouts on unmount - OPTIMIZED
+  // Handle play again
+  const handlePlayAgain = () => {
+    handleReturnToLobby();
+  };
+
+  // Clean up timeouts on unmount
   useEffect(() => {
     return () => {
       if (animationTimeoutRef.current) {
@@ -682,30 +685,33 @@ export default function GamePage() {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
+      if (cardUpdateTimeoutRef.current) {
+        clearTimeout(cardUpdateTimeoutRef.current);
+      }
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
     };
   }, []);
 
-  // Manual refresh button - optimized
+  // Manual refresh button
   const handleManualRefresh = useCallback(() => {
     updateGameState(true);
   }, [updateGameState]);
 
-  // Use local card if available - memoized
+  // Use local card if available
   const displayBingoCard = useMemo(() => {
     return localBingoCard || gameBingoCard;
   }, [localBingoCard, gameBingoCard]);
 
-  // Helper function to check if a position is in winning pattern - memoized
+  // Helper function to check if a position is in winning pattern
   const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
     if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
     const flatIndex = rowIndex * 5 + colIndex;
     return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
   }, [winnerInfo]);
 
-  // Function to get winning pattern type name - memoized
+  // Function to get winning pattern type name
   const getPatternName = useCallback((patternType?: string): string => {
     if (!patternType) return 'BINGO Line';
     
@@ -730,8 +736,7 @@ export default function GamePage() {
     return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
   }, []);
 
-  // Memoize expensive calculations
-
+  // Loading state
   if (isLoading || isLoadingCard) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
@@ -762,6 +767,7 @@ export default function GamePage() {
       </div>
     );
   }
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">

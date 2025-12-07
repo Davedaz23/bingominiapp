@@ -20,7 +20,7 @@ import { GameStatusDisplay } from '../components/game/GameStatusDisplay';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
 import { useAccountStorage } from '../hooks/useAccountStorage';
-import { Clock, Play, Check, Rocket, AlertCircle, Users, RefreshCw, Eye, Loader2 } from 'lucide-react';
+import { Clock, Play, Check, Rocket, AlertCircle, Users, RefreshCw, Eye } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -84,17 +84,13 @@ export default function Home() {
   // Auto-join tracking
   const [isAutoJoining, setIsAutoJoining] = useState<boolean>(false);
   const [lastAutoJoinAttempt, setLastAutoJoinAttempt] = useState<number>(0);
-  
-  // Spectator redirection states
-  const [isSpectatorRedirecting, setIsSpectatorRedirecting] = useState<boolean>(false);
-  const [hasCheckedForActiveGames, setHasCheckedForActiveGames] = useState<boolean>(false);
 
   // ==================== LOAD ACTIVE GAMES ====================
   const loadActiveGames = async () => {
     try {
       setLoadingActiveGames(true);
       const response = await gameAPI.getActiveGames();
-      if (response.data.success &&(response.data.games[0].status=="ACTIVE")) {
+      if (response.data.success && response.data.games[0].status=="ACTIVE") {
         setActiveGames(response.data.games || []);
         console.log('🎮 Active games loaded:', response.data.games.length);
       }
@@ -102,7 +98,6 @@ export default function Home() {
       console.error('❌ Failed to load active games:', error);
     } finally {
       setLoadingActiveGames(false);
-      setHasCheckedForActiveGames(true);
     }
   };
 
@@ -197,52 +192,28 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  // ==================== SPECTATOR REDIRECTION LOGIC ====================
+  // ==================== MAIN AUTO-REDIRECT LOGIC ====================
   useEffect(() => {
-    // Don't redirect if already redirected or in auto-join process
-    if (autoRedirected || isAutoJoining || isSpectatorRedirecting) return;
+    // Don't auto-join if we're already in the process
+    if (isAutoJoining || autoRedirected) return;
     
-    // Only redirect if we've checked for active games
-    if (!hasCheckedForActiveGames || loadingActiveGames) return;
-    
-    // Check if there are any ACTIVE games to join as spectator
+    // Check if there are any active games to join as spectator
     if (activeGames.length > 0 && !selectedNumber) {
       const now = Date.now();
-      // Only attempt redirect once every 3 seconds
-      if (now - lastAutoJoinAttempt > 3000) {
+      // Only attempt auto-join once every 5 seconds
+      if (now - lastAutoJoinAttempt > 5000) {
         console.log('🎮 Active games available, redirecting as spectator...');
         setLastAutoJoinAttempt(now);
-        setIsSpectatorRedirecting(true);
+        setIsAutoJoining(true);
         
-        // Find the most recent active game
-        const mostRecentGame = activeGames.sort((a, b) => 
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        )[0];
-        
-        // Redirect to the most recent active game as spectator
+        // Redirect to the first active game as spectator
         setTimeout(() => {
-          console.log(`🎯 Redirecting to game: ${mostRecentGame._id}`);
-          router.push(`/game/${mostRecentGame._id}?spectator=true`);
+          router.push(`/game/${activeGames[0]._id}?spectator=true`);
           setAutoRedirected(true);
         }, 1000);
       }
+      return;
     }
-  }, [
-    activeGames,
-    selectedNumber,
-    hasCheckedForActiveGames,
-    loadingActiveGames,
-    autoRedirected,
-    isAutoJoining,
-    isSpectatorRedirecting,
-    lastAutoJoinAttempt,
-    router
-  ]);
-
-  // ==================== MAIN AUTO-REDIRECT LOGIC (For players with cards) ====================
-  useEffect(() => {
-    // Don't auto-join if we're already in the process or redirecting as spectator
-    if (isAutoJoining || autoRedirected || isSpectatorRedirecting) return;
     
     // Check if conditions are met for auto-joining with card
     const conditionsMet = 
@@ -268,8 +239,7 @@ export default function Home() {
     playersWithCards,
     isAutoJoining,
     autoRedirected,
-    lastAutoJoinAttempt,
-    isSpectatorRedirecting
+    lastAutoJoinAttempt
   ]);
 
   // ==================== AUTO-START CHECK ====================
@@ -377,10 +347,6 @@ export default function Home() {
 
   // ==================== FIXED: GAME INFO FOOTER MESSAGE ====================
   const getGameStatusMessage = () => {
-    if (isSpectatorRedirecting) {
-      return '🎮 Redirecting to active game as spectator...';
-    }
-
     if (hasRestartCooldown) {
       return `🔄 Game restarting in ${Math.ceil(restartCooldownRemaining / 1000)}s - Select your card now!`;
     }
@@ -482,29 +448,6 @@ export default function Home() {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Show spectator redirection loading
-  if (isSpectatorRedirecting) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex flex-col items-center justify-center p-4">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 max-w-md w-full">
-          <div className="flex flex-col items-center justify-center gap-4">
-            <Eye className="w-16 h-16 text-white animate-pulse" />
-            <h1 className="text-white font-bold text-2xl text-center">Active Game Found!</h1>
-            <p className="text-white/80 text-center">
-              Redirecting you to watch the game as a spectator...
-            </p>
-            <div className="mt-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-            </div>
-            <p className="text-white/60 text-sm text-center mt-4">
-              You can still select a card number to join the next game
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Auto-join loading screen
   if (isAutoJoining) {
     return (
@@ -598,36 +541,50 @@ export default function Home() {
         />
       )}
 
-      {/* ACTIVE GAMES BANNER FOR SPECTATORS */}
-      {activeGames.length > 0 && !selectedNumber && (
+      {/* ACTIVE GAMES SECTION */}
+      {activeGames.length > 0 && (
         <motion.div 
-          className="bg-gradient-to-r from-blue-500/20 to-purple-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+          className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-300" />
-              <div className="flex-1">
-                <p className="text-blue-300 font-bold text-sm">
-                  Live Game in Progress!
-                </p>
-                <p className="text-blue-200 text-xs">
-                  {activeGames.length} active game{activeGames.length > 1 ? 's' : ''} available to watch
-                </p>
-              </div>
+              <h3 className="text-blue-300 font-bold">Active Games</h3>
             </div>
-            <button
-              onClick={() => {
-                setIsSpectatorRedirecting(true);
-                router.push(`/game/${activeGames[0]._id}?spectator=true`);
-              }}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all flex items-center gap-1"
-            >
-              <Eye className="w-3 h-3" />
-              Watch Now
-            </button>
+            <span className="text-blue-200 text-sm bg-blue-500/30 px-2 py-1 rounded-full">
+              {activeGames.length} live game{activeGames.length > 1 ? 's' : ''}
+            </span>
           </div>
+          
+          <div className="space-y-3">
+            {activeGames.map((game) => (
+              <div 
+                key={game._id}
+                className="bg-blue-500/10 backdrop-blur-lg rounded-xl p-3 border border-blue-400/20"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-white font-medium">Game #{game.code}</div>
+                    <div className="text-blue-200 text-xs flex items-center gap-2 mt-1">
+                      <Users className="w-3 h-3" />
+                      <span>{game.currentPlayers || 0} players</span>
+                      <span>•</span>
+                      <span>{game.numbersCalled?.length || 0}/75 numbers called</span>
+                    </div>
+                  </div>
+                  <div className="text-blue-300 text-xs px-3 py-1 bg-blue-500/20 rounded-full">
+                    Watching automatically...
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <p className="text-blue-200 text-xs mt-3 text-center">
+            👁️ You will be automatically redirected to watch live games
+          </p>
         </motion.div>
       )}
 
@@ -991,7 +948,6 @@ export default function Home() {
         <div className="space-y-2">
           {/* Dynamic game status message */}
           <p className={`text-sm text-center font-medium ${
-            isSpectatorRedirecting ? 'text-blue-300' :
             isAutoJoining ? 'text-green-300' :
             hasRestartCooldown ? 'text-purple-300' :
             gameStatus === 'WAITING_FOR_PLAYERS' ? 'text-blue-300' :
@@ -1018,10 +974,7 @@ export default function Home() {
               🤖 <span className="font-bold">Automatic Join</span>
             </p>
             <p className="text-blue-200 text-xs text-center">
-              {activeGames.length > 0 
-                ? 'Active games will redirect you automatically as spectator'
-                : 'You will be automatically redirected when conditions are met'
-              }
+              You will be automatically redirected when conditions are met
             </p>
           </div>
           
@@ -1033,21 +986,6 @@ export default function Home() {
               </p>
               <p className="text-purple-200 text-xs text-center mt-1">
                 Next game starts in {Math.ceil(restartCooldownRemaining / 1000)} seconds
-              </p>
-            </div>
-          )}
-          
-          {/* Active games info */}
-          {activeGames.length > 0 && (
-            <div className="mt-2 p-2 bg-green-500/10 rounded-lg">
-              <div className="flex items-center justify-center gap-2 mb-1">
-                <Eye className="w-3 h-3 text-green-300" />
-                <p className="text-green-300 text-xs text-center">
-                  {activeGames.length} active game{activeGames.length > 1 ? 's' : ''} available
-                </p>
-              </div>
-              <p className="text-green-200 text-xs text-center">
-                You can watch live games even without selecting a card
               </p>
             </div>
           )}
