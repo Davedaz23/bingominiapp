@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - FIXED VERSION (No page reloads)
+// app/game/[id]/page.tsx - COMPLETE FIXED VERSION
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -7,6 +7,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useGame } from '../../../hooks/useGame';
 import { walletAPIAuto, gameAPI } from '../../../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
+
+// Types
 interface LocalBingoCard {
   cardNumber?: number;
   numbers: (number | string)[][];
@@ -50,9 +52,6 @@ interface Game {
   potAmount?: number;
   message?: string;
 }
-
-
-// Types (keep as is)
 
 export default function GamePage() {
   const params = useParams();
@@ -104,7 +103,7 @@ export default function GamePage() {
   const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(false);
   const [spectatorMessage, setSpectatorMessage] = useState<string>('');
 
-  // Refs - FIXED: Optimized refs to prevent reloads
+  // Refs
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameEndedCheckRef = useRef(false);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
@@ -116,11 +115,11 @@ export default function GamePage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const initialLoadRef = useRef(false);
   const cardUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasInitializedRef = useRef(false);
 
   // Polling intervals
-  const POLL_INTERVAL = 10000; // Increased to 10 seconds
-  const MIN_UPDATE_INTERVAL = 3000; // Increased to 3 seconds
-  const CARD_CHECK_INTERVAL = 30000; // Check card every 30 seconds
+  const POLL_INTERVAL = 10000;
+  const MIN_UPDATE_INTERVAL = 3000;
 
   // Helper function to get BINGO letter
   const getNumberLetter = (num: number): string => {
@@ -131,7 +130,7 @@ export default function GamePage() {
     return 'O';
   };
 
-  // FIXED: Load wallet balance - only once on mount
+  // FIXED: Load wallet balance
   const loadWalletBalance = useCallback(async () => {
     try {
       const walletResponse = await walletAPIAuto.getBalance();
@@ -143,22 +142,23 @@ export default function GamePage() {
     }
   }, []);
 
-  // FIXED: Check if user has a bingo card - optimized with caching
+  // FIXED: Check if user has a bingo card - simplified
   const checkUserHasCard = useCallback(async (forceCheck = false): Promise<boolean> => {
-    // Don't check if we're in winner modal or game is finished
-    if (showWinnerModal || (game?.status === 'FINISHED' && !forceCheck)) {
-      return !!localBingoCard;
-    }
-    
+    // Don't check if already checked and not forcing
     if (hasCardCheckedRef.current && !forceCheck) {
       return !!localBingoCard;
     }
     
     try {
       const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      if (!userId || !id) return false;
+      if (!userId || !id) {
+        setIsSpectatorMode(true);
+        setSpectatorMessage('Please login to join the game.');
+        return false;
+      }
 
       const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+      
       if (cardResponse.data.success && cardResponse.data.bingoCard) {
         const apiCard = cardResponse.data.bingoCard;
         const newCard = {
@@ -168,71 +168,79 @@ export default function GamePage() {
           selected: (apiCard as any).selected
         };
         
-        // Deep comparison to avoid unnecessary updates
-        const currentCardStr = JSON.stringify(localBingoCard);
-        const newCardStr = JSON.stringify(newCard);
-        
-        if (currentCardStr !== newCardStr) {
-          setLocalBingoCard(newCard);
-        }
-        
-        const newSelectedNumber = (apiCard as any).cardNumber || (apiCard as any).cardIndex || null;
-        if (newSelectedNumber !== selectedNumber) {
-          setSelectedNumber(newSelectedNumber);
-        }
-        
+        // Update states
+        setLocalBingoCard(newCard);
+        setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex || null);
         setIsSpectatorMode(false);
+        setSpectatorMessage('');
+        
         hasCardCheckedRef.current = true;
         return true;
       }
       
-      // If no card found, set spectator mode
-      if (!hasCardCheckedRef.current || forceCheck) {
+      // No card found
+      setIsSpectatorMode(true);
+      setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
+      hasCardCheckedRef.current = true;
+      return false;
+      
+    } catch (error: any) {
+      console.error('Error checking user card:', error);
+      
+      // Handle specific error cases
+      if (error.response?.status === 404) {
+        // No card found
         setIsSpectatorMode(true);
-        hasCardCheckedRef.current = true;
+        setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
+      } else {
+        setCardError('Failed to load your card. Please try again.');
       }
       
-      return false;
-    } catch (error) {
-      console.error('Error checking user card:', error);
+      hasCardCheckedRef.current = true;
       return false;
     }
-  }, [id, localBingoCard, selectedNumber, game?.status, showWinnerModal]);
+  }, [id, localBingoCard]);
 
-  // FIXED: Initialize user card - only once or when game status changes
+  // FIXED: Initialize user card - simplified with timeout
   const initializeUserCard = useCallback(async (forceCheck = false) => {
-    // Prevent multiple simultaneous initializations
     if (updateInProgressRef.current && !forceCheck) return;
     
     try {
       updateInProgressRef.current = true;
-      setIsLoadingCard(true);
-      setCardError('');
       
-      const hasCard = await checkUserHasCard(forceCheck);
+      // Set a timeout to ensure we don't get stuck in loading state
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Card loading timeout')), 10000);
+      });
       
-      if (!hasCard && game) {
-        if (game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION') {
-          setIsSpectatorMode(false);
-          setSpectatorMessage('Select a card number to join the game.');
-        } else if (game.status === 'ACTIVE' || game.status === 'FINISHED') {
-          setIsSpectatorMode(true);
-          setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
-        }
-      } else {
-        setIsSpectatorMode(false);
-        setSpectatorMessage('');
-      }
-    } catch (error) {
+      await Promise.race([
+        checkUserHasCard(forceCheck),
+        timeoutPromise
+      ]);
+      
+    } catch (error: any) {
       console.error('Failed to initialize user card:', error);
-      setCardError('Failed to load your card. Please try again.');
+      
+      // Set appropriate error message
+      if (error.message === 'Card loading timeout') {
+        setCardError('Loading card timed out. Please refresh the page.');
+      } else {
+        setCardError('Failed to load your card. Watching as spectator.');
+      }
+      
+      // Fallback to spectator mode
+      setIsSpectatorMode(true);
+      setSpectatorMessage('Unable to load your card. Watching as spectator.');
+      hasCardCheckedRef.current = true;
+      
     } finally {
+      // Always set loading to false
       setIsLoadingCard(false);
       updateInProgressRef.current = false;
     }
-  }, [game, checkUserHasCard]);
+  }, [checkUserHasCard]);
 
-  // FIXED: Check for winner - optimized
+  // FIXED: Check for winner
   const checkForWinner = useCallback(async (gameData?: Game) => {
     if (!gameData || abortControllerRef.current || showWinnerModal) return;
     
@@ -260,7 +268,6 @@ export default function GamePage() {
           setShowWinnerModal(true);
           setIsWinnerLoading(false);
           
-          // Stop all polling when winner is found
           if (pollingRef.current) {
             clearInterval(pollingRef.current);
             pollingRef.current = null;
@@ -277,13 +284,11 @@ export default function GamePage() {
     }
   }, [getWinnerInfo, showWinnerModal]);
 
-  // FIXED: Update game state - optimized with better debouncing
+  // FIXED: Update game state
   const updateGameState = useCallback(async (force = false) => {
-    // Prevent multiple updates and updates during winner modal
     if (updateInProgressRef.current && !force) return;
-    if (!id || showWinnerModal || (game?.status === 'FINISHED' && !force)) return;
+    if (!id || showWinnerModal) return;
     
-    // Throttle updates
     const now = Date.now();
     if (!force && now - lastUpdateTimeRef.current < MIN_UPDATE_INTERVAL) {
       return;
@@ -299,7 +304,7 @@ export default function GamePage() {
       if (updatedGame) {
         const currentState = lastGameStateRef.current;
         
-        // Only update if there are meaningful changes
+        // Check for changes
         const numbersChanged = !currentState || 
           JSON.stringify(currentState.numbersCalled) !== JSON.stringify(updatedGame.numbersCalled);
         
@@ -309,62 +314,37 @@ export default function GamePage() {
         if (numbersChanged || statusChanged || winnerChanged || force) {
           // Update called numbers
           if (updatedGame.numbersCalled && updatedGame.numbersCalled.length > 0) {
-            const newNumbers = updatedGame.numbersCalled;
-            const oldNumbers = allCalledNumbers;
+            setAllCalledNumbers(updatedGame.numbersCalled);
             
-            if (JSON.stringify(newNumbers) !== JSON.stringify(oldNumbers)) {
-              setAllCalledNumbers(newNumbers);
+            const lastNumber = updatedGame.numbersCalled[updatedGame.numbersCalled.length - 1];
+            if (lastNumber) {
+              setCurrentCalledNumber({
+                number: lastNumber,
+                letter: getNumberLetter(lastNumber),
+                isNew: numbersChanged
+              });
               
-              // Update current called number only if it's actually new
-              const lastNewNumber = newNumbers[newNumbers.length - 1];
-              const lastOldNumber = oldNumbers[oldNumbers.length - 1];
-              
-              if (lastNewNumber !== lastOldNumber || !currentCalledNumber) {
-                setCurrentCalledNumber({
-                  number: lastNewNumber,
-                  letter: getNumberLetter(lastNewNumber),
-                  isNew: true
-                });
-                
-                // Clear previous animation timeout
-                if (animationTimeoutRef.current) {
-                  clearTimeout(animationTimeoutRef.current);
-                }
-                
-                // Set animation timeout
-                animationTimeoutRef.current = setTimeout(() => {
-                  setCurrentCalledNumber(prev => 
-                    prev ? { ...prev, isNew: false } : null
-                  );
-                }, 2000);
+              // Clear animation timeout
+              if (animationTimeoutRef.current) {
+                clearTimeout(animationTimeoutRef.current);
               }
+              
+              // Set animation timeout
+              animationTimeoutRef.current = setTimeout(() => {
+                setCurrentCalledNumber(prev => 
+                  prev ? { ...prev, isNew: false } : null
+                );
+              }, 2000);
             }
           }
           
-          // Check for winner (only if status changed to FINISHED)
+          // Check for winner
           if (updatedGame.status === 'FINISHED' && updatedGame.winnerId && !gameEndedCheckRef.current) {
             gameEndedCheckRef.current = true;
             await checkForWinner(updatedGame);
           }
           
-          // Update game state ref
           lastGameStateRef.current = updatedGame;
-          
-          // Update user card less frequently
-          if (isSpectatorMode && (updatedGame.status === 'WAITING_FOR_PLAYERS' || updatedGame.status === 'CARD_SELECTION')) {
-            // Only check card occasionally in spectator mode
-            const shouldCheckCard = force || Math.random() < 0.1; // 10% chance
-            if (shouldCheckCard) {
-              // Debounce card check
-              if (cardUpdateTimeoutRef.current) {
-                clearTimeout(cardUpdateTimeoutRef.current);
-              }
-              
-              cardUpdateTimeoutRef.current = setTimeout(() => {
-                initializeUserCard(true);
-              }, 1000);
-            }
-          }
         }
       }
     } catch (error) {
@@ -373,41 +353,33 @@ export default function GamePage() {
       updateInProgressRef.current = false;
     }
   }, [
-    id, showWinnerModal, game?.status, allCalledNumbers, 
-    currentCalledNumber, isSpectatorMode, initializeUserCard, 
-    checkForWinner, MIN_UPDATE_INTERVAL
+    id, showWinnerModal, checkForWinner, MIN_UPDATE_INTERVAL
   ]);
 
-  // FIXED: Start polling with proper cleanup
+  // FIXED: Start polling
   const startPolling = useCallback(() => {
-    // Clear existing interval
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
-      pollingRef.current = null;
     }
     
-    // Don't start polling if game is finished
-    if (game?.status === 'FINISHED' && !gameEndedCheckRef.current) {
-      return;
-    }
-    
-    // Start new polling interval
     pollingRef.current = setInterval(() => {
       updateGameState();
     }, POLL_INTERVAL);
-  }, [updateGameState, game?.status, POLL_INTERVAL]);
+  }, [updateGameState, POLL_INTERVAL]);
 
-  // FIXED: Main initialization - runs only once
+  // FIXED: Main initialization - simplified and reliable
   useEffect(() => {
-    if (initialLoadRef.current) return;
+    if (hasInitializedRef.current) return;
     
     const initializeGame = async () => {
       try {
         console.log('🎮 Initializing game page...');
-        initialLoadRef.current = true;
+        hasInitializedRef.current = true;
         
+        // Load wallet balance
         await loadWalletBalance();
         
+        // Wait for game data if still loading
         if (isLoading) {
           console.log('⏳ Waiting for game data...');
           return;
@@ -440,79 +412,64 @@ export default function GamePage() {
         lastGameStateRef.current = game;
         
         // Start polling if game is active
-        if (game.status !== 'FINISHED') {
+        if (game.status === 'ACTIVE') {
           startPolling();
         }
 
       } catch (error) {
         console.error('Failed to initialize game:', error);
-        setCardError('Failed to initialize game');
+        setCardError('Failed to initialize game. Please refresh.');
+        
+        // Ensure we exit loading state
+        setIsLoadingCard(false);
       }
     };
 
     initializeGame();
 
     return () => {
-      // Cleanup all timeouts and intervals
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-      }
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-      }
+      // Cleanup
+      if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
-      if (cardUpdateTimeoutRef.current) {
-        clearTimeout(cardUpdateTimeoutRef.current);
-      }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
+      if (cardUpdateTimeoutRef.current) clearTimeout(cardUpdateTimeoutRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
     };
   }, [game, isLoading, loadWalletBalance, initializeUserCard, router, startPolling]);
 
-  // FIXED: Update polling when game status changes
+  // FIXED: Effect to handle game status changes
   useEffect(() => {
     if (!game) return;
     
-    // Restart polling if game becomes active
-    if (game.status === 'ACTIVE' && !pollingRef.current && !showWinnerModal) {
+    // Update polling based on game status
+    if (game.status === 'ACTIVE' && !pollingRef.current) {
       startPolling();
-    }
-    
-    // Stop polling if game is finished
-    if (game.status === 'FINISHED' && pollingRef.current) {
+    } else if ((game.status === 'FINISHED' || game.status === 'CANCELLED') && pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
-  }, [game?.status, startPolling, showWinnerModal]);
-
-  // Check for winner on game status change
-  useEffect(() => {
-    if (game && game.status === 'FINISHED' && game.winnerId && !showWinnerModal && !gameEndedCheckRef.current) {
-      console.log('🏁 Game finished! Fetching winner info...');
+    
+    // Check for winner
+    if (game.status === 'FINISHED' && game.winnerId && !showWinnerModal && !gameEndedCheckRef.current) {
       gameEndedCheckRef.current = true;
       checkForWinner(game as Game);
     }
-  }, [game, showWinnerModal, checkForWinner]);
+  }, [game, startPolling, showWinnerModal, checkForWinner]);
 
-  // Countdown for winner modal
+  // FIXED: Countdown for winner modal
   useEffect(() => {
     if (showWinnerModal && winnerInfo) {
       setCountdown(5);
       
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-      }
+      if (countdownRef.current) clearInterval(countdownRef.current);
       
       countdownRef.current = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
-            if (countdownRef.current) {
-              clearInterval(countdownRef.current);
-            }
+            clearInterval(countdownRef.current!);
             handleReturnToLobby();
             return 0;
           }
@@ -522,13 +479,24 @@ export default function GamePage() {
     }
     
     return () => {
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-      }
+      if (countdownRef.current) clearInterval(countdownRef.current);
     };
   }, [showWinnerModal, winnerInfo]);
 
-  // FIXED: Handle manual number marking - optimized
+  // FIXED: Safety timeout to exit loading state
+  useEffect(() => {
+    const safetyTimeout = setTimeout(() => {
+      if (isLoadingCard) {
+        console.warn('⚠️ Loading timed out, forcing exit from loading state');
+        setIsLoadingCard(false);
+        setCardError('Loading timed out. Please refresh or check your connection.');
+      }
+    }, 15000); // 15 second timeout
+
+    return () => clearTimeout(safetyTimeout);
+  }, [isLoadingCard]);
+
+  // FIXED: Handle manual number marking
   const handleMarkNumber = async (number: number) => {
     if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
     
@@ -540,9 +508,9 @@ export default function GamePage() {
       const response = await gameAPI.markNumber(id, userId, number);
       
       if (response.data.success) {
-        console.log(`✅ Successfully manually marked number: ${number}`);
+        console.log(`✅ Successfully marked number: ${number}`);
         
-        // Optimistically update UI
+        // Update local card
         if (localBingoCard) {
           const numbers = localBingoCard.numbers.flat();
           const position = numbers.indexOf(number);
@@ -559,8 +527,8 @@ export default function GamePage() {
           }
         }
         
-        // Update game state after a delay (don't force immediate update)
-        setTimeout(() => updateGameState(), 1000);
+        // Update game state
+        setTimeout(() => updateGameState(true), 1000);
       }
     } catch (error: any) {
       console.error('Failed to mark number:', error);
@@ -596,16 +564,14 @@ export default function GamePage() {
           prizeAmount: response.data.prizeAmount
         });
         
-        // Stop polling and update game state
+        // Stop polling
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
         }
         
-        // Force update to check for winner
-        setTimeout(() => {
-          updateGameState(true);
-        }, 2000);
+        // Force update
+        setTimeout(() => updateGameState(true), 2000);
       } else {
         setClaimResult({
           success: false,
@@ -630,22 +596,13 @@ export default function GamePage() {
   // Handle returning to lobby
   const handleReturnToLobby = () => {
     // Cleanup
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-    }
-    
+    if (countdownRef.current) clearInterval(countdownRef.current);
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
-    
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    
-    if (cardUpdateTimeoutRef.current) {
-      clearTimeout(cardUpdateTimeoutRef.current);
-    }
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    if (cardUpdateTimeoutRef.current) clearTimeout(cardUpdateTimeoutRef.current);
     
     // Reset states
     setShowWinnerModal(false);
@@ -658,7 +615,7 @@ export default function GamePage() {
     setCountdown(5);
     
     // Reset refs
-    initialLoadRef.current = false;
+    hasInitializedRef.current = false;
     gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
     updateInProgressRef.current = false;
@@ -671,28 +628,6 @@ export default function GamePage() {
   const handlePlayAgain = () => {
     handleReturnToLobby();
   };
-
-  // Clean up timeouts on unmount
-  useEffect(() => {
-    return () => {
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-      }
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-      }
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-      if (cardUpdateTimeoutRef.current) {
-        clearTimeout(cardUpdateTimeoutRef.current);
-      }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
 
   // Manual refresh button
   const handleManualRefresh = useCallback(() => {
@@ -736,17 +671,24 @@ export default function GamePage() {
     return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
   }, []);
 
-  // Loading state
-  if (isLoading || isLoadingCard) {
+  // FIXED: Loading state with better timeout handling
+  if ((isLoading || isLoadingCard) && !cardError) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
           <p>Loading game...</p>
           {isLoadingCard && <p className="text-sm mt-2">Loading your bingo card...</p>}
-          {cardError && (
-            <p className="text-yellow-300 text-sm mt-2">{cardError}</p>
-          )}
+          <p className="text-white/60 text-sm mt-4">This may take a few seconds...</p>
+          <button 
+            onClick={() => {
+              setIsLoadingCard(false);
+              setCardError('Loading interrupted. Please refresh or check connection.');
+            }}
+            className="mt-4 bg-white/20 text-white px-4 py-2 rounded-lg text-sm hover:bg-white/30 transition-all"
+          >
+            Cancel Loading
+          </button>
         </div>
       </div>
     );
@@ -757,9 +699,10 @@ export default function GamePage() {
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
           <h1 className="text-2xl font-bold mb-4">Game Not Found</h1>
+          <p className="text-white/70 mb-6">{cardError || 'The game you are looking for does not exist.'}</p>
           <button 
             onClick={() => router.push('/')}
-            className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold"
+            className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold hover:bg-purple-50 transition-all"
           >
             Back to Lobby
           </button>
@@ -768,7 +711,62 @@ export default function GamePage() {
     );
   }
 
+  // FIXED: Show error state if card loading failed
+  if (cardError && !localBingoCard) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 max-w-2xl mx-auto mt-8">
+          <div className="text-center">
+            <div className="text-4xl mb-4">⚠️</div>
+            <h2 className="text-xl font-bold text-white mb-2">Card Loading Error</h2>
+            <p className="text-white/70 mb-6">{cardError}</p>
+            
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button 
+                onClick={() => {
+                  setIsLoadingCard(true);
+                  setCardError('');
+                  hasCardCheckedRef.current = false;
+                  initializeUserCard(true);
+                }}
+                className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-medium hover:from-blue-600 hover:to-purple-600 transition-all"
+              >
+                Try Again
+              </button>
+              
+              <button 
+                onClick={() => {
+                  setIsSpectatorMode(true);
+                  setCardError('');
+                  setIsLoadingCard(false);
+                }}
+                className="bg-white/20 text-white px-6 py-3 rounded-xl font-medium hover:bg-white/30 transition-all"
+              >
+                Watch as Spectator
+              </button>
+              
+              <button 
+                onClick={() => router.push('/')}
+                className="bg-white text-purple-600 px-6 py-3 rounded-xl font-medium hover:bg-purple-50 transition-all"
+              >
+                Back to Lobby
+              </button>
+            </div>
+            
+            {isSpectatorMode && (
+              <div className="mt-6 p-4 bg-blue-500/20 rounded-lg border border-blue-500/30">
+                <p className="text-blue-300 text-sm">
+                  You are now in spectator mode. You can watch the game but cannot participate.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
+  // Main game render
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
       {/* Winner Modal */}
@@ -1036,29 +1034,62 @@ export default function GamePage() {
           </div>
         </div>
 
-        {/* Card Error Display */}
-        {cardError && (
-          <div className="mt-3 p-3 bg-red-500/20 rounded-lg border border-red-500/30">
-            <p className="text-red-300 text-sm text-center">{cardError}</p>
+        {/* Spectator Mode Message */}
+        {isSpectatorMode && spectatorMessage && (
+          <div className="mt-3 p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
+            <p className="text-blue-300 text-sm text-center">{spectatorMessage}</p>
             {game.status === 'WAITING_FOR_PLAYERS' && (
               <button 
                 onClick={() => router.push('/')}
-                className="mt-2 bg-red-500 text-white px-4 py-2 rounded-lg text-sm mx-auto block"
+                className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-lg text-sm mx-auto block hover:bg-blue-600 transition-all"
               >
-                Select New Card
+                Join Game
               </button>
             )}
+          </div>
+        )}
+
+        {/* Card Error Display */}
+        {cardError && !isSpectatorMode && (
+          <div className="mt-3 p-3 bg-red-500/20 rounded-lg border border-red-500/30">
+            <p className="text-red-300 text-sm text-center">{cardError}</p>
+            <div className="flex gap-2 justify-center mt-2">
+              <button 
+                onClick={() => {
+                  setIsLoadingCard(true);
+                  setCardError('');
+                  hasCardCheckedRef.current = false;
+                  initializeUserCard(true);
+                }}
+                className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-600 transition-all"
+              >
+                Retry
+              </button>
+              <button 
+                onClick={() => {
+                  setIsSpectatorMode(true);
+                  setCardError('');
+                }}
+                className="bg-white/20 text-white px-4 py-2 rounded-lg text-sm hover:bg-white/30 transition-all"
+              >
+                Watch Spectator
+              </button>
+            </div>
           </div>
         )}
       </div>
 
       {/* New Number Notification */}
       {currentCalledNumber?.isNew && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
-          <div className="bg-yellow-500/50 text-white px-4 py-2 rounded-lg shadow-lg font-bold">
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
+        >
+          <div className="bg-yellow-500/80 text-white px-6 py-3 rounded-lg shadow-lg font-bold text-lg backdrop-blur-sm">
             🔔 {currentCalledNumber?.letter}{currentCalledNumber?.number} 
           </div>
-        </div>
+        </motion.div>
       )}
 
       <div className="grid grid-cols-4 gap-4">
@@ -1141,8 +1172,6 @@ export default function GamePage() {
                 );
               })}
             </div>
-            
-          
           </div>
           
           {/* Current Number Display */}
@@ -1300,13 +1329,19 @@ export default function GamePage() {
             ) : (
               <div className="text-center text-white/70 py-8">
                 <p className="text-lg mb-2">No bingo card found</p>
-                <p className="text-sm mb-6">{cardError}</p>
-                <button 
-                  onClick={() => router.push('/')}
-                  className="bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-6 py-2.5 rounded-lg hover:from-purple-500/40 hover:to-blue-500/40 transition-all"
-                >
-                  Select a Card
-                </button>
+                <p className="text-sm mb-6">{spectatorMessage || 'Join the game to get a card'}</p>
+                {game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION' ? (
+                  <button 
+                    onClick={() => router.push('/')}
+                    className="bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-6 py-2.5 rounded-lg hover:from-purple-500/40 hover:to-blue-500/40 transition-all"
+                  >
+                    Select a Card
+                  </button>
+                ) : (
+                  <p className="text-white/50 text-sm">
+                    Game has already started. You can watch as a spectator.
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -1367,7 +1402,7 @@ export default function GamePage() {
       </div>
 
       {/* Claim Bingo Button - Fixed Position */}
-      {game?.status === 'ACTIVE' && displayBingoCard && (
+      {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 w-full max-w-md">
           <div className="flex flex-col items-center">
             <div className="mb-2 text-center">
@@ -1427,11 +1462,33 @@ export default function GamePage() {
                 )}
                 {claimResult.prizeAmount && (
                   <div className="text-xs mt-1 font-bold">
-                    Prize: <span className="text-yellow-300">${claimResult.prizeAmount} ብር</span>
+                    Prize: <span className="text-yellow-300">{claimResult.prizeAmount} ብር</span>
                   </div>
                 )}
               </motion.div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Spectator Mode Notice */}
+      {isSpectatorMode && game?.status === 'ACTIVE' && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 w-full max-w-md">
+          <div className="bg-blue-500/20 border border-blue-500/30 rounded-2xl p-4 text-center backdrop-blur-sm">
+            <p className="text-blue-300 text-sm font-medium">
+              👁️ You are in Spectator Mode
+            </p>
+            <p className="text-white/60 text-xs mt-1">
+              You can watch the game but cannot participate.
+            </p>
+            {/* {game.status === 'WA' && (
+              <button 
+                onClick={() => router.push('/')}
+                className="mt-3 bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 transition-all"
+              >
+                Join Next Game
+              </button>
+            )} */}
           </div>
         </div>
       )}
