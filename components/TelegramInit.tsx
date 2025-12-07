@@ -68,9 +68,9 @@ export default function TelegramInit() {
         // Development mode fallback
         console.log('🔧 Falling back to development mode...');
         const devUser = {
-          id: 'dev-user-001',
-          _id: 'dev-user-001', 
-          telegramId: 'dev-telegram-001',
+          id: '444206486',
+          _id: '444206486', 
+          telegramId: '444206486',
           firstName: 'Development',
           username: 'dev_user',
           language_code: 'en',
