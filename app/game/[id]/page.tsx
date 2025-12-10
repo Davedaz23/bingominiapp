@@ -340,7 +340,7 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
           setIsUserWinner(isWinner);
 
           const totalPot = (gameData.currentPlayers || 0) * 10;
-          const platformFee = totalPot * 0.1;
+          const platformFee = totalPot * 0.2;
           const winnerPrize = totalPot - platformFee;
           setWinningAmount(winnerPrize);
         }
@@ -1146,7 +1146,7 @@ useEffect(() => {
             <p className="text-white/60 text-xs">Balance</p>
           </div>
           <div>
-            <p className="text-white font-bold text-lg">{(game.currentPlayers || 0) * 10} ብር</p>
+            <p className="text-white font-bold text-lg">{(game.potAmount || 0) * 10} ብር</p>
             <p className="text-white/60 text-xs">Pot</p>
           </div>
           <div>
