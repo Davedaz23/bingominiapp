@@ -596,7 +596,7 @@ useEffect(() => {
   // FIXED: Countdown for winner modal
   useEffect(() => {
     if (showWinnerModal && winnerInfo) {
-      setCountdown(5);
+      setCountdown(10);
 
       if (countdownRef.current) clearInterval(countdownRef.current);
 
@@ -746,7 +746,7 @@ useEffect(() => {
     setCurrentCalledNumber(null);
     setAllCalledNumbers([]);
     setClaimResult(null);
-    setCountdown(5);
+    setCountdown(10);
 
     // Reset refs
     hasInitializedRef.current = false;
