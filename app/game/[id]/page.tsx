@@ -1146,7 +1146,7 @@ useEffect(() => {
             <p className="text-white/60 text-xs">Balance</p>
           </div>
           <div>
-            <p className="text-white font-bold text-lg">{(winningAmount || 0) * 10} ብር</p>
+<p className="text-white font-bold text-lg">{winningAmount} ብር</p>
             <p className="text-white/60 text-xs">Pot</p>
           </div>
           <div>
