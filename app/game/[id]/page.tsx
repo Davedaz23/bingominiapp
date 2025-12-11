@@ -462,7 +462,7 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
                 setCurrentCalledNumber(prev =>
                   prev ? { ...prev, isNew: false } : null
                 );
-              }, 2000);
+              }, 100);
             }
           }
 
