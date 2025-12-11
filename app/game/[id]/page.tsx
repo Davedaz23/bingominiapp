@@ -515,7 +515,7 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
 
         if (!game) {
           setCardError('Game not found. Redirecting to lobby...');
-          setTimeout(() => router.push('/'), 2000);
+          setTimeout(() => router.push('/'), 1000);
           return;
         }
 
