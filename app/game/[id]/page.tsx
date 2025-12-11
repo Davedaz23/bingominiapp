@@ -1177,7 +1177,7 @@ useEffect(() => {
                 'bg-red-500/20 text-red-300'
             }`}>
             {game.status === 'WAITING_FOR_PLAYERS' ? '⏳ Waiting for players' :
-              game.status === 'CARD_SELECTION' ? '🎲 Card Selection'+game.status :
+              game.status === 'CARD_SELECTION' ? '🎲 Card Selection' :
                 game.status === 'ACTIVE' ? '🎮 Game Active' :
                   '🏁 Game Ended'}
           </div>
