@@ -1146,7 +1146,7 @@ useEffect(() => {
             <p className="text-white/60 text-xs">Balance</p>
           </div>
           <div>
-<p className="text-white font-bold text-lg">{(game.currentPlayers||0)*10*0.2} ብር</p>
+<p className="text-white font-bold text-lg">{(game.currentPlayers||0)*10*0.8} ብር</p>
             <p className="text-white/60 text-xs">Pot</p>
           </div>
           <div>
