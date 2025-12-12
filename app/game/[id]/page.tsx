@@ -68,7 +68,7 @@ export default function GamePage() {
     gameState,
     isLoading,
     error: gameError,
-
+  refreshWalletBalance, // Add this line
     getWinnerInfo,
   } = useGame(id);
   const {

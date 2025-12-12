@@ -2,7 +2,7 @@
 // hooks/useGame.ts - COMPLETE FIXED VERSION (Manual Marking Only)
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Game, BingoCard, GameState } from '../types';
-import { gameAPI } from '../services/api';
+import { gameAPI, walletAPIAuto } from '../services/api';
 
 interface ApiError {
   response?: {
@@ -30,7 +30,8 @@ interface UseGameReturn {
   };
   isLoading: boolean;
   error: string | null;
-  
+  walletBalance: number;
+  refreshWalletBalance: () => Promise<void>;
   // Actions
   // markNumber: (number: number) => Promise<boolean>;
   refreshGame: () => void;
@@ -64,7 +65,7 @@ export const useGame = (gameId: string): UseGameReturn => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+    const [walletBalance, setWalletBalance] = useState<number>(0);
   // Use refs to avoid stale closures and track changes
   const gameRef = useRef<Game | null>(null);
   const bingoCardRef = useRef<BingoCard | null>(null);
@@ -74,6 +75,23 @@ export const useGame = (gameId: string): UseGameReturn => {
   const consecutiveErrorsRef = useRef(0);
   const lastSuccessfulFetchRef = useRef<number>(Date.now());
 
+
+
+   const refreshWalletBalance = useCallback(async () => {
+    try {
+      const walletResponse = await walletAPIAuto.getBalance();
+      if (walletResponse.data.success) {
+        setWalletBalance(walletResponse.data.balance);
+      }
+    } catch (error) {
+      console.warn('Could not refresh wallet balance:', error);
+    }
+  }, []);
+
+  // Initial balance load
+  useEffect(() => {
+    refreshWalletBalance();
+  }, [refreshWalletBalance]);
   // Update refs when state changes
   useEffect(() => {
     gameRef.current = game;
@@ -519,7 +537,8 @@ const updateGameState = useCallback((gameData: Game) => {
     callNumber,
     getWinnerInfo,
     claimBingo, // Add claimBingo to return object
-    
+        walletBalance,
+    refreshWalletBalance,
     // User info
     isUserInGame: isUserInGame(),
     userRole: getUserRole(),

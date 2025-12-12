@@ -118,7 +118,7 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
       <p className="text-sm text-center">{statusInfo.description}</p>
        
       {/* AUTO-START COUNTDOWN */}
-      {statusInfo.showAutoStartCountdown && autoStartTimeRemaining > 0 && (
+      {/* {statusInfo.showAutoStartCountdown && autoStartTimeRemaining > 0 && (
         <div className="mt-3">
           <div className="flex justify-between text-xs text-white/80 mb-1">
             <span>Game starts in:</span>
@@ -133,7 +133,7 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
             />
           </div>
         </div>
-      )}
+      )} */}
       {gameStatus === 'FINISHED' && restartCountdown > 0 && (
         <div className="mt-3">
           <div className="flex justify-between text-xs text-white/80 mb-1">
