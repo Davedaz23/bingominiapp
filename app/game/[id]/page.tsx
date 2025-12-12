@@ -1392,9 +1392,7 @@ useEffect(() => {
                     <div className="text-xl sm:text-2xl">
                       {currentCalledNumber.letter}{currentCalledNumber.number}
                     </div>
-                    <div className="text-sm text-white/90 font-normal mt-1">
-                      Current Called Number
-                    </div>
+                    
                   </div>
                   <span className="text-2xl">🔔</span>
                 </div>
