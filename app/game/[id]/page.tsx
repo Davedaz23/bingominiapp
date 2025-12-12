@@ -1183,18 +1183,20 @@ useEffect(() => {
         </div>
 
         {/* Game Status Badge */}
-        <div className="mt-3 flex justify-center">
-          <div className={`px-4 py-1 rounded-full text-sm font-medium ${game.status === 'WAITING_FOR_PLAYERS' ? 'bg-yellow-500/20 text-yellow-300' :
-            game.status === 'CARD_SELECTION' ? 'bg-blue-500/20 text-blue-300' :
-              game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
-                'bg-red-500/20 text-red-300'
-            }`}>
-            {game.status === 'WAITING_FOR_PLAYERS' ? '⏳ Waiting for players' :
-              game.status === 'CARD_SELECTION' ? '🎲 Card Selection' :
-                game.status === 'ACTIVE' ? '🎮 Game Active' :
-                  '🏁 Game Ended'}
-          </div>
-        </div>
+
+<div className={`px-4 py-1 rounded-full text-sm font-medium ${
+  game.status === 'WAITING_FOR_PLAYERS' ? 'bg-yellow-500/20 text-yellow-300' :
+  game.status === 'CARD_SELECTION' ? 'bg-blue-500/20 text-blue-300' :
+  game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
+  game.status === 'NO_WINNER' ? 'bg-red-500/20 text-red-300' :
+  'bg-gray-500/20 text-gray-300'
+}`}>
+  {game.status === 'WAITING_FOR_PLAYERS' ? '⏳ Waiting for players' :
+   game.status === 'CARD_SELECTION' ? '🎲 Card Selection' :
+   game.status === 'ACTIVE' ? '🎮 Game Active' :
+   game.status === 'NO_WINNER' ? '🏁 No Winner (Refunded)' :
+   '🏁 Game Ended'}
+</div>
 
         {/* Spectator Mode Message */}
         {isSpectatorMode && spectatorMessage && (
