@@ -821,11 +821,22 @@ useEffect(() => {
   // FIXED: Loading state with better timeout handling
   
 
-if (!game ) {
-  // Redirect immediately without showing error
-  router.push('/');
-  return null;
-}
+  if (!game) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <h1 className="text-2xl font-bold mb-4">Game Not Found</h1>
+          <p className="text-white/70 mb-6">{cardError || 'The game you are looking for does not exist.'}</p>
+          <button
+            onClick={() => router.push('/')}
+            className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold hover:bg-purple-50 transition-all"
+          >
+            Back to Lobby
+          </button>
+        </div>
+      </div>
+    );
+  }
 
 
   // Main game render

@@ -143,37 +143,45 @@ export const useGame = (gameId: string): UseGameReturn => {
   }, []);
 
   // Smart game state update - only update when data actually changes
-  const updateGameState = useCallback((gameData: Game) => {
-    const calledNumbers = gameData.calledNumbers || [];
-    const latestNumber = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null;
+
+const updateGameState = useCallback((gameData: Game) => {
+  // Handle both 'calledNumbers' and 'numbersCalled' property names
+  const calledNumbers = 
+    (gameData as any).calledNumbers || 
+    (gameData as any).numbersCalled || 
+    [];
+  
+  const latestNumber = calledNumbers.length > 0 
+    ? calledNumbers[calledNumbers.length - 1] 
+    : null;
+  
+  setGameState(prev => {
+    const isNewNumber = latestNumber && latestNumber !== prev.currentNumber;
+    const calledNumbersChanged = JSON.stringify(prev.calledNumbers) !== JSON.stringify(calledNumbers);
+    const isStarted = gameData.status === 'ACTIVE' || gameData.status === 'FINISHED';
+    const gameEnded = gameData.status === 'FINISHED';
     
-    setGameState(prev => {
-      const isNewNumber = latestNumber && latestNumber !== prev.currentNumber;
-      const calledNumbersChanged = JSON.stringify(prev.calledNumbers) !== JSON.stringify(calledNumbers);
-      const isStarted = gameData.status === 'ACTIVE' || gameData.status === 'FINISHED';
-      const gameEnded = gameData.status === 'FINISHED';
-      
-      // Only update if something actually changed
-      if (!isNewNumber && !calledNumbersChanged && 
-          prev.isStarted === isStarted && 
-          prev.gameEnded === gameEnded) {
-        return prev;
-      }
-      
-      // Return a proper GameState object without the status field
-      const newState: GameState = {
-        isStarted,
-        currentNumber: latestNumber,
-        calledNumbers: calledNumbers,
-        players: gameData.currentPlayers || gameData.players?.length || 0,
-        potAmount: gameData.potAmount || 0,
-        timeRemaining: gameData.timeRemaining || 0,
-        gameEnded
-      };
-      
-      return newState;
-    });
-  }, []);
+    // Only update if something actually changed
+    if (!isNewNumber && !calledNumbersChanged && 
+        prev.isStarted === isStarted && 
+        prev.gameEnded === gameEnded) {
+      return prev;
+    }
+    
+    // Return a proper GameState object
+    const newState: GameState = {
+      isStarted,
+      currentNumber: latestNumber,
+      calledNumbers: calledNumbers,
+      players: gameData.currentPlayers || gameData.players?.length || 0,
+      potAmount: gameData.potAmount || 0,
+      timeRemaining: gameData.timeRemaining || 0,
+      gameEnded
+    };
+    
+    return newState;
+  });
+}, []);
 
   // Enhanced game fetching with optimized updates and better error handling
   const fetchGame = useCallback(async (silent: boolean = false) => {
