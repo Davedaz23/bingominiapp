@@ -68,6 +68,7 @@ export default function GamePage() {
     gameState,
     isLoading,
     error: gameError,
+    walletBalance,
   refreshWalletBalance, // Add this line
     getWinnerInfo,
   } = useGame(id);
@@ -82,7 +83,7 @@ export default function GamePage() {
 
   } = useCardSelection(gameData, gameStatus);
 
-  const [walletBalance, setWalletBalance] = useState<number>(0);
+  // const [walletBalance, setWalletBalance] = useState<number>(0);
 
   const [localBingoCard, setLocalBingoCard] = useState<LocalBingoCard | null>(null);
   const [isLoadingCard, setIsLoadingCard] = useState<boolean>(true);
@@ -151,16 +152,16 @@ const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
   };
 
   // FIXED: Load wallet balance
-  const loadWalletBalance = useCallback(async () => {
-    try {
-      const walletResponse = await walletAPIAuto.getBalance();
-      if (walletResponse.data.success) {
-        setWalletBalance(walletResponse.data.balance);
-      }
-    } catch (error) {
-      console.warn('⚠️ Could not load wallet balance:', error);
-    }
-  }, []);
+  // const loadWalletBalance = useCallback(async () => {
+  //   try {
+  //     const walletResponse = await walletAPIAuto.getBalance();
+  //     if (walletResponse.data.success) {
+  //       setWalletBalance(walletResponse.data.balance);
+  //     }
+  //   } catch (error) {
+  //     console.warn('⚠️ Could not load wallet balance:', error);
+  //   }
+  // }, []);
 
   // FIXED: Check if user has a bingo card - simplified
   const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false): Promise<boolean> => {
@@ -506,7 +507,26 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
       updateGameState();
     }, POLL_INTERVAL);
   }, [updateGameState, POLL_INTERVAL]);
+  // Real-time wallet balance polling during active games
 
+useEffect(() => {
+  if (game?.status === 'ACTIVE' && !showWinnerModal) {
+    console.log('💰 Starting wallet balance polling during active game...');
+    
+    // Refresh immediately when game becomes active
+    refreshWalletBalance();
+    
+    // Then poll every 5 seconds
+    const walletPollingInterval = setInterval(() => {
+      refreshWalletBalance();
+    }, 5000);
+    
+    return () => {
+      clearInterval(walletPollingInterval);
+      console.log('💰 Stopped wallet balance polling');
+    };
+  }
+}, [game?.status, showWinnerModal, refreshWalletBalance]);
   // FIXED: Main initialization - simplified and reliable
   useEffect(() => {
     if (hasInitializedRef.current) return;
@@ -517,7 +537,7 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
         hasInitializedRef.current = true;
 
         // Load wallet balance
-        await loadWalletBalance();
+        // await loadWalletBalance();
 
         // Wait for game data if still loading
         if (isLoading) {
@@ -578,7 +598,7 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
       if (cardUpdateTimeoutRef.current) clearTimeout(cardUpdateTimeoutRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
     };
-  }, [game, isLoading, loadWalletBalance, initializeUserCard, router, startPolling]);
+  }, [game, isLoading, initializeUserCard, router, startPolling]);
 
   // FIXED: Effect to handle game status changes
 // Replace the useEffect that handles game status changes with this:
