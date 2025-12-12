@@ -86,7 +86,7 @@ export interface Game {
   _id: string;
   id?: string;
   code: string;
-  status: 'WAITING' | 'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'CANCELLED' | 'CARD_SELECTION' | 'COOLDOWN';
+  status: 'WAITING' | 'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'CANCELLED' | 'CARD_SELECTION' | 'COOLDOWN'|'NO_WINNER';
   calledNumbers: number[];
   currentNumber: number | null;
   players: any[];

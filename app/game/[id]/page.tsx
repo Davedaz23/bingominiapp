@@ -53,6 +53,8 @@ interface Game {
   players?: any[];
   potAmount?: number;
   message?: string;
+  noWinner?:boolean;
+  
 }
 
 export default function GamePage() {
@@ -317,6 +319,7 @@ const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
     }
   }, [cardError, localBingoCard, isLoadingCard, retryCount, initializeUserCard]);
   // FIXED: Check for winner
+
 const checkForWinner = useCallback(async (gameData?: Game) => {
   if (!gameData || abortControllerRef.current || showWinnerModal) return;
 
@@ -372,34 +375,43 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
         }
       }, 1500);
     } else {
-      // If no winner data but game is finished, handle no-winner case
-      if (gameData.status === 'FINISHED') {
-        setWinnerInfo({
-          winner: {
-            _id: 'no-winner',
-            username: 'No Winner',
-            firstName: 'Game Ended',
-            telegramId: 'no-winner'
-          },
-          gameCode: gameData.code || 'N/A',
-          endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
-          totalPlayers: gameData.currentPlayers || 0,
-          numbersCalled: gameData.numbersCalled?.length || 0,
-       //   message: 'Game ended without a winner'
-        });
+      // If no winner data but game is finished, check for NO_WINNER state
+      if (gameData.status === 'FINISHED' || gameData.status === 'NO_WINNER') {
+        // Check if the game has no winner (refunded case)
+        const hasNoWinner = gameData.status === 'NO_WINNER' || gameData.noWinner;
         
-        setIsUserWinner(false);
-        setWinningAmount(0);
-        
-        setTimeout(() => {
-          setShowWinnerModal(true);
-          setIsWinnerLoading(false);
+        if (hasNoWinner) {
+          setWinnerInfo({
+            winner: {
+              _id: 'no-winner',
+              username: 'No Winner',
+              firstName: 'Game Ended',
+              telegramId: 'no-winner'
+            },
+            gameCode: gameData.code || 'N/A',
+            endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
+            totalPlayers: gameData.currentPlayers || 0,
+            numbersCalled: gameData.numbersCalled?.length || 0,
+          // message: 'Game ended without a winner - All players refunded'
+          });
+          
+          setIsUserWinner(false);
+          setWinningAmount(0);
+          
+          setTimeout(() => {
+            setShowWinnerModal(true);
+            setIsWinnerLoading(false);
 
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
-          }
-        }, 1500);
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+              pollingRef.current = null;
+            }
+          }, 1500);
+        } else if (gameData.status === 'FINISHED') {
+          // Game is finished but we don't have winner data - try to get it
+          console.log('Game finished but no winner data, fetching...');
+          // The getWinnerInfo should handle this case
+        }
       }
     }
   } catch (error: any) {
@@ -569,19 +581,20 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
   }, [game, isLoading, loadWalletBalance, initializeUserCard, router, startPolling]);
 
   // FIXED: Effect to handle game status changes
+// Replace the useEffect that handles game status changes with this:
 useEffect(() => {
   if (!game) return;
 
   // Update polling based on game status
   if (game.status === 'ACTIVE' && !pollingRef.current) {
     startPolling();
-  } else if ((game.status === 'FINISHED' || game.status === 'CANCELLED' || game.status === 'COOLDOWN') && pollingRef.current) {
+  } else if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'CANCELLED' || game.status === 'COOLDOWN') && pollingRef.current) {
     clearInterval(pollingRef.current);
     pollingRef.current = null;
   }
 
   // Check for winner or no-winner
-  if (game.status === 'FINISHED' && !showWinnerModal && !gameEndedCheckRef.current) {
+  if ((game.status === 'FINISHED' || game.status === 'NO_WINNER') && !showWinnerModal && !gameEndedCheckRef.current) {
     gameEndedCheckRef.current = true;
     checkForWinner(game as Game);
   }
