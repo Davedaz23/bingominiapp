@@ -1547,7 +1547,7 @@ useEffect(() => {
           </div>
 
           {/* Game Controls - Responsive layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-3">
+          {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-3">
             <div className="bg-white/10 backdrop-blur-lg rounded-xl p-2 sm:p-3 border border-white/20">
               <h4 className="text-white font-bold mb-1.5 sm:mb-2 text-sm sm:text-base">How to Win</h4>
               <div className="space-y-1 sm:space-y-2 text-[10px] xs:text-xs sm:text-xs text-white/80">
@@ -1597,7 +1597,7 @@ useEffect(() => {
                 </button>
               </div>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -1605,14 +1605,14 @@ useEffect(() => {
       {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode &&  allCalledNumbers.length>0 && (
         <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 w-full max-w-md">
           <div className="flex flex-col items-center">
-            <div className="mb-2 text-center">
+            {/* <div className="mb-2 text-center">
               <div className="text-white/70 text-xs bg-black/40 px-3 py-1 rounded-full inline-block mb-1 border border-white/20">
                 ⚡ Manual Marking Active
               </div>
               <div className="text-white/60 text-xs max-w-xs">
                 Mark numbers manually, complete a line, then claim!
               </div>
-            </div>
+            </div> */}
 
             <button
               onClick={handleClaimBingo}
@@ -1642,7 +1642,7 @@ useEffect(() => {
             </button>
 
             {/* Claim Result Message */}
-            {claimResult && (
+            {/* {claimResult && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1666,7 +1666,7 @@ useEffect(() => {
                   </div>
                 )}
               </motion.div>
-            )}
+            )} */}
           </div>
         </div>
       )}
