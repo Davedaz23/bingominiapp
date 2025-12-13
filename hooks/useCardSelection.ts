@@ -58,12 +58,12 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   const [takenCards, setTakenCards] = useState<{cardNumber: number, userId: string}[]>([]);
   const [cardSelectionStatus, setCardSelectionStatus] = useState<{
     isSelectionActive: boolean;
-    selectionEndTime: Date | null;
-    timeRemaining: number;
+    // selectionEndTime: Date | null;
+    // timeRemaining: number;
   }>({
     isSelectionActive: false,
-    selectionEndTime: null,
-    timeRemaining: 0
+    // selectionEndTime: null,
+    // timeRemaining: 0
   });
   const [cardSelectionError, setCardSelectionError] = useState<string>('');
 
@@ -259,38 +259,40 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     }
   };
 
-  const checkCardSelectionStatus = async () => {
-    if (!gameData?._id) return;
+ const checkCardSelectionStatus = async () => {
+  if (!gameData?._id) return;
+  
+  try {
+    console.log('🔍 Checking card selection status for game:', gameData._id);
     
-    try {
-      console.log('🔍 Checking card selection status for game:', gameData._id);
+    const response = await gameAPI.getCardSelectionStatus(gameData._id);
+    console.log('📦 Card selection status response:', response.data);
+    
+    if (response.data.success) {
+      // Card selection is only active during WAITING_FOR_PLAYERS and CARD_SELECTION
+      // NOT during ACTIVE, FINISHED, NO_WINNER, or COOLDOWN
+      const isSelectionActive = gameStatus === 'WAITING_FOR_PLAYERS' || 
+                               gameStatus === 'CARD_SELECTION';
       
-      const response = await gameAPI.getCardSelectionStatus(gameData._id);
-      console.log('📦 Card selection status response:', response.data);
+      setCardSelectionStatus({
+        isSelectionActive,
+        // selectionEndTime: response.data. || null,
+        // timeRemaining: response.data.timeRemaining || 0
+      });
       
-      if (response.data.success) {
-        // Note: The backend doesn't return time-based selection status
-        // We'll use the game status to determine if selection is active
-        const isSelectionActive = gameStatus === 'WAITING' || gameStatus === 'ACTIVE';
-        setCardSelectionStatus({
-          isSelectionActive,
-          selectionEndTime: null, // Not provided by backend
-          timeRemaining: 0 // Not provided by backend
-        });
-        
-        console.log('✅ Card selection status updated:', {
-          isSelectionActive,
-          gameStatus
-        });
-      }
-    } catch (error: any) {
-      console.error('❌ Error checking card selection status:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data
+      console.log('✅ Card selection status updated:', {
+        isSelectionActive,
+        gameStatus
       });
     }
-  };
+  } catch (error: any) {
+    console.error('❌ Error checking card selection status:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+  }
+};
 
   // Real-time polling for taken cards
   useEffect(() => {

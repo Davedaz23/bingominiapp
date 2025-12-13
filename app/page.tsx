@@ -284,7 +284,7 @@ export default function Home() {
     
     // Check if conditions are met for auto-joining with card
     const conditionsMet = 
-      cardSelectionStatus.timeRemaining <= 0 && 
+      // cardSelectionStatus.timeRemaining <= 0 && 
       cardSelectionStatus.isSelectionActive && 
       selectedNumber && 
       effectiveWalletBalance >= 10 &&
@@ -298,7 +298,7 @@ export default function Home() {
     }
   }, [
     activeGames,
-    cardSelectionStatus.timeRemaining,
+    // cardSelectionStatus.timeRemaining,
     cardSelectionStatus.isSelectionActive,
     selectedNumber,
     effectiveWalletBalance,
@@ -770,12 +770,12 @@ export default function Home() {
                   hasRestartCooldown ? 'text-purple-200' :
                   hasAutoStartTimer ? 'text-orange-200' : 'text-green-200'
                 }`}>
-                  {hasRestartCooldown 
+                  {/* {hasRestartCooldown 
                     ? `${Math.ceil(restartCooldownRemaining / 1000)}s cooldown`
                     : hasAutoStartTimer 
                       ? `${Math.ceil(autoStartTimeRemaining / 1000)}s to start`
                       : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
-                  }
+                  } */}
                 </p>
               </div>
               
@@ -816,7 +816,7 @@ export default function Home() {
               )}
               
               {/* REGULAR CARD SELECTION PROGRESS */}
-              {!hasRestartCooldown && !hasAutoStartTimer && (
+              {/* {!hasRestartCooldown && !hasAutoStartTimer && (
                 <div className="mt-2">
                   <div className="flex justify-between text-xs text-green-200 mb-1">
                     <span>Choose your card number to join the game</span>
@@ -831,7 +831,7 @@ export default function Home() {
                     />
                   </div>
                 </div>
-              )}
+              )} */}
               
               {cardSelectionError && (
                 <p className="text-red-300 text-xs mt-2 text-center">
