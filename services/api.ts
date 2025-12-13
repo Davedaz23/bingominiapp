@@ -4,7 +4,7 @@ import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
 // Use your Render backend URL directly
-const API_BASE_URL = 'https://telegram-bingo-bot-lwrl.onrender.com/api';
+const API_BASE_URL = 'https://telegram-bingo-bot-grtk.onrender.com/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
