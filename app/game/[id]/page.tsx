@@ -1361,7 +1361,7 @@ useEffect(() => {
           </div>
 
           {/* Current Number Display */}
-          <div className="mt-4 bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+          {/* <div className="mt-4 bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
             <h3 className="text-white font-bold mb-3">Current Number</h3>
             <div className={`text-center transition-all duration-300 ${isAnimating ? 'scale-110' : 'scale-100'}`}>
               {currentCalledNumber ? (
@@ -1397,7 +1397,7 @@ useEffect(() => {
                 </div>
               )}
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* Right: Bingo Card */}
