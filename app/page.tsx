@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/page.tsx - UPDATED VERSION (Auto-redirect when conditions met)
+// app/page.tsx - UPDATED VERSION (Redirect only for ACTIVE games)
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -77,6 +77,7 @@ export default function Home() {
   const [hasCardInActiveGame, setHasCardInActiveGame] = useState<boolean>(false);
   const [playerGameId, setPlayerGameId] = useState<string | null>(null);
   const [playerCardNumber, setPlayerCardNumber] = useState<number | null>(null);
+  const [playerGameStatus, setPlayerGameStatus] = useState<string | null>(null);
   const [isCheckingPlayerStatus, setIsCheckingPlayerStatus] = useState<boolean>(false);
 
   // Balance refresh states
@@ -112,16 +113,18 @@ export default function Home() {
           const playerParticipant = participants.find((p: any) => p.userId === user.id);
           
           if (playerParticipant && playerParticipant.hasCard) {
-            console.log(`✅ Player has card #${playerParticipant.cardNumber} in active game`);
+            console.log(`✅ Player has card #${playerParticipant.cardNumber} in game with status: ${activeGame.status}`);
             setHasCardInActiveGame(true);
             setPlayerGameId(activeGame._id);
-            setPlayerCardNumber(playerParticipant.cardNumber||0);
+            setPlayerCardNumber(playerParticipant.cardNumber || 0);
+            setPlayerGameStatus(activeGame.status);
             return true;
           }
         }
       }
       
       setHasCardInActiveGame(false);
+      setPlayerGameStatus(null);
       return false;
     } catch (error) {
       console.error('❌ Error checking player card status:', error);
@@ -246,18 +249,23 @@ export default function Home() {
     // Don't redirect if already redirecting or checking status
     if (isAutoJoining || autoRedirected || isCheckingPlayerStatus) return;
     
-    // If player has a card in an active game, redirect immediately
-    if (hasCardInActiveGame && playerGameId) {
-      console.log(`🚨 Player has card #${playerCardNumber} in active game ${playerGameId}, redirecting immediately!`);
+    // CRITICAL CHANGE: Only redirect if player has card AND the game is ACTIVE
+    if (hasCardInActiveGame && playerGameId && playerGameStatus === 'ACTIVE') {
+      console.log(`🚨 Player has card #${playerCardNumber} in ACTIVE game ${playerGameId}, redirecting immediately!`);
       setIsAutoJoining(true);
       
       // Redirect immediately to the game page
       setTimeout(() => {
         router.push(`/game/${playerGameId}`);
         setAutoRedirected(true);
-      }, 500); // Small delay to ensure state updates
+      }, 500);
+    } 
+    // If player has card but game is WAITING_FOR_PLAYERS, DO NOT redirect
+    else if (hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS') {
+      console.log(`⏳ Player has card #${playerCardNumber} in WAITING_FOR_PLAYERS game - NOT redirecting`);
+      // Don't redirect, just stay on the home page
     }
-  }, [hasCardInActiveGame, playerGameId, playerCardNumber, isAutoJoining, autoRedirected, isCheckingPlayerStatus, router]);
+  }, [hasCardInActiveGame, playerGameId, playerCardNumber, playerGameStatus, isAutoJoining, autoRedirected, isCheckingPlayerStatus, router]);
 
   // ==================== MAIN AUTO-REDIRECT LOGIC (FOR NON-CARD HOLDERS) ====================
   useEffect(() => {
@@ -284,7 +292,6 @@ export default function Home() {
     
     // Check if conditions are met for auto-joining with card
     const conditionsMet = 
-      // cardSelectionStatus.timeRemaining <= 0 && 
       cardSelectionStatus.isSelectionActive && 
       selectedNumber && 
       effectiveWalletBalance >= 10 &&
@@ -298,7 +305,6 @@ export default function Home() {
     }
   }, [
     activeGames,
-    // cardSelectionStatus.timeRemaining,
     cardSelectionStatus.isSelectionActive,
     selectedNumber,
     effectiveWalletBalance,
@@ -307,40 +313,8 @@ export default function Home() {
     isAutoJoining,
     autoRedirected,
     lastAutoJoinAttempt,
-    hasCardInActiveGame // Added dependency
+    hasCardInActiveGame
   ]);
-
-  // ==================== AUTO-START CHECK ====================
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout;
-
-    if (gameStatus === 'WAITING_FOR_PLAYERS' && gameData?._id && !hasRestartCooldown) {
-      intervalId = setInterval(async () => {
-        try {
-          console.log('🔄 Checking auto-start conditions...');
-          
-          const response = await gameAPI.checkAutoStart(gameData._id);
-          
-          if (response.data.success) {
-            console.log('🎮 Auto-start check response:', response.data);
-            
-            if (response.data.gameStarted) {
-              console.log('🚀 Game auto-started! Refreshing...');
-              await checkGameStatus();
-            } else if (response.data.autoStartInfo) {
-              console.log('⏳ Auto-start info:', response.data.autoStartInfo);
-            }
-          }
-        } catch (error) {
-          console.error('❌ Auto-start check failed:', error);
-        }
-      }, 5000);
-    }
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [gameStatus, gameData?._id, checkGameStatus, hasRestartCooldown]);
 
   // ==================== AUTO-JOIN FUNCTION ====================
   const handleAutoJoinGame = async () => {
@@ -349,11 +323,20 @@ export default function Home() {
     try {
       console.log('🤖 Auto-joining game...');
       
+      // Get waiting games
       const waitingGamesResponse = await gameAPI.getWaitingGames();
       
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game = waitingGamesResponse.data.games[0];
-        console.log('🎯 Joining waiting game:', game._id);
+        console.log('🎯 Joining waiting game:', game._id, 'Status:', game.status);
+        
+        // CRITICAL: Check game status before joining
+        if (game.status !== 'ACTIVE') {
+          console.log('⏳ Game is not ACTIVE yet, status:', game.status);
+          setJoinError(`Game is ${game.status.toLowerCase().replace('_', ' ')} - waiting for it to become active`);
+          setIsAutoJoining(false);
+          return;
+        }
         
         const participantsResponse = await gameAPI.getGameParticipants(game._id);
         const currentPlayersWithCards = participantsResponse.data.participants?.filter(p => p.hasCard).length || 0;
@@ -416,7 +399,12 @@ export default function Home() {
   // ==================== FIXED: GAME INFO FOOTER MESSAGE ====================
   const getGameStatusMessage = () => {
     if (hasCardInActiveGame) {
-      return `🎯 You have card #${playerCardNumber} in active game - Redirecting...`;
+      if (playerGameStatus === 'ACTIVE') {
+        return `🎯 You have card #${playerCardNumber} in active game - Redirecting...`;
+      } else if (playerGameStatus === 'WAITING_FOR_PLAYERS') {
+        return `⏳ You have card #${playerCardNumber} - Waiting for game to start...`;
+      }
+      return `🎯 You have card #${playerCardNumber} in game`;
     }
 
     if (hasRestartCooldown) {
@@ -453,13 +441,13 @@ export default function Home() {
       
       switch (gameStatus) {
         case 'WAITING_FOR_PLAYERS':
-          return `✅ Ready! Auto-joining when game starts...`;
+          return `✅ Card ${selectedNumber} selected - Waiting for game to start`;
         case 'ACTIVE':
           return '🚀 Auto-joining active game...';
         case 'FINISHED':
           return `🔄 Card ${selectedNumber} reserved for next game`;
         default:
-          return `✅ Card ${selectedNumber} selected - Auto-joining...`;
+          return `✅ Card ${selectedNumber} selected - Waiting for game to start`;
       }
     }
 
@@ -506,7 +494,7 @@ export default function Home() {
         
         console.log('✅ App initialization complete');
         console.log(`💰 User balance: ${effectiveWalletBalance} ብር`);
-        console.log(`🎮 Has card in active game: ${hasCardInActiveGame}`);
+        console.log(`🎮 Has card in active game: ${hasCardInActiveGame}, Game status: ${playerGameStatus}`);
       } catch (error) {
         console.error('❌ Initialization error:', error);
       }
@@ -525,10 +513,11 @@ export default function Home() {
   }, []);
 
   // ==================== DISABLE CARD SELECTION IF PLAYER HAS CARD IN ACTIVE GAME ====================
-  const shouldDisableCardSelection = hasCardInActiveGame || isAutoJoining;
+  // Only disable if game is ACTIVE, not if WAITING_FOR_PLAYERS
+  const shouldDisableCardSelection = (hasCardInActiveGame && playerGameStatus === 'ACTIVE') || isAutoJoining;
 
-  // Auto-join loading screen (including redirect for existing card holders)
-  if (isAutoJoining || (hasCardInActiveGame && !autoRedirected)) {
+  // Auto-join loading screen (only for ACTIVE games)
+  if (isAutoJoining || (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20">
@@ -536,7 +525,7 @@ export default function Home() {
             <div>
               <h1 className="text-white font-bold text-xl">Bingo Game</h1>
               <p className="text-white/60 text-sm">
-                {hasCardInActiveGame ? 'Returning to Your Game' : 'Joining Game Automatically'}
+                {hasCardInActiveGame ? 'Returning to Your Active Game' : 'Joining Active Game'}
               </p>
             </div>
             <UserInfoDisplay user={user} userRole={userRole} />
@@ -555,7 +544,7 @@ export default function Home() {
               <Play className="w-6 h-6 text-green-300" />
             )}
             <p className="text-white font-bold text-xl">
-              {hasCardInActiveGame ? 'Returning to Game...' : 'Joining Game...'}
+              {hasCardInActiveGame ? 'Returning to Game...' : 'Joining Active Game...'}
             </p>
           </div>
           <p className="text-green-200 text-center mb-4">
@@ -572,8 +561,8 @@ export default function Home() {
 
         <div className="text-center text-white/60 text-sm">
           {hasCardInActiveGame 
-            ? 'Redirecting you back to your game...'
-            : 'Please wait while we set up your game...'}
+            ? 'Redirecting you back to your active game...'
+            : 'Please wait while we join the active game...'}
         </div>
       </div>
     );
@@ -601,7 +590,9 @@ export default function Home() {
             <h1 className="text-white font-bold text-xl">Bingo Game</h1>
             <p className="text-white/60 text-sm">
               {hasCardInActiveGame 
-                ? 'Already in game - Redirecting...' 
+                ? playerGameStatus === 'ACTIVE' 
+                  ? 'Already in active game - Redirecting...' 
+                  : `Waiting for game to start (Card #${playerCardNumber})`
                 : isAdmin ? 'Admin Dashboard' : 
                 isModerator ? 'Moderator View' : 
                 'Select your card number'}
@@ -635,22 +626,44 @@ export default function Home() {
       {/* PLAYER ALREADY IN GAME NOTIFICATION */}
       {hasCardInActiveGame && (
         <motion.div 
-          className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-green-500/30"
+          className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
+            playerGameStatus === 'ACTIVE' 
+              ? 'bg-green-500/20 border-green-500/30' 
+              : 'bg-yellow-500/20 border-yellow-500/30'
+          }`}
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="flex items-center gap-3">
-            <Check className="w-5 h-5 text-green-300" />
+            {playerGameStatus === 'ACTIVE' ? (
+              <Check className="w-5 h-5 text-green-300" />
+            ) : (
+              <Clock className="w-5 h-5 text-yellow-300" />
+            )}
             <div className="flex-1">
-              <p className="text-green-300 font-bold text-sm">
-                You are already in an active game!
+              <p className={`font-bold text-sm ${
+                playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
+              }`}>
+                {playerGameStatus === 'ACTIVE' 
+                  ? 'You are in an active game!' 
+                  : 'Waiting for game to start'}
               </p>
-              <p className="text-green-200 text-xs">
-                You have card #{playerCardNumber} in Game #{playerGameId?.slice(-6)}
+              <p className={`text-xs ${
+                playerGameStatus === 'ACTIVE' ? 'text-green-200' : 'text-yellow-200'
+              }`}>
+                You have card #{playerCardNumber} in {playerGameStatus === 'ACTIVE' ? 'an active' : 'a waiting'} game
               </p>
             </div>
-            <div className="bg-green-500/30 px-3 py-1 rounded-full animate-pulse">
-              <span className="text-green-300 font-bold">Redirecting...</span>
+            <div className={`px-3 py-1 rounded-full ${
+              playerGameStatus === 'ACTIVE' 
+                ? 'bg-green-500/30 animate-pulse' 
+                : 'bg-yellow-500/30'
+            }`}>
+              <span className={`font-bold text-xs ${
+                playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
+              }`}>
+                {playerGameStatus === 'ACTIVE' ? 'Redirecting...' : 'Waiting...'}
+              </span>
             </div>
           </div>
         </motion.div>
@@ -721,7 +734,7 @@ export default function Home() {
       {/* CONDITIONAL GAME INFO DISPLAY */}
       {!hasCardInActiveGame && shouldDisplayGameInfo() ? (
         <>
-          {/* Game Status Display - UPDATED WITH RESTART COOLDOWN PROPS */}
+          {/* Game Status Display */}
           <GameStatusDisplay 
             gameStatus={gameStatus}
             currentPlayers={currentPlayers}
@@ -735,7 +748,7 @@ export default function Home() {
             restartCooldownRemaining={restartCooldownRemaining}
           />
 
-          {/* Card Selection Status - UPDATED WITH RESTART COOLDOWN */}
+          {/* Card Selection Status */}
           {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
             <motion.div 
               className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
@@ -766,17 +779,6 @@ export default function Home() {
                      'Card Selection Active'}
                   </p>
                 </div>
-                <p className={`text-sm ${
-                  hasRestartCooldown ? 'text-purple-200' :
-                  hasAutoStartTimer ? 'text-orange-200' : 'text-green-200'
-                }`}>
-                  {/* {hasRestartCooldown 
-                    ? `${Math.ceil(restartCooldownRemaining / 1000)}s cooldown`
-                    : hasAutoStartTimer 
-                      ? `${Math.ceil(autoStartTimeRemaining / 1000)}s to start`
-                      : `${Math.ceil(cardSelectionStatus.timeRemaining / 1000)}s remaining`
-                  } */}
-                </p>
               </div>
               
               {/* RESTART COOLDOWN PROGRESS */}
@@ -814,24 +816,6 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              
-              {/* REGULAR CARD SELECTION PROGRESS */}
-              {/* {!hasRestartCooldown && !hasAutoStartTimer && (
-                <div className="mt-2">
-                  <div className="flex justify-between text-xs text-green-200 mb-1">
-                    <span>Choose your card number to join the game</span>
-                    <span>{takenCards.length}/400 cards taken</span>
-                  </div>
-                  <div className="w-full bg-green-400/20 rounded-full h-2">
-                    <div 
-                      className="bg-gradient-to-r from-green-400 to-cyan-400 h-2 rounded-full transition-all duration-1000"
-                      style={{ 
-                        width: `${((30000 - cardSelectionStatus.timeRemaining) / 30000) * 100}%` 
-                      }}
-                    />
-                  </div>
-                </div>
-              )} */}
               
               {cardSelectionError && (
                 <p className="text-red-300 text-xs mt-2 text-center">
@@ -903,8 +887,8 @@ export default function Home() {
         </motion.div>
       ) : null}
 
-      {/* Card Selection Grid - DISABLED IF PLAYER HAS CARD IN ACTIVE GAME */}
-      {!hasCardInActiveGame && (
+      {/* Card Selection Grid - DISABLED ONLY IF PLAYER HAS CARD IN ACTIVE GAME (not waiting) */}
+      {!hasCardInActiveGame || playerGameStatus !== 'ACTIVE' ? (
         <CardSelectionGrid
           availableCards={availableCards}
           takenCards={takenCards}
@@ -914,7 +898,7 @@ export default function Home() {
           onCardSelect={handleCardSelect}
           disabled={shouldDisableCardSelection}
         />
-      )}
+      ) : null}
 
       {/* Selected Card Preview - Show below the grid when a card is selected */}
       {!hasCardInActiveGame && selectedNumber && (
@@ -1019,7 +1003,8 @@ export default function Home() {
         <div className="space-y-2">
           {/* Dynamic game status message */}
           <p className={`text-sm text-center font-medium ${
-            hasCardInActiveGame ? 'text-green-300' :
+            hasCardInActiveGame && playerGameStatus === 'ACTIVE' ? 'text-green-300' :
+            hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS' ? 'text-yellow-300' :
             isAutoJoining ? 'text-green-300' :
             hasRestartCooldown ? 'text-purple-300' :
             gameStatus === 'WAITING_FOR_PLAYERS' ? 'text-blue-300' :
@@ -1043,23 +1028,30 @@ export default function Home() {
           {/* Auto-redirect info */}
           <div className="mt-3 p-2 bg-blue-500/10 rounded-lg border border-blue-500/20">
             <p className="text-blue-300 text-xs text-center mb-1">
-              🤖 <span className="font-bold">Automatic Join</span>
+              🤖 <span className="font-bold">Automatic Redirect Rules</span>
             </p>
             <p className="text-blue-200 text-xs text-center">
               {hasCardInActiveGame 
-                ? 'You will be redirected to your active game'
-                : 'You will be automatically redirected when conditions are met'}
+                ? playerGameStatus === 'ACTIVE'
+                  ? 'Redirecting to your active game'
+                  : 'Waiting for game to become active'
+                : 'You will be redirected only when game is ACTIVE'}
             </p>
           </div>
           
-          {/* Additional restart cooldown info */}
-          {!hasCardInActiveGame && hasRestartCooldown && (
-            <div className="mt-2 p-2 bg-purple-500/10 rounded-lg">
-              <p className="text-purple-300 text-xs text-center">
-                ⏳ Previous game finished {Math.ceil((60000 - restartCooldownRemaining) / 1000)}s ago
-              </p>
-              <p className="text-purple-200 text-xs text-center mt-1">
-                Next game starts in {Math.ceil(restartCooldownRemaining / 1000)} seconds
+          {/* Additional info for players with cards */}
+          {hasCardInActiveGame && (
+            <div className={`mt-2 p-2 rounded-lg ${
+              playerGameStatus === 'ACTIVE' 
+                ? 'bg-green-500/10 border border-green-500/20' 
+                : 'bg-yellow-500/10 border border-yellow-500/20'
+            }`}>
+              <p className={`text-xs text-center ${
+                playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
+              }`}>
+                {playerGameStatus === 'ACTIVE'
+                  ? '✅ Your game is active - Redirecting now'
+                  : '⏳ Your game is waiting for players - Stay on this page'}
               </p>
             </div>
           )}
