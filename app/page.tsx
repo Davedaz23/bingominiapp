@@ -529,7 +529,7 @@ export default function Home() {
       )}
 
       {/* ACTIVE GAMES SECTION */}
-      {activeGames.length > 0 && (
+      {/* {activeGames.length > 0 && (
         <motion.div 
           className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
           initial={{ opacity: 0, y: -10 }}
@@ -573,7 +573,7 @@ export default function Home() {
             👁️ You will be automatically redirected to watch live games
           </p>
         </motion.div>
-      )}
+      )} */}
 
       {/* BALANCE WARNING */}
       {effectiveWalletBalance < 10 && (

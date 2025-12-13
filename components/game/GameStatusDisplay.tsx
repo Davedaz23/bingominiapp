@@ -32,16 +32,16 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
     
     const canSelectCards = shouldEnableCardSelection;
     // AUTO-START COUNTDOWN
-    if (hasAutoStartTimer && autoStartTimeRemaining > 0) {
-      const secondsRemaining = Math.ceil(autoStartTimeRemaining / 1000);
-      return {
-        message: '🚀 Game Starting Soon!',
-        description: `Auto-starting in ${secondsRemaining}s (${players}/2 players ready)`,
-        color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
-        icon: <Clock className="w-5 h-5" />,
-        showAutoStartCountdown: true
-      };
-    }
+    // if (hasAutoStartTimer && autoStartTimeRemaining > 0) {
+    //   const secondsRemaining = Math.ceil(autoStartTimeRemaining / 1000);
+    //   return {
+    //     message: '🚀 Game Starting Soon!',
+    //     description: `Auto-starting in ${secondsRemaining}s (${players}/2 players ready)`,
+    //     color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
+    //     icon: <Clock className="w-5 h-5" />,
+    //     showAutoStartCountdown: true
+    //   };
+    // }
     switch (gameStatus) {
       case 'WAITING_FOR_PLAYERS':
         const playersNeeded = Math.max(0, minPlayers - players);
