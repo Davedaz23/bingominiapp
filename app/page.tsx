@@ -311,7 +311,7 @@ useEffect(() => {
     if (isAutoJoining || autoRedirected || hasCardInActiveGame) return;
     
     // Check if there are any active games to join as spectator
-    if (activeGames[0]?.status==='ACTIVE' && !selectedNumber) {
+    if (activeGames.length > 0 && !selectedNumber) {
       const now = Date.now();
       // Only attempt auto-join once every 5 seconds
       if (now - lastAutoJoinAttempt > 5000) {
