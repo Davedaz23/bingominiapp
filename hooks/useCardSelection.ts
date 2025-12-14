@@ -80,7 +80,8 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
   const shouldEnableCardSelection = () => {
     if (!gameData?._id) {
-      return false;
+      fetchAvailableCards();
+    //  return false;
     }
 
     if (walletBalance >= 10) {
