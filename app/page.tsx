@@ -244,29 +244,35 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [user?.id, authLoading]);
 
-  // ==================== IMMEDIATE REDIRECT IF PLAYER HAS CARD IN ACTIVE GAME ====================
-  useEffect(() => {
-    // Don't redirect if already redirecting or checking status
-    if (isAutoJoining || autoRedirected || isCheckingPlayerStatus) return;
+// ==================== IMMEDIATE REDIRECT IF PLAYER HAS CARD IN ACTIVE GAME ====================
+useEffect(() => {
+  // Don't redirect if already redirecting or checking status
+  if (isAutoJoining || autoRedirected || isCheckingPlayerStatus) return;
+  
+  // CRITICAL: Only redirect if player has card AND the game is ACTIVE
+  if (hasCardInActiveGame && playerGameId && playerGameStatus === 'ACTIVE') {
+    console.log(`🚨 Player has card #${playerCardNumber} in ACTIVE game ${playerGameId}, redirecting immediately!`);
+    setIsAutoJoining(true);
     
-    // CRITICAL CHANGE: Only redirect if player has card AND the game is ACTIVE
-    if (hasCardInActiveGame && playerGameId && playerGameStatus === 'ACTIVE') {
-      console.log(`🚨 Player has card #${playerCardNumber} in ACTIVE game ${playerGameId}, redirecting immediately!`);
-      setIsAutoJoining(true);
-      
-      // Redirect immediately to the game page
-      setTimeout(() => {
-        router.push(`/game/${playerGameId}`);
-        setAutoRedirected(true);
-      }, 500);
-    } 
-    // If player has card but game is WAITING_FOR_PLAYERS, DO NOT redirect
-    else if (hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS') {
-      console.log(`⏳ Player has card #${playerCardNumber} in WAITING_FOR_PLAYERS game - NOT redirecting`);
-      // Don't redirect, just stay on the home page
+    // Redirect immediately to the game page
+    setTimeout(() => {
+      router.push(`/game/${playerGameId}`);
+      setAutoRedirected(true);
+    }, 500);
+  } 
+  // If player has card but game is WAITING_FOR_PLAYERS, DO NOT redirect
+  else if (hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS') {
+    console.log(`⏳ Player has card #${playerCardNumber} in WAITING_FOR_PLAYERS game - NOT redirecting, staying on home page`);
+    // Don't redirect, just stay on the home page
+    // Reset autoRedirected flag in case it was set previously
+    if (autoRedirected) {
+      setAutoRedirected(false);
     }
-  }, [hasCardInActiveGame, playerGameId, playerCardNumber, playerGameStatus, isAutoJoining, autoRedirected, isCheckingPlayerStatus, router]);
-
+    if (isAutoJoining) {
+      setIsAutoJoining(false);
+    }
+  }
+}, [hasCardInActiveGame, playerGameId, playerCardNumber, playerGameStatus, isAutoJoining, autoRedirected, isCheckingPlayerStatus, router]);
   // ==================== MAIN AUTO-REDIRECT LOGIC (FOR NON-CARD HOLDERS) ====================
   useEffect(() => {
     // Don't auto-join if we're already in the process or player has card in active game
