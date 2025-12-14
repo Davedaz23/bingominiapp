@@ -97,7 +97,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
     try {
       console.log('🔄 Polling for taken cards...');
-      const response = await gameAPI.getTakenCards(gameData.id);
+      const response = await gameAPI.getTakenCards(gameData._id);
       console.log("taken payload",response);
       if (response.data.success) {
         // Merge with current user's selection to avoid flickering
@@ -135,7 +135,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
         userId: user.id
       });
 
-      const response = await gameAPI.getAvailableCards(gameData.id, user.id, 400);
+      const response = await gameAPI.getAvailableCards(gameData._id, user.id, 400);
       
       console.log('📦 Available cards response:', response.data);
       
@@ -183,14 +183,14 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       }
 
       console.log('🔄 Selecting card:', {
-        gameId: gameData.id,
+        gameId: gameData._id,
         userId: user.id,
         cardIndex: cardNumber,
         cardNumbers: selectedCardData.numbers
       });
 
       // Call the API to select the card with card number
-      const response = await gameAPI.selectCardWithNumber(gameData.id, {
+      const response = await gameAPI.selectCardWithNumber(gameData._id, {
         userId: user.id,
         cardNumbers: selectedCardData.numbers,
         cardNumber: cardNumber
@@ -263,9 +263,9 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   if (!gameData?.id) return;
   
   try {
-    console.log('🔍 Checking card selection status for game:', gameData.id);
+    console.log('🔍 Checking card selection status for game:', gameData._id);
     
-    const response = await gameAPI.getCardSelectionStatus(gameData.id);
+    const response = await gameAPI.getCardSelectionStatus(gameData._id);
     console.log('📦 Card selection status response:', response.data);
     
     if (response.data.success) {
