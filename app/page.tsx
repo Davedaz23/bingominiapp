@@ -289,8 +289,9 @@ useEffect(() => {
     // Add a small delay to ensure game data is loaded
     setTimeout(() => {
       router.push(`/game/${playerGameId}`);
+      console.log("Defar 1");
       setAutoRedirected(true);
-    }, 10000);
+    }, 1000);
   } 
   // If player has card but game is WAITING_FOR_PLAYERS, DO NOT redirect
   else if (hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS') {
@@ -322,6 +323,7 @@ useEffect(() => {
         // Redirect to the first active game as spectator
         setTimeout(() => {
           router.push(`/game/${activeGames[0]._id}?spectator=true`);
+          console.log("Defar 2");
           setAutoRedirected(true);
         }, 1000);
       }
