@@ -79,7 +79,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   }, [user]);
 
   const shouldEnableCardSelection = () => {
-    if (!gameData?._id) {
+    if (!gameData?.id) {
       return false;
     }
 
@@ -93,11 +93,11 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   // Rest of your hook code remains the same...
   // Real-time polling for taken cards
   const fetchTakenCards = useCallback(async () => {
-    if (!gameData?._id) return;
+    if (!gameData?.id) return;
 
     try {
       console.log('🔄 Polling for taken cards...');
-      const response = await gameAPI.getTakenCards(gameData._id);
+      const response = await gameAPI.getTakenCards(gameData.id);
       console.log("taken payload",response);
       if (response.data.success) {
         // Merge with current user's selection to avoid flickering
@@ -124,18 +124,18 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     } catch (error: any) {
       console.error('❌ Error fetching taken cards:', error.message);
     }
-  }, [gameData?._id, selectedNumber, user?.id]);
+  }, [gameData?.id, selectedNumber, user?.id]);
 
   const fetchAvailableCards = async () => {
     try {
-      if (!gameData?._id || !user?.id) return;
+      if (!gameData?.id || !user?.id) return;
       
       console.log('🔍 Fetching available cards with:', {
         gameId: gameData._id,
         userId: user.id
       });
 
-      const response = await gameAPI.getAvailableCards(gameData._id, user.id, 400);
+      const response = await gameAPI.getAvailableCards(gameData.id, user.id, 400);
       
       console.log('📦 Available cards response:', response.data);
       
@@ -157,7 +157,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   };
 
   const handleCardSelect = async (cardNumber: number) => {
-    if (!gameData?._id || !user?.id) return;
+    if (!gameData?.id || !user?.id) return;
 
     try {
       setCardSelectionError('');
@@ -183,14 +183,14 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       }
 
       console.log('🔄 Selecting card:', {
-        gameId: gameData._id,
+        gameId: gameData.id,
         userId: user.id,
         cardIndex: cardNumber,
         cardNumbers: selectedCardData.numbers
       });
 
       // Call the API to select the card with card number
-      const response = await gameAPI.selectCardWithNumber(gameData._id, {
+      const response = await gameAPI.selectCardWithNumber(gameData.id, {
         userId: user.id,
         cardNumbers: selectedCardData.numbers,
         cardNumber: cardNumber
@@ -238,7 +238,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   };
 
   const handleCardRelease = async () => {
-    if (!user?.id || !gameData?._id || !selectedNumber) return;
+    if (!user?.id || !gameData?.id || !selectedNumber) return;
     
     try {
       console.log('🔄 Releasing card:', selectedNumber);
@@ -260,12 +260,12 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   };
 
  const checkCardSelectionStatus = async () => {
-  if (!gameData?._id) return;
+  if (!gameData?.id) return;
   
   try {
-    console.log('🔍 Checking card selection status for game:', gameData._id);
+    console.log('🔍 Checking card selection status for game:', gameData.id);
     
-    const response = await gameAPI.getCardSelectionStatus(gameData._id);
+    const response = await gameAPI.getCardSelectionStatus(gameData.id);
     console.log('📦 Card selection status response:', response.data);
     
     if (response.data.success) {
@@ -296,7 +296,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
   // Real-time polling for taken cards
   useEffect(() => {
-    if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
+    if (!gameData?.id || !cardSelectionStatus.isSelectionActive) return;
 
     console.log('⏰ Starting real-time taken cards polling');
     
@@ -308,25 +308,25 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       console.log('🛑 Stopping real-time taken cards polling');
       clearInterval(interval);
     };
-  }, [gameData?._id, cardSelectionStatus.isSelectionActive, fetchTakenCards]);
+  }, [gameData?.id, cardSelectionStatus.isSelectionActive, fetchTakenCards]);
 
   // Fetch available cards when game data changes
   useEffect(() => {
     console.log('🔄 useCardSelection effect triggered:', {
-      gameId: gameData?._id,
+      gameId: gameData?.id,
       gameStatus,
       walletBalance,
       userId: user?.id,
       shouldEnableCardSelection: shouldEnableCardSelection()
     });
 
-    if (gameData?._id && shouldEnableCardSelection() && user?.id) {
+    if (gameData?.id && shouldEnableCardSelection() && user?.id) {
       console.log('🚀 Fetching available cards...');
       fetchAvailableCards();
       checkCardSelectionStatus();
     } else {
       console.log('⏸️ Skipping card fetch - conditions not met:', {
-        hasGameId: !!gameData?._id,
+        hasGameId: !!gameData?.id,
         shouldEnableCardSelection: shouldEnableCardSelection(),
         hasUserId: !!user?.id
       });
@@ -335,7 +335,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
   // Check card selection status periodically
   useEffect(() => {
-    if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
+    if (!gameData?.id || !cardSelectionStatus.isSelectionActive) return;
 
     console.log('⏰ Starting card selection status polling');
     
