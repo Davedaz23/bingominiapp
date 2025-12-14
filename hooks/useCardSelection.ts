@@ -331,6 +331,8 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
         shouldEnableCardSelection: shouldEnableCardSelection(),
         hasUserId: !!user?.id
       });
+      fetchAvailableCards();
+      checkCardSelectionStatus();
     }
   }, [gameData, gameStatus, walletBalance, user, selectedNumber]);
 
