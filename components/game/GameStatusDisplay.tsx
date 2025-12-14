@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { Target, Users, Play, Trophy, Clock } from 'lucide-react';
 
 interface GameStatusDisplayProps {
-  gameStatus: 'WAITING_FOR_PLAYERS' | 'ACTIVE'|'CARD_SELECTION' |'COOLDOWN'| 'FINISHED' | 'RESTARTING';
+  gameStatus: 'WAITING_FOR_PLAYERS' | 'ACTIVE'|'CARD_SELECTION' |'COOLDOWN'| 'FINISHED' |'NO_WINNER' | 'RESTARTING';
   currentPlayers: number;
   restartCountdown: number;
   selectedNumber: number | null;
@@ -32,16 +32,16 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
     
     const canSelectCards = shouldEnableCardSelection;
     // AUTO-START COUNTDOWN
-    if (hasAutoStartTimer && autoStartTimeRemaining > 0) {
-      const secondsRemaining = Math.ceil(autoStartTimeRemaining / 1000);
-      return {
-        message: '🚀 Game Starting Soon!',
-        description: `Auto-starting in ${secondsRemaining}s (${players}/2 players ready)`,
-        color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
-        icon: <Clock className="w-5 h-5" />,
-        showAutoStartCountdown: true
-      };
-    }
+    // if (hasAutoStartTimer && autoStartTimeRemaining > 0) {
+    //   const secondsRemaining = Math.ceil(autoStartTimeRemaining / 1000);
+    //   return {
+    //     message: '🚀 Game Starting Soon!',
+    //     description: `Auto-starting in ${secondsRemaining}s (${players}/2 players ready)`,
+    //     color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
+    //     icon: <Clock className="w-5 h-5" />,
+    //     showAutoStartCountdown: true
+    //   };
+    // }
     switch (gameStatus) {
       case 'WAITING_FOR_PLAYERS':
         const playersNeeded = Math.max(0, minPlayers - players);
@@ -134,7 +134,7 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
           </div>
         </div>
       )} */}
-      {gameStatus === 'FINISHED' && restartCountdown > 0 && (
+      {gameStatus === 'FINISHED'&& gameStatus === 'NO_WINNER' && restartCountdown > 0 && (
         <div className="mt-3">
           <div className="flex justify-between text-xs text-white/80 mb-1">
             <span>Next game starts in:</span>
