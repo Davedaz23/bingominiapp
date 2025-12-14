@@ -290,7 +290,7 @@ useEffect(() => {
     setTimeout(() => {
       router.push(`/game/${playerGameId}`);
       setAutoRedirected(true);
-    }, 1000);
+    }, 10000);
   } 
   // If player has card but game is WAITING_FOR_PLAYERS, DO NOT redirect
   else if (hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS') {
