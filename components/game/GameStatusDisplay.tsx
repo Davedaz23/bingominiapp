@@ -134,7 +134,7 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
           </div>
         </div>
       )} */}
-      {gameStatus === 'FINISHED'&& gameStatus === 'NO_WINNER' && restartCountdown > 0 && (
+     {gameStatus === 'FINISHED' || gameStatus === 'NO_WINNER' && restartCountdown > 0 && (
         <div className="mt-3">
           <div className="flex justify-between text-xs text-white/80 mb-1">
             <span>Next game starts in:</span>
