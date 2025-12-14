@@ -401,13 +401,13 @@ useEffect(() => {
             router.push(`/game/${updatedGame._id}`);
           }, 1000);
         }
-        //  else {
-        //   console.log('⚠️ Auto-join failed, redirecting to watch');
-        //   setAutoRedirected(true);
-        //   setTimeout(() => {
-        //     router.push(`/game/${game._id}?spectator=true`);
-        //   }, 1000);
-        // }
+         else {
+          console.log('⚠️ Auto-join failed, redirecting to watch');
+          setAutoRedirected(true);
+          setTimeout(() => {
+            router.push(`/game/${game._id}?spectator=true`);
+          }, 1000);
+        }
       } else {
         // No waiting games, check active games
         const activeGamesResponse = await gameAPI.getActiveGames();
