@@ -320,8 +320,17 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       shouldEnableCardSelection: shouldEnableCardSelection()
     });
 
-       fetchAvailableCards();
+    if (gameData?.id && shouldEnableCardSelection() && user?.id) {
+      console.log('🚀 Fetching available cards...');
+      fetchAvailableCards();
       checkCardSelectionStatus();
+    } else {
+      console.log('⏸️ Skipping card fetch - conditions not met:', {
+        hasGameId: !!gameData?.id,
+        shouldEnableCardSelection: shouldEnableCardSelection(),
+        hasUserId: !!user?.id
+      });
+    }
   }, [gameData, gameStatus, walletBalance, user, selectedNumber]);
 
   // Check card selection status periodically
