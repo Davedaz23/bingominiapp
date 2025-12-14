@@ -880,7 +880,7 @@ if ((isAutoJoining && selectedNumber) ||
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <div className="text-center">
+          {/* <div className="text-center">
             <div className="mb-3">
               <div className="text-white/70 text-sm mb-1">Game Status</div>
               <div className={`px-4 py-1 rounded-full inline-block ${
@@ -931,7 +931,7 @@ if ((isAutoJoining && selectedNumber) ||
                 </p>
               </div>
             )}
-          </div>
+          </div> */}
         </motion.div>
       ) : null}
 

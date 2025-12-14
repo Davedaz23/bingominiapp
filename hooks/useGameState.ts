@@ -7,7 +7,7 @@ import { Game } from '@/types';
 export const useGameState = () => {
   const { user, refreshWalletBalance } = useAuth();
   const [activeGame, setActiveGame] = useState<any>(null);
-  const [gameStatus, setGameStatus] = useState<'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'RESTARTING' | 'COOLDOWN' | 'CARD_SELECTION'>('WAITING_FOR_PLAYERS');
+  const [gameStatus, setGameStatus] = useState<'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'RESTARTING' | 'COOLDOWN' | 'NO_WINNER' | 'CARD_SELECTION'>('WAITING_FOR_PLAYERS');
   const [restartCountdown, setRestartCountdown] = useState<number>(30);
   const [currentPlayers, setCurrentPlayers] = useState<number>(0);
   const [gameData, setGameData] = useState<Game | null>(null);
