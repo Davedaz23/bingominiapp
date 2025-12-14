@@ -79,7 +79,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   }, [user]);
 
   const shouldEnableCardSelection = () => {
-    if (!gameData?.id) {
+    if (!gameData?._id) {
       return false;
     }
 
