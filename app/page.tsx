@@ -94,45 +94,76 @@ export default function Home() {
   const [lastAutoJoinAttempt, setLastAutoJoinAttempt] = useState<number>(0);
 
   // ==================== CHECK IF USER HAS CARD IN ACTIVE GAME ====================
-  const checkPlayerCardInActiveGame = async () => {
-    if (!user?.id) return;
+const checkPlayerCardInActiveGame = async () => {
+  if (!user?.id) return false;
+  
+  try {
+    setIsCheckingPlayerStatus(true);
+    console.log('🔄 Checking if player has card in active game...');
     
-    try {
-      setIsCheckingPlayerStatus(true);
-      console.log('🔄 Checking if player has card in active game...');
+    // Get all waiting games (which includes WAITING_FOR_PLAYERS status)
+    const waitingGamesResponse = await gameAPI.getWaitingGames();
+    
+    if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
+      const waitingGame = waitingGamesResponse.data.games[0];
+      console.log('🎯 Found waiting game with status:', waitingGame.status);
       
-      // First, get active games
-      const activeGamesResponse = await gameAPI.getActiveGames();
-      if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
-        const activeGame = activeGamesResponse.data.games[0];
+      // Check if user is a participant in this waiting game
+      const participantsResponse = await gameAPI.getGameParticipants(waitingGame._id);
+      if (participantsResponse.data.success) {
+        const participants = participantsResponse.data.participants || [];
+        const playerParticipant = participants.find((p: any) => p.userId === user.id);
         
-        // Check if user is a participant in this active game
-        const participantsResponse = await gameAPI.getGameParticipants(activeGame._id);
-        if (participantsResponse.data.success) {
-          const participants = participantsResponse.data.participants || [];
-          const playerParticipant = participants.find((p: any) => p.userId === user.id);
-          
-          if (playerParticipant && playerParticipant.hasCard) {
-            console.log(`✅ Player has card #${playerParticipant.cardNumber} in game with status: ${activeGame.status}`);
-            setHasCardInActiveGame(true);
-            setPlayerGameId(activeGame._id);
-            setPlayerCardNumber(playerParticipant.cardNumber || 0);
-            setPlayerGameStatus(activeGame.status);
-            return true;
-          }
+        if (playerParticipant && playerParticipant.hasCard) {
+          console.log(`✅ Player has card #${playerParticipant.cardNumber} in game with status: ${waitingGame.status}`);
+          setHasCardInActiveGame(true);
+          setPlayerGameId(waitingGame._id);
+          setPlayerCardNumber(playerParticipant.cardNumber || 0);
+          setPlayerGameStatus(waitingGame.status);
+          return true;
         }
       }
-      
-      setHasCardInActiveGame(false);
-      setPlayerGameStatus(null);
-      return false;
-    } catch (error) {
-      console.error('❌ Error checking player card status:', error);
-      return false;
-    } finally {
-      setIsCheckingPlayerStatus(false);
     }
-  };
+    
+    // Also check truly active games
+    const activeGamesResponse = await gameAPI.getActiveGames();
+    if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
+      const activeGame = activeGamesResponse.data.games[0];
+      
+      // Check if user is a participant in this active game
+      const participantsResponse = await gameAPI.getGameParticipants(activeGame._id);
+      if (participantsResponse.data.success) {
+        const participants = participantsResponse.data.participants || [];
+        const playerParticipant = participants.find((p: any) => p.userId === user.id);
+        
+        if (playerParticipant && playerParticipant.hasCard) {
+          console.log(`✅ Player has card #${playerParticipant.cardNumber} in game with status: ${activeGame.status}`);
+          setHasCardInActiveGame(true);
+          setPlayerGameId(activeGame._id);
+          setPlayerCardNumber(playerParticipant.cardNumber || 0);
+          setPlayerGameStatus(activeGame.status);
+          return true;
+        }
+      }
+    }
+    
+    // If we get here, player doesn't have a card in any active game
+    setHasCardInActiveGame(false);
+    setPlayerGameId(null);
+    setPlayerCardNumber(null);
+    setPlayerGameStatus(null);
+    return false;
+  } catch (error) {
+    console.error('❌ Error checking player card status:', error);
+    setHasCardInActiveGame(false);
+    setPlayerGameId(null);
+    setPlayerCardNumber(null);
+    setPlayerGameStatus(null);
+    return false;
+  } finally {
+    setIsCheckingPlayerStatus(false);
+  }
+};
 
   // ==================== LOAD ACTIVE GAMES ====================
   const loadActiveGames = async () => {
@@ -245,20 +276,21 @@ export default function Home() {
   }, [user?.id, authLoading]);
 
 // ==================== IMMEDIATE REDIRECT IF PLAYER HAS CARD IN ACTIVE GAME ====================
+
 useEffect(() => {
-  // Don't redirect if already redirecting or checking status
-  if (isAutoJoining || autoRedirected || isCheckingPlayerStatus) return;
+  // Don't redirect if already redirecting or checking status or if page is loading
+  if (isAutoJoining || autoRedirected || isCheckingPlayerStatus || pageLoading) return;
   
   // CRITICAL: Only redirect if player has card AND the game is ACTIVE
   if (hasCardInActiveGame && playerGameId && playerGameStatus === 'ACTIVE') {
     console.log(`🚨 Player has card #${playerCardNumber} in ACTIVE game ${playerGameId}, redirecting immediately!`);
     setIsAutoJoining(true);
     
-    // Redirect immediately to the game page
+    // Add a small delay to ensure game data is loaded
     setTimeout(() => {
       router.push(`/game/${playerGameId}`);
       setAutoRedirected(true);
-    }, 500);
+    }, 1000);
   } 
   // If player has card but game is WAITING_FOR_PLAYERS, DO NOT redirect
   else if (hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS') {
@@ -272,7 +304,7 @@ useEffect(() => {
       setIsAutoJoining(false);
     }
   }
-}, [hasCardInActiveGame, playerGameId, playerCardNumber, playerGameStatus, isAutoJoining, autoRedirected, isCheckingPlayerStatus, router]);
+}, [hasCardInActiveGame, playerGameId, playerCardNumber, playerGameStatus, isAutoJoining, autoRedirected, isCheckingPlayerStatus, pageLoading, router]);
   // ==================== MAIN AUTO-REDIRECT LOGIC (FOR NON-CARD HOLDERS) ====================
   useEffect(() => {
     // Don't auto-join if we're already in the process or player has card in active game
@@ -523,56 +555,60 @@ useEffect(() => {
   const shouldDisableCardSelection = (hasCardInActiveGame && playerGameStatus === 'ACTIVE') || isAutoJoining;
 
   // Auto-join loading screen (only for ACTIVE games)
-  if (isAutoJoining || (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected)) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-white font-bold text-xl">Bingo Game</h1>
-              <p className="text-white/60 text-sm">
-                {hasCardInActiveGame ? 'Returning to Your Active Game' : 'Joining Active Game'}
-              </p>
-            </div>
-            <UserInfoDisplay user={user} userRole={userRole} />
-          </div>
-        </div>
-
-        <motion.div 
-          className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-green-500/30"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center justify-center gap-3 mb-4">
-            {hasCardInActiveGame ? (
-              <LogIn className="w-6 h-6 text-green-300" />
-            ) : (
-              <Play className="w-6 h-6 text-green-300" />
-            )}
-            <p className="text-white font-bold text-xl">
-              {hasCardInActiveGame ? 'Returning to Game...' : 'Joining Active Game...'}
+if ((isAutoJoining && selectedNumber) || 
+    (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected && !window.location.pathname.includes('/game/'))) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-white font-bold text-xl">Bingo Game</h1>
+            <p className="text-white/60 text-sm">
+              {hasCardInActiveGame ? 'Verifying Active Game...' : 'Joining Active Game...'}
             </p>
           </div>
-          <p className="text-green-200 text-center mb-4">
-            {hasCardInActiveGame 
-              ? `You have card #${playerCardNumber} in an active game`
-              : selectedNumber 
-                ? `Auto-joining with Card #${selectedNumber}`
-                : 'Redirecting to watch live game'}
-          </p>
-          <div className="flex justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-300"></div>
-          </div>
-        </motion.div>
-
-        <div className="text-center text-white/60 text-sm">
-          {hasCardInActiveGame 
-            ? 'Redirecting you back to your active game...'
-            : 'Please wait while we join the active game...'}
+          <UserInfoDisplay user={user} userRole={userRole} />
         </div>
       </div>
-    );
-  }
+
+      <motion.div 
+        className="bg-green-500/20 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-green-500/30"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <div className="flex items-center justify-center gap-3 mb-4">
+          {hasCardInActiveGame ? (
+            <LogIn className="w-6 h-6 text-green-300" />
+          ) : (
+            <Play className="w-6 h-6 text-green-300" />
+          )}
+          <p className="text-white font-bold text-xl">
+            {hasCardInActiveGame ? 'Verifying Game Status...' : 'Joining Active Game...'}
+          </p>
+        </div>
+        <p className="text-green-200 text-center mb-4">
+          {hasCardInActiveGame 
+            ? `Checking if game with card #${playerCardNumber} is ready...`
+            : selectedNumber 
+              ? `Preparing to join with Card #${selectedNumber}`
+              : 'Getting game information...'}
+        </p>
+        <div className="flex justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-300"></div>
+        </div>
+        <p className="text-center text-green-200 text-sm mt-4">
+          Verifying game is ACTIVE before redirecting...
+        </p>
+      </motion.div>
+
+      <div className="text-center text-white/60 text-sm">
+        {hasCardInActiveGame 
+          ? 'Ensuring the game is active before redirecting...'
+          : 'Please wait while we verify the game status...'}
+      </div>
+    </div>
+  );
+}
 
   // Show loading only when both auth and page are loading
   if (authLoading || pageLoading) {
