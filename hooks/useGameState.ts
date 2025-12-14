@@ -88,7 +88,7 @@ export const useGameState = () => {
       
       // Try to get active games first
       const activeGamesResponse = await gameAPI.getActiveGames();
-      
+      console.log("Active Game Data",activeGamesResponse);
       if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
         const game: Game = activeGamesResponse.data.games[0];
         setGameStatus('ACTIVE');
