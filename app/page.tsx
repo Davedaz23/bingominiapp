@@ -323,7 +323,7 @@ useEffect(() => {
         // Redirect to the first active game as spectator
         setTimeout(() => {
           router.push(`/game/${activeGames[0]._id}?spectator=true`);
-          console.log("Defar 2");
+          console.log("Defar 2"+activeGames[0].status);
           setAutoRedirected(true);
         }, 1000);
       }
