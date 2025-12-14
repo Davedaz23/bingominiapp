@@ -397,6 +397,7 @@ useEffect(() => {
           
           // Redirect to game page
           setTimeout(() => {
+            console.log("Defar 3");
             router.push(`/game/${updatedGame._id}`);
           }, 1000);
         }
@@ -414,6 +415,7 @@ useEffect(() => {
           console.log('🎯 No waiting games, joining active game as spectator');
           setAutoRedirected(true);
           setTimeout(() => {
+            console.log("Defar 4");
             router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
           }, 1000);
         } else {
@@ -431,6 +433,7 @@ useEffect(() => {
       if (activeGamesResponse.data.success && activeGamesResponse.data.games.length > 0) {
         setAutoRedirected(true);
         setTimeout(() => {
+          console.log("Defar 5");
           router.push(`/game/${activeGamesResponse.data.games[0]._id}?spectator=true`);
         }, 1000);
       }
