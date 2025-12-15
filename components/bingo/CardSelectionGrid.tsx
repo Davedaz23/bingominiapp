@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// components/bingo/CardSelectionGrid.tsx - UPDATED WITH ACTIVE GAME LOCK
+// components/bingo/CardSelectionGrid.tsx - UPDATED
 import { motion } from 'framer-motion';
-import { Check, Lock, AlertCircle, Gamepad2 } from 'lucide-react';
+import { Check, Lock } from 'lucide-react';
 
 interface CardSelectionGridProps {
   availableCards: Array<{cardIndex: number, numbers: (number | string)[][], preview?: any}>;
@@ -10,13 +10,7 @@ interface CardSelectionGridProps {
   walletBalance: number;
   gameStatus: string;
   onCardSelect: (cardNumber: number) => void;
-  disabled?: boolean;
-  hasActiveGame?: boolean; // NEW: Explicit prop for active game state
-  activeGameInfo?: { // NEW: Optional active game info
-    gameId?: string;
-    cardNumber?: number;
-    gameStatus?: string;
-  };
+  disabled?: boolean; // NEW: Add disabled prop
 }
 
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
@@ -26,9 +20,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   walletBalance,
   gameStatus,
   onCardSelect,
-  disabled = false,
-  hasActiveGame = false, // NEW: Default to false
-  activeGameInfo = {} // NEW: Default empty object
+  disabled = false // NEW: Default to false
 }) => {
   // Create a map of taken cards for quick lookup
   const takenCardMap = new Map();
@@ -36,12 +28,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
     takenCardMap.set(card.cardNumber, card);
   });
 
-  // Determine if card selection should be disabled
-  const isSelectionDisabled = disabled || hasActiveGame;
-
   // Helper function to handle card click
   const handleCardClick = (number: number) => {
-    if (isSelectionDisabled) {
+    if (disabled) {
       console.log('Card selection is disabled - player already has card in active game');
       return;
     }
@@ -56,139 +45,27 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
     }
   };
 
-  // Get active game message
-  const getActiveGameMessage = () => {
-    if (!hasActiveGame) return null;
-    
-    if (activeGameInfo.gameStatus === 'ACTIVE') {
-      return `You have card #${activeGameInfo.cardNumber} in an active game`;
-    } else if (activeGameInfo.gameStatus === 'WAITING_FOR_PLAYERS') {
-      return `You have card #${activeGameInfo.cardNumber} - Waiting for game to start`;
-    }
-    return 'You have an active game';
-  };
-
   return (
     <div className="mb-4">
-      {/* ACTIVE GAME WARNING BANNER */}
-      {hasActiveGame && (
-        <motion.div 
-          className={`
-            backdrop-blur-lg rounded-2xl p-4 mb-4 border-2
-            ${activeGameInfo.gameStatus === 'ACTIVE' 
-              ? 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-green-500/30' 
-              : 'bg-gradient-to-r from-yellow-500/20 to-amber-500/20 border-yellow-500/30'
-            }
-          `}
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center gap-3">
-            {activeGameInfo.gameStatus === 'ACTIVE' ? (
-              <Gamepad2 className="w-5 h-5 text-green-300" />
-            ) : (
-              <AlertCircle className="w-5 h-5 text-yellow-300" />
-            )}
-            <div className="flex-1">
-              <p className={`
-                font-bold text-sm
-                ${activeGameInfo.gameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'}
-              `}>
-                {activeGameInfo.gameStatus === 'ACTIVE' 
-                  ? 'You are in an active game!' 
-                  : 'Waiting for game to start'}
-              </p>
-              <p className={`
-                text-xs
-                ${activeGameInfo.gameStatus === 'ACTIVE' ? 'text-green-200' : 'text-yellow-200'}
-              `}>
-                {getActiveGameMessage()}
-              </p>
-            </div>
-            <div className={`
-              px-3 py-1 rounded-full
-              ${activeGameInfo.gameStatus === 'ACTIVE' 
-                ? 'bg-green-500/30 animate-pulse' 
-                : 'bg-yellow-500/30'
-              }
-            `}>
-              <span className={`
-                font-bold text-xs
-                ${activeGameInfo.gameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'}
-              `}>
-                {activeGameInfo.gameStatus === 'ACTIVE' ? 'Redirecting...' : 'Waiting...'}
-              </span>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
       {/* DISABLED OVERLAY MESSAGE */}
-      {isSelectionDisabled && (
+      {disabled && (
         <motion.div 
-          className={`
-            backdrop-blur-lg rounded-2xl p-4 mb-4 border-2
-            ${hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE'
-              ? 'bg-gradient-to-r from-red-500/20 to-orange-500/20 border-red-500/30'
-              : 'bg-gradient-to-r from-purple-500/20 to-blue-500/20 border-purple-500/30'
-            }
-          `}
+          className="bg-gradient-to-r from-green-500/20 to-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border-2 border-green-500/30"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="flex items-center gap-3">
-            <Lock className={`
-              w-5 h-5
-              ${hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE' 
-                ? 'text-red-300' 
-                : 'text-purple-300'
-              }
-            `} />
+            <Lock className="w-5 h-5 text-green-300" />
             <div className="flex-1">
-              <p className={`
-                font-bold text-sm
-                ${hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE' 
-                  ? 'text-red-300' 
-                  : 'text-purple-300'
-                }
-              `}>
-                {hasActiveGame 
-                  ? 'Card Selection Locked' 
-                  : 'Card Selection Temporarily Disabled'}
+              <p className="text-green-300 font-bold text-sm">
+                Card Selection Locked
               </p>
-              <p className={`
-                text-xs
-                ${hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE' 
-                  ? 'text-red-200' 
-                  : 'text-purple-200'
-                }
-              `}>
-                {hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE'
-                  ? 'You already have a card in an active game. Redirecting to game...'
-                  : hasActiveGame
-                  ? 'You have a card in a waiting game. Card selection is disabled.'
-                  : 'Card selection is currently disabled.'
-                }
+              <p className="text-green-200 text-xs">
+                You already have a card in an active game. Card selection is disabled.
               </p>
             </div>
-            <div className={`
-              px-3 py-1 rounded-full
-              ${hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE' 
-                ? 'bg-red-500/30' 
-                : 'bg-purple-500/30'
-              }
-            `}>
-              <span className={`
-                font-bold text-xs
-                ${hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE' 
-                  ? 'text-red-300' 
-                  : 'text-purple-300'
-                }
-              `}>
-                {hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE' 
-                  ? 'Redirecting' 
-                  : 'Locked'}
-              </span>
+            <div className="bg-green-500/30 px-3 py-1 rounded-full">
+              <span className="text-green-300 font-bold text-xs">Locked</span>
             </div>
           </div>
         </motion.div>
@@ -201,24 +78,12 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         transition={{ delay: 0.2 }}
       >
         {/* DISABLED OVERLAY */}
-        {isSelectionDisabled && (
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm rounded-xl z-10 flex items-center justify-center">
+        {disabled && (
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm rounded-xl z-10 flex items-center justify-center">
             <div className="text-center p-4">
               <Lock className="w-8 h-8 text-white/60 mx-auto mb-2" />
-              <p className="text-white font-medium mb-1">
-                {hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE'
-                  ? 'Active Game Detected'
-                  : 'Card Selection Disabled'
-                }
-              </p>
-              <p className="text-white/60 text-sm max-w-xs">
-                {hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE'
-                  ? `You have card #${activeGameInfo.cardNumber} in an active game. You will be redirected automatically.`
-                  : hasActiveGame
-                  ? 'You already have a card assigned. Wait for the game to start or finish.'
-                  : 'Card selection is currently unavailable.'
-                }
-              </p>
+              <p className="text-white font-medium">Card Selection Disabled</p>
+              <p className="text-white/60 text-sm">You are already in an active game</p>
             </div>
           </div>
         )}
@@ -227,7 +92,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           const isTaken = takenCardMap.has(number);
           const isAvailable = availableCards.some(card => card.cardIndex === number);
           const canSelect = walletBalance >= 10;
-          const isSelectable = canSelect && isAvailable && !isTaken && !isSelectionDisabled;
+          const isSelectable = canSelect && isAvailable && !isTaken && !disabled; // ADDED: !disabled check
           const isCurrentlySelected = selectedNumber === number;
           const takenBy = isTaken ? takenCardMap.get(number) : null;
 
@@ -235,7 +100,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
             <motion.button
               key={number}
               onClick={() => handleCardClick(number)}
-              disabled={!isSelectable || isSelectionDisabled}
+              disabled={!isSelectable || disabled} // ADDED: disabled prop
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
@@ -243,8 +108,8 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
                   : isTaken
                   ? 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
-                  : isSelectionDisabled
-                  ? 'bg-gray-600/40 text-white/40 cursor-not-allowed border-gray-600/40'
+                  : disabled
+                  ? 'bg-gray-600/40 text-white/40 cursor-not-allowed border-gray-600/40' // NEW: disabled style
                   : isSelectable
                   ? gameStatus === 'ACTIVE' 
                     ? 'bg-green-500/60 text-white hover:bg-green-600/70 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/60'
@@ -253,10 +118,10 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 }
                 ${isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
                 ${isTaken ? 'animate-pulse' : ''}
-                ${isSelectionDisabled ? 'opacity-60' : ''}
+                ${disabled ? 'opacity-60' : ''}
               `}
-              whileHover={isSelectable ? { scale: 1.05 } : {}}
-              whileTap={isSelectable ? { scale: 0.95 } : {}}
+              whileHover={isSelectable && !disabled ? { scale: 1.05 } : {}} // ADDED: !disabled check
+              whileTap={isSelectable && !disabled ? { scale: 0.95 } : {}} // ADDED: !disabled check
               layout
             >
               {number}
@@ -280,19 +145,19 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               )}
               
               {/* Lock icon when disabled */}
-              {isSelectionDisabled && !isTaken && !isCurrentlySelected && (
+              {disabled && !isTaken && !isCurrentlySelected && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <Lock className="w-3 h-3 text-gray-400" />
                 </div>
               )}
               
               {/* Available for selection indicator (only when not disabled) */}
-              {!isSelectionDisabled && !isTaken && isSelectable && gameStatus === 'ACTIVE' && !isCurrentlySelected && (
+              {!disabled && !isTaken && isSelectable && gameStatus === 'ACTIVE' && !isCurrentlySelected && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               )}
               
               {/* Insufficient balance indicator */}
-              {!isSelectionDisabled && !isTaken && !isSelectable && walletBalance < 10 && (
+              {!disabled && !isTaken && !isSelectable && walletBalance < 10 && (
                 <div className="absolute inset-0 flex items-center justify-center opacity-60">
                   <div className="w-3 h-3 text-yellow-400">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -303,7 +168,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               )}
 
               {/* Show available indicator (only when not disabled) */}
-              {!isSelectionDisabled && isAvailable && !isTaken && canSelect && !isCurrentlySelected && (
+              {!disabled && isAvailable && !isTaken && canSelect && !isCurrentlySelected && (
                 <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
               )}
             </motion.button>
@@ -313,39 +178,22 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
 
       {/* Real-time status */}
       <div className="text-center text-white/60 text-sm mb-3">
-        <div className="flex justify-center gap-4 flex-wrap">
-          <span className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-            <span>{availableCards.length} available</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-            <span>{takenCards.length} taken</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-            <span>{400 - availableCards.length - takenCards.length} inactive</span>
-          </span>
-          {isSelectionDisabled && (
-            <span className="flex items-center gap-1 text-yellow-400">
-              <Lock className="w-3 h-3" />
-              <span>Selection locked</span>
-            </span>
-          )}
+        <div className="flex justify-center gap-4">
+          <span>✅ {availableCards.length} available</span>
+          <span>❌ {takenCards.length} taken</span>
+          <span>⏳ {400 - availableCards.length - takenCards.length} inactive</span>
+          {disabled && <span className="text-yellow-400">🔒 Card selection locked</span>}
         </div>
         <div className="text-xs text-white/40 mt-1">
-          {isSelectionDisabled 
-            ? (hasActiveGame && activeGameInfo.gameStatus === 'ACTIVE'
-                ? 'You will be redirected to your active game'
-                : 'You have a card in a waiting game'
-              )
+          {disabled 
+            ? 'You have an active game - Card selection is disabled' 
             : 'Updates in real-time • Refresh automatically'
           }
         </div>
       </div>
 
       {/* Selection Info (only show when not disabled) */}
-      {!isSelectionDisabled && selectedNumber && (
+      {!disabled && selectedNumber && (
         <motion.div 
           className="bg-telegram-button/20 backdrop-blur-lg rounded-2xl p-3 mb-3 border border-telegram-button/30"
           initial={{ opacity: 0, y: -10 }}
@@ -363,51 +211,22 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         </motion.div>
       )}
 
-      {/* Active Game Info Message */}
-      {hasActiveGame && (
+      {/* Disabled info message */}
+      {disabled && (
         <motion.div 
-          className={`
-            backdrop-blur-lg rounded-2xl p-4 border
-            ${activeGameInfo.gameStatus === 'ACTIVE'
-              ? 'bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/20'
-              : 'bg-gradient-to-r from-yellow-500/10 to-amber-500/10 border-yellow-500/20'
-            }
-          `}
+          className="bg-gradient-to-r from-green-500/10 to-blue-500/10 backdrop-blur-lg rounded-2xl p-4 border border-green-500/20"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
           <div className="text-center">
-            {activeGameInfo.gameStatus === 'ACTIVE' ? (
-              <Gamepad2 className="w-6 h-6 text-green-400 mx-auto mb-2" />
-            ) : (
-              <AlertCircle className="w-6 h-6 text-yellow-400 mx-auto mb-2" />
-            )}
-            <p className={`
-              font-medium text-sm mb-1
-              ${activeGameInfo.gameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'}
-            `}>
-              {activeGameInfo.gameStatus === 'ACTIVE'
-                ? 'Active Game Detected'
-                : 'Waiting Game Detected'
-              }
+            <Lock className="w-6 h-6 text-green-400 mx-auto mb-2" />
+            <p className="text-green-300 font-medium text-sm mb-1">
+              Card Selection Temporarily Unavailable
             </p>
-            <p className={`
-              text-xs
-              ${activeGameInfo.gameStatus === 'ACTIVE' ? 'text-green-200/80' : 'text-yellow-200/80'}
-            `}>
-              {activeGameInfo.gameStatus === 'ACTIVE'
-                ? `You have card #${activeGameInfo.cardNumber} in an active game. You cannot select a new card until this game ends.`
-                : `You have card #${activeGameInfo.cardNumber} in a waiting game. Once the game starts, you will be redirected automatically.`
-              }
+            <p className="text-green-200/80 text-xs">
+              You already have an active game in progress. 
+              Return to your game or wait for it to finish before selecting a new card.
             </p>
-            {activeGameInfo.gameStatus === 'ACTIVE' && (
-              <div className="mt-3">
-                <div className="w-full bg-green-500/20 rounded-full h-1.5">
-                  <div className="bg-gradient-to-r from-green-400 to-emerald-400 h-1.5 rounded-full animate-pulse"></div>
-                </div>
-                <p className="text-green-300/60 text-xs mt-1">Preparing redirect to game...</p>
-              </div>
-            )}
           </div>
         </motion.div>
       )}

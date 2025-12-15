@@ -793,7 +793,7 @@ export default function Home() {
           gameStatus={gameStatus}
           onCardSelect={handleCardSelect}
           disabled={shouldDisableCardSelection}
-          hasActiveGame={hasCardInActiveGame}
+          // hasActiveGame={hasCardInActiveGame}
         
         />
       ) : null}
