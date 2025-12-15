@@ -105,7 +105,7 @@ export const useGameState = () => {
         const game: Game = waitingGamesResponse.data.games[0];
         setGameStatus('WAITING_FOR_PLAYERS');
         await fetchGameData(game);
-        console.log('✅ Waiting game found:', game._id);
+        console.log('✅ Waiting game found:', game?._id);
         
         // Check auto-start status
         if (game._id) {
@@ -114,21 +114,22 @@ export const useGameState = () => {
         return true;
       }
       
+      
       // If no games found, check if there's a specific game ID we should check
-      if (gameData?._id) {
-        try {
-          const gameResponse = await gameAPI.getGame(gameData._id);
-          if (gameResponse.data.success && gameResponse.data.game) {
-            const game: Game = gameResponse.data.game;
-            setGameStatus(game.status as any);
-            await fetchGameData(game);
-            console.log('✅ Found existing game:', game._id, game.status);
-            return true;
-          }
-        } catch (error) {
-          console.log('⚠️ Could not fetch existing game:', error);
-        }
-      }
+      // if (gameData?._id) {
+      //   try {
+      //     const gameResponse = await gameAPI.getGame(gameData._id);
+      //     if (gameResponse.data.success && gameResponse.data.game) {
+      //       const game: Game = gameResponse.data.game;
+      //       setGameStatus(game.status as any);
+      //       await fetchGameData(game);
+      //       console.log('✅ Found existing game:', game._id, game.status);
+      //       return true;
+      //     }
+      //   } catch (error) {
+      //     console.log('⚠️ Could not fetch existing game:', error);
+      //   }
+      // }
       
       // No games found at all
       console.log('🎮 No games found, creating default state');
