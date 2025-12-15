@@ -101,6 +101,7 @@ export default function Home() {
         
         // Check if user is a participant in this waiting game
         const participantsResponse = await gameAPI.getGameParticipants(waitingGame._id);
+        console.log("Participate", participantsResponse);
         if (participantsResponse.data.success) {
           const participants = participantsResponse.data.participants || [];
           const playerParticipant = participants.find((p: any) => p.userId === user.id);
