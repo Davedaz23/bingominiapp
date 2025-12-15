@@ -603,7 +603,7 @@ export default function Home() {
       )}
 
       {/* PLAYERS COUNT WARNING */}
-      {!hasCardInActiveGame && gameStatus === 'WAITING_FOR_PLAYERS' && playersWithCards < 2 && (
+      {/* {!hasCardInActiveGame && gameStatus === 'WAITING_FOR_PLAYERS' && playersWithCards < 2 && (
         <motion.div 
           className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-yellow-500/30"
           initial={{ opacity: 0, y: -10 }}
@@ -624,7 +624,7 @@ export default function Home() {
             </div>
           </div>
         </motion.div>
-      )}
+      )} */}
 
       {/* CONDITIONAL GAME INFO DISPLAY */}
       {!hasCardInActiveGame && shouldDisplayGameInfo() ? (
