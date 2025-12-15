@@ -722,64 +722,65 @@ export default function Home() {
         </>
       ) : !hasCardInActiveGame && gameStatus !== 'ACTIVE' ? (
         /* LIMITED GAME INFO FOR NON-ACTIVE GAMES */
-        <motion.div 
-          className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="text-center">
-            <div className="mb-3">
-              <div className="text-white/70 text-sm mb-1">Game Status</div>
-              <div className={`px-4 py-1 rounded-full inline-block ${
-                gameStatus === 'WAITING_FOR_PLAYERS' ? 'bg-yellow-500/20 text-yellow-300' :
-                gameStatus === 'FINISHED' ? 'bg-orange-500/20 text-orange-300' :
-                'bg-purple-500/20 text-purple-300'
-              }`}>
-                {gameStatus === 'WAITING_FOR_PLAYERS' ? '⏳ Waiting for players' :
-                 gameStatus === 'FINISHED' ? '🏁 Game Finished' :
-                 '⚡ Preparing next game'}
-              </div>
-            </div>
+        // <motion.div 
+        //   className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20"
+        //   initial={{ opacity: 0, y: -10 }}
+        //   animate={{ opacity: 1, y: 0 }}
+        // >
+        //   <div className="text-center">
+        //     <div className="mb-3">
+        //       <div className="text-white/70 text-sm mb-1">Game Status</div>
+        //       <div className={`px-4 py-1 rounded-full inline-block ${
+        //         gameStatus === 'WAITING_FOR_PLAYERS' ? 'bg-yellow-500/20 text-yellow-300' :
+        //         gameStatus === 'FINISHED' ? 'bg-orange-500/20 text-orange-300' :
+        //         'bg-purple-500/20 text-purple-300'
+        //       }`}>
+        //         {gameStatus === 'WAITING_FOR_PLAYERS' ? '⏳ Waiting for players' :
+        //          gameStatus === 'FINISHED' ? '🏁 Game Finished' :
+        //          '⚡ Preparing next game'}
+        //       </div>
+        //     </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-white font-bold">{playersWithCards}</div>
-                <div className="text-white/60 text-xs">Players Ready</div>
-              </div>
-              <div>
-                <div className="text-white font-bold">{2 - playersWithCards}</div>
-                <div className="text-white/60 text-xs">Needed to Start</div>
-              </div>
-            </div>
+        //     <div className="grid grid-cols-2 gap-4">
+        //       <div>
+        //         <div className="text-white font-bold">{playersWithCards}</div>
+        //         <div className="text-white/60 text-xs">Players Ready</div>
+        //       </div>
+        //       <div>
+        //         <div className="text-white font-bold">{2 - playersWithCards}</div>
+        //         <div className="text-white/60 text-xs">Needed to Start</div>
+        //       </div>
+        //     </div>
             
-            <div className="mt-3 grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-white font-bold">{effectiveWalletBalance} ብር</div>
-                <div className="text-white/60 text-xs">Your Balance</div>
-              </div>
-              <div>
-                <div className="text-white font-bold">10 ብር</div>
-                <div className="text-white/60 text-xs">Required</div>
-              </div>
-            </div>
+        //     <div className="mt-3 grid grid-cols-2 gap-4">
+        //       <div>
+        //         <div className="text-white font-bold">{effectiveWalletBalance} ብር</div>
+        //         <div className="text-white/60 text-xs">Your Balance</div>
+        //       </div>
+        //       <div>
+        //         <div className="text-white font-bold">10 ብር</div>
+        //         <div className="text-white/60 text-xs">Required</div>
+        //       </div>
+        //     </div>
             
-            {playersWithCards < 2 && (
-              <div className="mt-3 p-2 bg-yellow-500/10 rounded-lg">
-                <p className="text-yellow-300 text-xs">
-                  Need {2 - playersWithCards} more player(s) to start the game
-                </p>
-              </div>
-            )}
+        //     {playersWithCards < 2 && (
+        //       <div className="mt-3 p-2 bg-yellow-500/10 rounded-lg">
+        //         <p className="text-yellow-300 text-xs">
+        //           Need {2 - playersWithCards} more player(s) to start the game
+        //         </p>
+        //       </div>
+        //     )}
             
-            {effectiveWalletBalance < 10 && (
-              <div className="mt-3 p-2 bg-red-500/10 rounded-lg">
-                <p className="text-red-300 text-xs">
-                  Need {10 - effectiveWalletBalance} ብር more to play
-                </p>
-              </div>
-            )}
-          </div>
-        </motion.div>
+        //     {effectiveWalletBalance < 10 && (
+        //       <div className="mt-3 p-2 bg-red-500/10 rounded-lg">
+        //         <p className="text-red-300 text-xs">
+        //           Need {10 - effectiveWalletBalance} ብር more to play
+        //         </p>
+        //       </div>
+        //     )}
+        //   </div>
+        // </motion.div>
+        <></>
       ) : null}
 
       {/* Card Selection Grid - Only show for WAITING games, not ACTIVE games */}
