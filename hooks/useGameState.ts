@@ -99,7 +99,8 @@ export const useGameState = () => {
       
       // If no active games, try waiting games
       const waitingGamesResponse = await gameAPI.getWaitingGames();
-      
+              console.log('✅ Waiting game found:', waitingGamesResponse);
+
       if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
         const game: Game = waitingGamesResponse.data.games[0];
         setGameStatus('WAITING_FOR_PLAYERS');
