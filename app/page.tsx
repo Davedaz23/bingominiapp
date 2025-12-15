@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/page.tsx - SIMPLIFIED VERSION (Redirect only for ACTIVE games)
+// app/page.tsx - UPDATED (Redirect for ACTIVE games with or without card)
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -19,8 +19,7 @@ import { GameStatusDisplay } from '../components/game/GameStatusDisplay';
 // Import hooks
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
-import { useAccountStorage } from '../hooks/useAccountStorage';
-import { Clock, Play, Check, Rocket, AlertCircle, Users, RefreshCw, Eye, LogIn } from 'lucide-react';
+import { Clock, Check, Rocket, AlertCircle, RefreshCw, Users } from 'lucide-react';
 
 export default function Home() {
   const { 
@@ -64,11 +63,9 @@ export default function Home() {
   } = useCardSelection(gameData, gameStatus);
 
   const [joinError, setJoinError] = useState<string>('');
-  const [showGameView, setShowGameView] = useState<boolean>(false);
   const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
   const [gameParticipants, setGameParticipants] = useState<any[]>([]);
   const [playersWithCards, setPlayersWithCards] = useState<number>(0);
-  const [canStartGame, setCanStartGame] = useState<boolean>(false);
   const [activeGames, setActiveGames] = useState<any[]>([]);
   const [loadingActiveGames, setLoadingActiveGames] = useState<boolean>(false);
 
@@ -82,7 +79,6 @@ export default function Home() {
   // Balance refresh states
   const [localWalletBalance, setLocalWalletBalance] = useState<number>(0);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState<boolean>(false);
-  const [balanceRefreshCounter, setBalanceRefreshCounter] = useState<number>(0);
 
   // Restart cooldown states
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
@@ -189,8 +185,6 @@ export default function Home() {
       
       const response = await walletAPIAuto.getBalance();
       setLocalWalletBalance(response.data.balance);
-      
-      setBalanceRefreshCounter(prev => prev + 1);
     } catch (error) {
       console.error('❌ Failed to refresh wallet balance:', error);
     } finally {
@@ -229,10 +223,7 @@ export default function Home() {
             const playersWithCardsCount = participants.filter(p => p.hasCard).length;
             setPlayersWithCards(playersWithCardsCount);
             
-            const canStart = playersWithCardsCount >= 2;
-            setCanStartGame(canStart);
-            
-            console.log(`👥 Game participants: ${participants.length}, Players with cards: ${playersWithCardsCount}, Can start: ${canStart}`);
+            console.log(`👥 Game participants: ${participants.length}, Players with cards: ${playersWithCardsCount}`);
           }
         } catch (error) {
           console.error('❌ Failed to fetch game participants:', error);
@@ -270,22 +261,41 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [user?.id, authLoading]);
 
-  // ==================== SIMPLIFIED REDIRECT LOGIC ====================
+  // ==================== UPDATED REDIRECT LOGIC ====================
+  // Redirect when:
+  // 1. User has card in ACTIVE game
+  // 2. OR Game is ACTIVE (even if user doesn't have card yet - redirect as spectator/late entry)
   useEffect(() => {
     // Don't redirect if checking status, page loading, or already redirected
     if (isCheckingPlayerStatus || pageLoading || autoRedirected) return;
     
-    // CRITICAL: Only one condition for redirect - user has card in ACTIVE game
+    // Condition 1: User has card in ACTIVE game
     if (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && playerGameId) {
       console.log(`🚨 Player has card #${playerCardNumber} in ACTIVE game ${playerGameId}, redirecting!`);
       setAutoRedirected(true);
-      
-      // Immediate redirect
       router.push(`/game/${playerGameId}`);
       return;
     }
-  }, [hasCardInActiveGame, playerGameStatus, playerGameId, playerCardNumber, 
-      isCheckingPlayerStatus, pageLoading, autoRedirected, router]);
+    
+    // Condition 2: Game is ACTIVE and user doesn't have card (redirect as spectator)
+    if (gameStatus === 'ACTIVE' && !hasCardInActiveGame && activeGames.length > 0) {
+      console.log(`🎮 Game is ACTIVE, redirecting as spectator to game ${activeGames[0]._id}`);
+      setAutoRedirected(true);
+      router.push(`/game/${activeGames[0]._id}?spectator=true`);
+      return;
+    }
+  }, [
+    hasCardInActiveGame, 
+    playerGameStatus, 
+    playerGameId, 
+    playerCardNumber,
+    gameStatus,
+    activeGames,
+    isCheckingPlayerStatus, 
+    pageLoading, 
+    autoRedirected, 
+    router
+  ]);
 
   // ==================== FIXED: GAME INFO FOOTER MESSAGE ====================
   const getGameStatusMessage = () => {
@@ -307,7 +317,7 @@ export default function Home() {
         case 'WAITING_FOR_PLAYERS':
           return '🎯 Select a card number to join the waiting game';
         case 'ACTIVE':
-          return '🚀 Game in progress - Select a card for late entry!';
+          return '🎮 Game in progress - Redirecting to watch...';
         case 'FINISHED':
           return `🔄 Select a card for the next game (starting in ${restartCountdown}s)`;
         case 'RESTARTING':
@@ -330,7 +340,7 @@ export default function Home() {
         case 'WAITING_FOR_PLAYERS':
           return `✅ Card ${selectedNumber} selected - Waiting for game to start`;
         case 'ACTIVE':
-          return '✅ Card selected - Game in progress';
+          return '🎮 Game active - You can still join!';
         case 'FINISHED':
           return `🔄 Card ${selectedNumber} reserved for next game`;
         default:
@@ -348,9 +358,13 @@ export default function Home() {
       return false;
     }
     
-    // Only show game info if no active game with card
-    return gameStatus === 'ACTIVE' || 
-           (gameStatus === 'WAITING_FOR_PLAYERS' && playersWithCards >= 2);
+    // Don't display if game is active (we'll redirect)
+    if (gameStatus === 'ACTIVE') {
+      return false;
+    }
+    
+    // Only show game info for waiting games or other states
+    return gameStatus === 'WAITING_FOR_PLAYERS' && playersWithCards >= 2;
   };
 
   // ==================== MAIN INITIALIZATION WITH BALANCE REFRESH ====================
@@ -402,13 +416,21 @@ export default function Home() {
   const shouldDisableCardSelection = (hasCardInActiveGame && playerGameStatus === 'ACTIVE');
 
   // ==================== SHOW REDIRECT LOADING SCREEN ====================
-  if (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected) {
+  if ((hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected) ||
+      (gameStatus === 'ACTIVE' && !hasCardInActiveGame && !autoRedirected)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
-          <div className="text-2xl font-bold mb-4">Redirecting to Game...</div>
+          <div className="text-2xl font-bold mb-4">
+            {hasCardInActiveGame ? 'Redirecting to Your Game...' : 'Game in Progress!'}
+          </div>
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-          <p className="mt-4">You have card #{playerCardNumber} in an active game!</p>
+          <p className="mt-4">
+            {hasCardInActiveGame 
+              ? `You have card #${playerCardNumber} in an active game!`
+              : 'A game is currently active. Redirecting to watch...'
+            }
+          </p>
           <p className="text-sm opacity-75 mt-2">Taking you to the game page...</p>
         </div>
       </div>
@@ -440,6 +462,8 @@ export default function Home() {
                 ? playerGameStatus === 'ACTIVE' 
                   ? 'Already in active game - Redirecting...' 
                   : `Waiting for game to start (Card #${playerCardNumber})`
+                : gameStatus === 'ACTIVE'
+                ? 'Game in progress - Redirecting...'
                 : isAdmin ? 'Admin Dashboard' : 
                 isModerator ? 'Moderator View' : 
                 'Select your card number'}
@@ -511,6 +535,30 @@ export default function Home() {
               }`}>
                 {playerGameStatus === 'ACTIVE' ? 'Redirecting...' : 'Waiting...'}
               </span>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* GAME ACTIVE NOTIFICATION (for users without card) */}
+      {gameStatus === 'ACTIVE' && !hasCardInActiveGame && (
+        <motion.div 
+          className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-center gap-3">
+            <Users className="w-5 h-5 text-blue-300" />
+            <div className="flex-1">
+              <p className="text-blue-300 font-bold text-sm">
+                Game in Progress!
+              </p>
+              <p className="text-blue-200 text-xs">
+                A game is currently active. You can watch or join late.
+              </p>
+            </div>
+            <div className="bg-blue-500/30 px-3 py-1 rounded-full animate-pulse">
+              <span className="text-blue-300 font-bold text-xs">Live</span>
             </div>
           </div>
         </motion.div>
@@ -672,7 +720,7 @@ export default function Home() {
             </motion.div>
           )}
         </>
-      ) : !hasCardInActiveGame ? (
+      ) : !hasCardInActiveGame && gameStatus !== 'ACTIVE' ? (
         /* LIMITED GAME INFO FOR NON-ACTIVE GAMES */
         <motion.div 
           className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/20"
@@ -734,8 +782,8 @@ export default function Home() {
         </motion.div>
       ) : null}
 
-      {/* Card Selection Grid - DISABLED ONLY IF PLAYER HAS CARD IN ACTIVE GAME */}
-      {!hasCardInActiveGame || playerGameStatus !== 'ACTIVE' ? (
+      {/* Card Selection Grid - Only show for WAITING games, not ACTIVE games */}
+      {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') ? (
         <CardSelectionGrid
           availableCards={availableCards}
           takenCards={takenCards}
@@ -744,11 +792,13 @@ export default function Home() {
           gameStatus={gameStatus}
           onCardSelect={handleCardSelect}
           disabled={shouldDisableCardSelection}
+          hasActiveGame={hasCardInActiveGame}
+        
         />
       ) : null}
 
       {/* Selected Card Preview - Show below the grid when a card is selected */}
-      {!hasCardInActiveGame && selectedNumber && (
+      {!hasCardInActiveGame && selectedNumber && gameStatus !== 'ACTIVE' && (
         <motion.div
           className="mb-6"
           initial={{ opacity: 0, y: 20 }}
@@ -852,9 +902,9 @@ export default function Home() {
           <p className={`text-sm text-center font-medium ${
             hasCardInActiveGame && playerGameStatus === 'ACTIVE' ? 'text-green-300' :
             hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS' ? 'text-yellow-300' :
+            gameStatus === 'ACTIVE' ? 'text-blue-300' :
             hasRestartCooldown ? 'text-purple-300' :
-            gameStatus === 'WAITING_FOR_PLAYERS' ? 'text-blue-300' :
-            gameStatus === 'ACTIVE' ? 'text-green-300' :
+            gameStatus === 'WAITING_FOR_PLAYERS' ? 'text-yellow-300' :
             gameStatus === 'FINISHED' ? 'text-orange-300' :
             'text-purple-300'
           }`}>
@@ -884,6 +934,15 @@ export default function Home() {
                 {playerGameStatus === 'ACTIVE'
                   ? '✅ Your game is active - Redirecting now'
                   : '⏳ Your game is waiting for players - Stay on this page'}
+              </p>
+            </div>
+          )}
+          
+          {/* Info for active game without card */}
+          {gameStatus === 'ACTIVE' && !hasCardInActiveGame && (
+            <div className="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <p className="text-blue-300 text-xs text-center">
+                🎮 A game is currently active - Redirecting to watch...
               </p>
             </div>
           )}
