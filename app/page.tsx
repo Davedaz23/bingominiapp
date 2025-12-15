@@ -411,9 +411,9 @@ export default function Home() {
 
     return () => clearInterval(intervalId);
   }, []);
-
   // ==================== DISABLE CARD SELECTION IF PLAYER HAS CARD IN ACTIVE GAME ====================
   const shouldDisableCardSelection = (hasCardInActiveGame && playerGameStatus === 'ACTIVE');
+console.log("Defar game",playerGameStatus+" = "+shouldDisableCardSelection);
 
   // ==================== SHOW REDIRECT LOADING SCREEN ====================
   if ((hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected) ||
