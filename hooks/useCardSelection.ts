@@ -66,7 +66,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     // timeRemaining: 0
   });
   const [cardSelectionError, setCardSelectionError] = useState<string>('');
-
+console.log("Defar",gameData);
   // Load selected number from account-specific storage
   useEffect(() => {
     const savedSelectedNumber = getAccountData('selected_number');
