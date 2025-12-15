@@ -677,7 +677,7 @@ export default function Home() {
               </div>
               
               {/* RESTART COOLDOWN PROGRESS */}
-              {hasRestartCooldown && (
+              {/* {hasRestartCooldown && (
                 <div className="mt-2">
                   <div className="flex justify-between text-xs text-purple-200 mb-1">
                     <span>Previous game ended - Waiting 60s before next game</span>
@@ -692,7 +692,7 @@ export default function Home() {
                     />
                   </div>
                 </div>
-              )}
+              )} */}
               
               {/* AUTO-START PROGRESS */}
               {hasAutoStartTimer && (
