@@ -797,6 +797,11 @@ console.log("Defar game",playerGameStatus+" = "+shouldDisableCardSelection);
           onCardSelect={handleCardSelect}
           disabled={shouldDisableCardSelection}
            hasActiveGame={hasCardInActiveGame}
+           activeGameInfo={{
+      gameId: playerGameId || undefined,  // Convert null to undefined
+      cardNumber: playerCardNumber || undefined,  // Convert null to undefined
+      gameStatus: playerGameStatus || undefined  // Convert null to undefined
+    }}
         
         />
       ) : null}
