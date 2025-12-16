@@ -161,7 +161,7 @@ console.log("Defar",gameData);
     if (!gameData?.id || !user?.id) return;
 
     try {
-      setCardSelectionError('');
+      setCardSelectionError('Defar');
        if (selectedNumber && selectedNumber !== cardNumber) {
       await handleCardRelease(); // Release the previous card
     }
