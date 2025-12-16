@@ -415,6 +415,8 @@ export default function Home() {
   }, []);
   // ==================== DISABLE CARD SELECTION IF PLAYER HAS CARD IN ACTIVE GAME ====================
   const shouldDisableCardSelection = (hasCardInActiveGame && playerGameStatus === 'ACTIVE');
+  const shouldShowActiveGameWarning = hasCardInActiveGame && playerGameStatus === 'ACTIVE';
+const hasWaitingGame = hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS';
 console.log("Defar game",playerGameStatus+" = "+shouldDisableCardSelection);
 
   // ==================== SHOW REDIRECT LOADING SCREEN ====================
@@ -795,13 +797,13 @@ console.log("Defar game",playerGameStatus+" = "+shouldDisableCardSelection);
           walletBalance={effectiveWalletBalance}
           gameStatus={gameStatus}
           onCardSelect={handleCardSelect}
-          disabled={shouldDisableCardSelection}
-           hasActiveGame={hasCardInActiveGame}
-           activeGameInfo={{
-      gameId: playerGameId || undefined,  // Convert null to undefined
-      cardNumber: playerCardNumber || undefined,  // Convert null to undefined
-      gameStatus: playerGameStatus || undefined  // Convert null to undefined
-    }}
+          disabled={shouldDisableCardSelection}  // Only disable for ACTIVE games
+  hasActiveGame={shouldShowActiveGameWarning}  // Only true for ACTIVE games
+  activeGameInfo={{
+    gameId: playerGameId || undefined,
+    cardNumber: playerCardNumber || undefined,
+    gameStatus: playerGameStatus || undefined
+  }}
         
         />
       ) : null}
