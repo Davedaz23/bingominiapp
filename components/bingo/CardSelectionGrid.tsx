@@ -40,7 +40,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
 const isSelectionDisabled = disabled || (hasActiveGame && activeGameInfo?.gameStatus === 'ACTIVE');
 
   // Helper function to handle card click
-  const handleCardClick = (number: number) => {
+  const handleCardClick = (number: number) => {   
+       console.log('Card Number '+number);
+
     if (isSelectionDisabled) {
       console.log('Card selection is disabled - player already has card in active game');
       return;
@@ -49,9 +51,10 @@ const isSelectionDisabled = disabled || (hasActiveGame && activeGameInfo?.gameSt
     const isTaken = takenCardMap.has(number);
     const isAvailable = availableCards.some(card => card.cardIndex === number);
     const canSelect = walletBalance >= 10;
-    const isSelectable = canSelect && !isAvailable && !isTaken;
+    const isSelectable = canSelect && isAvailable && !isTaken;
     
-    if (isSelectable) {
+    if (!isSelectable) {
+console.log("Selectable Card "+number);
       onCardSelect(number);
     }
   };
@@ -230,7 +233,7 @@ const isSelectionDisabled = disabled || (hasActiveGame && activeGameInfo?.gameSt
           const isSelectable = canSelect && !isAvailable && !isTaken && !isSelectionDisabled;
           const isCurrentlySelected = selectedNumber === number;
           const takenBy = isTaken ? takenCardMap.get(number) : null;
-
+console.log("Card selected? "+ isCurrentlySelected +" "+selectedNumber);
           return (
             <motion.button
               key={number}

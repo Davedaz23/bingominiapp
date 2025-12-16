@@ -58,15 +58,15 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   const [takenCards, setTakenCards] = useState<{cardNumber: number, userId: string}[]>([]);
   const [cardSelectionStatus, setCardSelectionStatus] = useState<{
     isSelectionActive: boolean;
-    // selectionEndTime: Date | null;
-    // timeRemaining: number;
+    selectionEndTime: Date | null;
+    timeRemaining: number;
   }>({
     isSelectionActive: false,
-    // selectionEndTime: null,
-    // timeRemaining: 0
+    selectionEndTime: null,
+    timeRemaining: 0
   });
   const [cardSelectionError, setCardSelectionError] = useState<string>('');
-console.log("Defar",gameData);
+
   // Load selected number from account-specific storage
   useEffect(() => {
     const savedSelectedNumber = getAccountData('selected_number');
@@ -80,7 +80,6 @@ console.log("Defar",gameData);
 
   const shouldEnableCardSelection = () => {
     if (!gameData?._id) {
-      
       return false;
     }
 
@@ -94,7 +93,7 @@ console.log("Defar",gameData);
   // Rest of your hook code remains the same...
   // Real-time polling for taken cards
   const fetchTakenCards = useCallback(async () => {
-    if (!gameData?.id) return;
+    if (!gameData?._id) return;
 
     try {
       console.log('🔄 Polling for taken cards...');
@@ -125,11 +124,11 @@ console.log("Defar",gameData);
     } catch (error: any) {
       console.error('❌ Error fetching taken cards:', error.message);
     }
-  }, [gameData?.id, selectedNumber, user?.id]);
+  }, [gameData?._id, selectedNumber, user?.id]);
 
   const fetchAvailableCards = async () => {
     try {
-      if (!gameData?.id || !user?.id) return;
+      if (!gameData?._id || !user?.id) return;
       
       console.log('🔍 Fetching available cards with:', {
         gameId: gameData._id,
@@ -158,10 +157,10 @@ console.log("Defar",gameData);
   };
 
   const handleCardSelect = async (cardNumber: number) => {
-    if (!gameData?.id || !user?.id) return;
+    if (!gameData?._id || !user?.id) return;
 
     try {
-      setCardSelectionError('Defar');
+      setCardSelectionError('');
        if (selectedNumber && selectedNumber !== cardNumber) {
       await handleCardRelease(); // Release the previous card
     }
@@ -239,7 +238,7 @@ console.log("Defar",gameData);
   };
 
   const handleCardRelease = async () => {
-    if (!user?.id || !gameData?.id || !selectedNumber) return;
+    if (!user?.id || !gameData?._id || !selectedNumber) return;
     
     try {
       console.log('🔄 Releasing card:', selectedNumber);
@@ -260,44 +259,42 @@ console.log("Defar",gameData);
     }
   };
 
- const checkCardSelectionStatus = async () => {
-  if (!gameData?.id) return;
-  
-  try {
-    console.log('🔍 Checking card selection status for game:', gameData._id);
+  const checkCardSelectionStatus = async () => {
+    if (!gameData?._id) return;
     
-    const response = await gameAPI.getCardSelectionStatus(gameData._id);
-    console.log('📦 Card selection status response:', response.data);
-    
-    if (response.data.success) {
-      // Card selection is only active during WAITING_FOR_PLAYERS and CARD_SELECTION
-      // NOT during ACTIVE, FINISHED, NO_WINNER, or COOLDOWN
-      const isSelectionActive = gameStatus === 'WAITING_FOR_PLAYERS' || 
-                               gameStatus === 'CARD_SELECTION';
+    try {
+      console.log('🔍 Checking card selection status for game:', gameData._id);
       
-      setCardSelectionStatus({
-        isSelectionActive,
-        // selectionEndTime: response.data. || null,
-        // timeRemaining: response.data.timeRemaining || 0
-      });
+      const response = await gameAPI.getCardSelectionStatus(gameData._id);
+      console.log('📦 Card selection status response:', gameStatus);
       
-      console.log('✅ Card selection status updated:', {
-        isSelectionActive,
-        gameStatus
+      if (response.data.success) {
+        // Note: The backend doesn't return time-based selection status
+        // We'll use the game status to determine if selection is active
+        const isSelectionActive = gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION';
+        setCardSelectionStatus({
+          isSelectionActive,
+          selectionEndTime: null, // Not provided by backend
+          timeRemaining: 0 // Not provided by backend
+        });
+        
+        console.log('✅ Card selection status updated:', {
+          isSelectionActive,
+          gameStatus
+        });
+      }
+    } catch (error: any) {
+      console.error('❌ Error checking card selection status:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data
       });
     }
-  } catch (error: any) {
-    console.error('❌ Error checking card selection status:', {
-      message: error.message,
-      status: error.response?.status,
-      data: error.response?.data
-    });
-  }
-};
+  };
 
   // Real-time polling for taken cards
   useEffect(() => {
-    if (!gameData?.id || !cardSelectionStatus.isSelectionActive) return;
+    if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
 
     console.log('⏰ Starting real-time taken cards polling');
     
@@ -309,7 +306,7 @@ console.log("Defar",gameData);
       console.log('🛑 Stopping real-time taken cards polling');
       clearInterval(interval);
     };
-  }, [gameData?.id, cardSelectionStatus.isSelectionActive, fetchTakenCards]);
+  }, [gameData?._id, cardSelectionStatus.isSelectionActive, fetchTakenCards]);
 
   // Fetch available cards when game data changes
   useEffect(() => {
@@ -331,13 +328,12 @@ console.log("Defar",gameData);
         shouldEnableCardSelection: shouldEnableCardSelection(),
         hasUserId: !!user?.id
       });
-      
     }
   }, [gameData, gameStatus, walletBalance, user, selectedNumber]);
 
   // Check card selection status periodically
   useEffect(() => {
-    if (!gameData?.id || !cardSelectionStatus.isSelectionActive) return;
+    if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
 
     console.log('⏰ Starting card selection status polling');
     
