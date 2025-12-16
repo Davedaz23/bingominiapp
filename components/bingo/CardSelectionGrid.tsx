@@ -49,7 +49,7 @@ const isSelectionDisabled = disabled || (hasActiveGame && activeGameInfo?.gameSt
     const isTaken = takenCardMap.has(number);
     const isAvailable = availableCards.some(card => card.cardIndex === number);
     const canSelect = walletBalance >= 10;
-    const isSelectable = canSelect && isAvailable && !isTaken;
+    const isSelectable = canSelect && !isAvailable && !isTaken;
     
     if (isSelectable) {
       onCardSelect(number);
