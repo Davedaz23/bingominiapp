@@ -240,6 +240,7 @@ export default function Home() {
 
   // ==================== LOAD ACTIVE GAMES ON INITIALIZATION ====================
   useEffect(() => {
+       console.log("Defar = "+shouldDisableCardSelection);
     loadActiveGames();
     
     // Refresh active games every 10 seconds
@@ -786,6 +787,7 @@ console.log("Defar game",playerGameStatus+" = "+shouldDisableCardSelection);
 
       {/* Card Selection Grid - Only show for WAITING games, not ACTIVE games */}
       {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') ? (
+     
         <CardSelectionGrid
           availableCards={availableCards}
           takenCards={takenCards}
