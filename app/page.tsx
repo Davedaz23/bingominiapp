@@ -797,13 +797,13 @@ console.log("Defar game",playerGameStatus+" = "+shouldDisableCardSelection);
           walletBalance={effectiveWalletBalance}
           gameStatus={gameStatus}
           onCardSelect={handleCardSelect}
-          disabled={shouldDisableCardSelection}  // Only disable for ACTIVE games
-  hasActiveGame={shouldShowActiveGameWarning}  // Only true for ACTIVE games
-  activeGameInfo={{
-    gameId: playerGameId || undefined,
-    cardNumber: playerCardNumber || undefined,
-    gameStatus: playerGameStatus || undefined
-  }}
+          // disabled={shouldDisableCardSelection}  // Only disable for ACTIVE games
+  // hasActiveGame={shouldShowActiveGameWarning}  // Only true for ACTIVE games
+  // activeGameInfo={{
+  //   gameId: playerGameId || undefined,
+  //   cardNumber: playerCardNumber || undefined,
+  //   gameStatus: playerGameStatus || undefined
+  // }}
         
         />
       ) : null}

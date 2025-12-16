@@ -71,7 +71,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   useEffect(() => {
     const savedSelectedNumber = getAccountData('selected_number');
     if (savedSelectedNumber) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+     
       setSelectedNumber(savedSelectedNumber);
       setBingoCard(generateBingoCard(savedSelectedNumber)); // ✅ Now this works
       console.log('✅ Loaded saved card selection:', savedSelectedNumber);
@@ -158,7 +158,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
   const handleCardSelect = async (cardNumber: number) => {
     if (!gameData?._id || !user?.id) return;
-
+console.log("Defar negn");
     try {
       setCardSelectionError('');
        if (selectedNumber && selectedNumber !== cardNumber) {
@@ -195,9 +195,10 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
         cardNumbers: selectedCardData.numbers,
         cardNumber: cardNumber
       });
+      console.log("Defar backend", cardNumber);
       
       if (response.data.success) {
-        console.log(`✅ Card ${response.data.action === 'UPDATED' ? 'updated' : 'selected'} successfully:`, response.data);
+        console.log(`✅ Card is ${response.data.action === 'UPDATED' ? 'updated' : 'selected'} successfully:`, response.data);
         
         // Update local state
         setSelectedNumber(cardNumber);
