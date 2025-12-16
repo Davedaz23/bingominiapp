@@ -37,7 +37,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   });
 
   // Determine if card selection should be disabled
-  const isSelectionDisabled = disabled || hasActiveGame;
+const isSelectionDisabled = disabled || (hasActiveGame && activeGameInfo?.gameStatus === 'ACTIVE');
 
   // Helper function to handle card click
   const handleCardClick = (number: number) => {
@@ -235,7 +235,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
             <motion.button
               key={number}
               onClick={() => handleCardClick(number)}
-              disabled={!isSelectable || isSelectionDisabled}
+              disabled={ isSelectionDisabled}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
