@@ -876,284 +876,174 @@ useEffect(() => {
         initial={{ scale: 0.8, y: 50 }}
         animate={{ scale: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 100 }}
-        className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-3xl p-8 max-w-6xl w-full border-4 border-yellow-500 shadow-2xl relative overflow-hidden"
+        className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-2xl p-4 max-w-md w-full border-2 border-yellow-500 shadow-2xl relative overflow-hidden"
       >
-        {/* Winner content */}
-        <div className="relative z-10">
-          {/* Header - Dynamic based on winner/no-winner */}
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold text-white mb-2">
-              {winnerInfo.winner._id === 'no-winner' ? '🏁 GAME ENDED 🏁' : '🎉 BINGO WINNER! 🎉'}
-            </h1>
-            <p className="text-white/70 text-lg">
-              Game #{winnerInfo.gameCode || id}
-            </p>
-            {winnerInfo.winner._id === 'no-winner' && (
-              <p className="text-yellow-300 text-lg mt-2">
-                No winner - All 75 numbers were called!
+        {/* Header */}
+        <div className="text-center mb-4">
+          <h1 className="text-2xl font-bold text-white mb-1">
+            {winnerInfo.winner._id === 'no-winner' ? '🏁 GAME ENDED' : '🎉 BINGO WINNER!'}
+          </h1>
+          <p className="text-white/70 text-sm">
+            Game #{winnerInfo.gameCode || id}
+          </p>
+        </div>
+
+        {/* Winner Profile - Compact */}
+        {winnerInfo.winner._id === 'no-winner' ? (
+          <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-xl p-4 mb-4 border border-white/20">
+            <div className="flex flex-col items-center">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-r from-gray-600 to-gray-800 flex items-center justify-center text-2xl font-bold mb-3">
+                🏁
+              </div>
+              <h3 className="text-lg font-bold text-white text-center">
+                No Winner
+              </h3>
+              <p className="text-white/70 text-sm text-center mt-1">
+                All 75 numbers called
               </p>
-            )}
+              <div className="mt-3 text-center px-3 py-2 bg-gradient-to-r from-gray-700/50 to-gray-900/50 rounded-lg w-full">
+                <p className="text-green-300 text-sm font-medium">
+                  10 ብር refunded to all players
+                </p>
+              </div>
+            </div>
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Left: Winner/Game Information */}
-            <div className="space-y-6">
-              {/* Winner Profile or No Winner Message */}
-              {winnerInfo.winner._id === 'no-winner' ? (
-                <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-2xl p-6 border border-white/20">
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-r from-gray-600 to-gray-800 flex items-center justify-center text-3xl font-bold mb-4">
-                      🏁
-                    </div>
-                    <h3 className="text-2xl font-bold text-white text-center">
-                      Game Ended Without Winner
-                    </h3>
-                    <p className="text-white/70 text-center mt-2">
-                      All 75 numbers were called
-                    </p>
-                    
-                    {/* Refund Information */}
-                    <div className="mt-6 text-center py-4 bg-gradient-to-r from-gray-700/50 to-gray-900/50 rounded-xl w-full">
-                      <p className="text-white/80 text-sm mb-1">Refund Information</p>
-                      <p className="text-xl font-bold text-green-300">
-                        Entry fees will be refunded
-                      </p>
-                      <p className="text-white/60 text-sm mt-2">
-                        10 ብር refunded to all players
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-2xl p-6 border border-white/20">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-2xl font-bold">
-                      {isUserWinner ? 'YOU' : winnerInfo.winner.firstName.charAt(0)}
-                    </div>
-                    <div>
-                      <h3 className="text-2xl font-bold text-white">
-                        {isUserWinner ? '🎊 YOU WON! 🎊' : winnerInfo.winner.firstName}
-                      </h3>
-                      <p className="text-white/70">
-                        @{winnerInfo.winner.username}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Prize Amount */}
-                  <div className="text-center py-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl">
-                    <p className="text-white/80 text-sm mb-1">Prize Amount</p>
-                    <p className="text-3xl font-bold text-yellow-300">
-                      {winningAmount} ብር
-                    </p>
-                    {isUserWinner && (
-                      <p className="text-green-300 text-sm mt-2">
-                        💰 Added to your wallet!
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Game Stats */}
-              <div className="bg-gradient-to-r from-gray-900 to-black rounded-2xl p-5 border border-white/10">
-                <h4 className="text-white font-bold mb-4 text-lg">Game Statistics</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center">
-                    <p className="text-white/70 text-sm">Total Players</p>
-                    <p className="text-white text-xl font-bold">{winnerInfo.totalPlayers}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-white/70 text-sm">Numbers Called</p>
-                    <p className="text-white text-xl font-bold">{winnerInfo.numbersCalled}/75</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-white/70 text-sm">Game Status</p>
-                    <p className={winnerInfo.winner._id === 'no-winner' ? 'text-red-300 text-lg font-bold' : 'text-green-300 text-lg font-bold'}>
-                      {winnerInfo.winner._id === 'no-winner' ? 'No Winner' : 'Winner Declared'}
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-white/70 text-sm">Game Duration</p>
-                    <p className="text-white text-sm">
-                      {new Date(winnerInfo.endedAt).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </p>
-                  </div>
-                </div>
-                {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningPattern && (
-                  <div className="mt-4 pt-4 border-t border-white/20">
-                    <p className="text-white/70 text-sm mb-1">Winning Pattern</p>
-                    <p className="text-green-300 text-lg font-bold">
-                      {getPatternName(winnerInfo.winningPattern)}
-                    </p>
-                  </div>
-                )}
+        ) : (
+          <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-xl p-4 mb-4 border border-white/20">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-xl font-bold">
+                {isUserWinner ? 'YOU' : winnerInfo.winner.firstName.charAt(0)}
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  {isUserWinner ? '🎊 YOU WON!' : winnerInfo.winner.firstName}
+                </h3>
+                <p className="text-white/70 text-sm">
+                  @{winnerInfo.winner.username}
+                </p>
               </div>
             </div>
 
-            {/* Right: Card Display - Only show if there's a winner */}
-            {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
-              <div className="space-y-6">
-                {/* Card Title */}
-                <div className="flex items-center justify-between">
-                  <h3 className="text-white font-bold text-xl">
-                    Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
-                  </h3>
-                  <div className="text-yellow-300 text-sm bg-yellow-500/20 px-3 py-1 rounded-full">
-                    Winning Pattern Highlighted
-                  </div>
-                </div>
-
-                {/* Winning Card */}
-                <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-6 border-2 border-yellow-500/50">
-                  {/* BINGO Header */}
-                  <div className="grid grid-cols-5 gap-2 mb-4">
-                    {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                      <div
-                        key={letter}
-                        className="h-12 rounded-lg flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-700 to-blue-800"
-                      >
-                        {letter}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Winning Card Numbers */}
-                  <div className="grid grid-cols-5 gap-2">
-                    {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                      row.map((number: number | string, colIndex: number) => {
-                        const flatIndex = rowIndex * 5 + colIndex;
-                        const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
-                        const isWinningPos = isWinningPosition(rowIndex, colIndex);
-                        const isFreeSpace = rowIndex === 2 && colIndex === 2;
-
-                        return (
-                          <motion.div
-                            key={`${rowIndex}-${colIndex}`}
-                            initial={{ scale: 0.8 }}
-                            animate={{ scale: 1 }}
-                            transition={{ delay: rowIndex * 0.1 + colIndex * 0.02 }}
-                            className={`
-                              h-14 rounded-lg flex items-center justify-center 
-                              font-bold transition-all duration-200 relative
-                              ${isWinningPos
-                                ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border-3 border-yellow-300 shadow-lg shadow-yellow-500/50'
-                                : isMarked
-                                  ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
-                                  : isFreeSpace
-                                    ? 'bg-gradient-to-br from-purple-700 to-pink-700 text-white'
-                                    : 'bg-gray-800 text-white/70'
-                              }
-                            `}
-                          >
-                            {isFreeSpace ? (
-                              <>
-                                <span className="text-xs font-bold">FREE</span>
-                                <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-                              </>
-                            ) : (
-                              <>
-                                <span className={`text-base ${isMarked ? 'line-through' : ''}`}>
-                                  {number}
-                                </span>
-                                {isMarked && (
-                                  <div className="absolute top-1 right-1 text-[10px] opacity-90">✓</div>
-                                )}
-                                {isWinningPos && (
-                                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full animate-ping"></div>
-                                )}
-                              </>
-                            )}
-                          </motion.div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* No Winner Message Display */}
-            {winnerInfo.winner._id === 'no-winner' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-white font-bold text-xl">
-                    Game Summary
-                  </h3>
-                  <div className="text-gray-300 text-sm bg-gray-700/50 px-3 py-1 rounded-full">
-                    All Numbers Called
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-gray-900 to-black rounded-2xl p-6 border-2 border-gray-700/50">
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <div className="text-6xl mb-4">🏁</div>
-                    <h4 className="text-2xl font-bold text-white mb-2">Game Over</h4>
-                    <p className="text-white/70 text-center mb-6">
-                      All 75 numbers have been called without a winner.
-                    </p>
-                    
-                    <div className="bg-gray-800/50 rounded-xl p-4 w-full">
-                      <p className="text-white/80 text-sm mb-2">What happens next:</p>
-                      <ul className="text-white/70 text-sm space-y-1">
-                        <li className="flex items-center gap-2">
-                          <span className="text-green-400">✓</span>
-                          All players receive refund of 10 ብር
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <span className="text-yellow-400">⏱️</span>
-                          Next game starts in 30 seconds
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <span className="text-blue-400">🎮</span>
-                          New cards will be available
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Countdown and Action Buttons */}
-          <div className="mt-8 pt-6 border-t border-white/20">
-            {/* Countdown */}
-            <div className="text-center mb-6">
-              <p className="text-white/70 text-sm mb-2">
-                {winnerInfo.winner._id === 'no-winner' 
-                  ? 'Next game starts in:' 
-                  : 'New game starts in:'}
+            {/* Prize Amount - Compact */}
+            <div className="text-center py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg">
+              <p className="text-white/80 text-xs mb-1">Prize Amount</p>
+              <p className="text-2xl font-bold text-yellow-300">
+                {winningAmount} ብር
               </p>
-              <div className="text-3xl font-bold text-yellow-300">
-                {countdown} seconds
-              </div>
-              {winnerInfo.winner._id === 'no-winner' && (
-                <p className="text-white/60 text-sm mt-2">
-                  Entry fees will be automatically refunded
+              {isUserWinner && (
+                <p className="text-green-300 text-xs mt-1">
+                  💰 Added to your wallet
                 </p>
               )}
             </div>
+          </div>
+        )}
 
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <button
-                onClick={handlePlayAgain}
-                className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-green-600 hover:to-emerald-700 transition-all"
-              >
-                🎮 Play Again
-              </button>
-
-              <button
-                onClick={handleReturnToLobby}
-                className="bg-gradient-to-r from-gray-700 to-gray-800 text-white px-8 py-3 rounded-xl font-bold text-lg hover:from-gray-800 hover:to-gray-900 transition-all"
-              >
-                ⏪ Return to Lobby
-              </button>
+        {/* Game Stats - Compact */}
+        <div className="bg-gradient-to-r from-gray-900 to-black rounded-xl p-3 mb-4 border border-white/10">
+          <div className="grid grid-cols-2 gap-3 text-center">
+            <div>
+              <p className="text-white/70 text-xs">Players</p>
+              <p className="text-white text-lg font-bold">{winnerInfo.totalPlayers}</p>
             </div>
+            <div>
+              <p className="text-white/70 text-xs">Numbers</p>
+              <p className="text-white text-lg font-bold">{winnerInfo.numbersCalled}/75</p>
+            </div>
+          </div>
+          {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningPattern && (
+            <div className="mt-3 pt-3 border-t border-white/20 text-center">
+              <p className="text-white/70 text-xs mb-1">Winning Pattern</p>
+              <p className="text-green-300 text-sm font-medium">
+                {getPatternName(winnerInfo.winningPattern)}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Winning Card - Compact (if exists) */}
+        {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-white font-bold text-sm">
+                Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
+              </h3>
+              <div className="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-1 rounded-full">
+                Winner
+              </div>
+            </div>
+
+            {/* Mini Bingo Card */}
+            <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
+              {/* Mini BINGO Header */}
+              <div className="grid grid-cols-5 gap-1 mb-2">
+                {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                  <div
+                    key={letter}
+                    className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
+                  >
+                    {letter}
+                  </div>
+                ))}
+              </div>
+
+              {/* Mini Card Numbers */}
+              <div className="grid grid-cols-5 gap-1">
+                {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+                  row.map((number: number | string, colIndex: number) => {
+                    const flatIndex = rowIndex * 5 + colIndex;
+                    const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
+                    const isWinningPos = isWinningPosition(rowIndex, colIndex);
+                    const isFreeSpace = rowIndex === 2 && colIndex === 2;
+
+                    return (
+                      <div
+                        key={`${rowIndex}-${colIndex}`}
+                        className={`
+                          h-8 rounded flex items-center justify-center 
+                          font-bold text-xs relative
+                          ${isWinningPos
+                            ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white'
+                            : isMarked
+                              ? 'bg-green-600 text-white'
+                              : isFreeSpace
+                                ? 'bg-purple-700 text-white'
+                                : 'bg-gray-800 text-white/70'
+                          }
+                        `}
+                      >
+                        {isFreeSpace ? (
+                          <span className="text-[10px] font-bold">FREE</span>
+                        ) : (
+                          <span className={`${isMarked ? 'line-through' : ''}`}>
+                            {number}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Countdown Only */}
+        <div className="mt-4 pt-4 border-t border-white/20">
+          <div className="text-center">
+            <p className="text-white/70 text-sm mb-1">
+              {winnerInfo.winner._id === 'no-winner' 
+                ? 'Next game starts in:' 
+                : 'Returning to lobby in:'}
+            </p>
+            <div className="text-2xl font-bold text-yellow-300 mb-2">
+              {countdown}s
+            </div>
+            <p className="text-white/60 text-xs">
+              {winnerInfo.winner._id === 'no-winner' 
+                ? 'Refunds processed automatically'
+                : 'Get ready for the next game'}
+            </p>
           </div>
         </div>
       </motion.div>
