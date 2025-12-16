@@ -227,7 +227,7 @@ const isSelectionDisabled = disabled || (hasActiveGame && activeGameInfo?.gameSt
           const isTaken = takenCardMap.has(number);
           const isAvailable = availableCards.some(card => card.cardIndex === number);
           const canSelect = walletBalance >= 10;
-          const isSelectable = canSelect && isAvailable && !isTaken && !isSelectionDisabled;
+          const isSelectable = canSelect && !isAvailable && !isTaken && !isSelectionDisabled;
           const isCurrentlySelected = selectedNumber === number;
           const takenBy = isTaken ? takenCardMap.get(number) : null;
 
@@ -235,7 +235,7 @@ const isSelectionDisabled = disabled || (hasActiveGame && activeGameInfo?.gameSt
             <motion.button
               key={number}
               onClick={() => handleCardClick(number)}
-              disabled={false}
+              disabled={!isSelectable || isSelectionDisabled}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
