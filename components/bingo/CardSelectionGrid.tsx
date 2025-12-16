@@ -235,7 +235,7 @@ const isSelectionDisabled = disabled || (hasActiveGame && activeGameInfo?.gameSt
             <motion.button
               key={number}
               onClick={() => handleCardClick(number)}
-              disabled={ disabled}
+              disabled={false}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
