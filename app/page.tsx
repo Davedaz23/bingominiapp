@@ -83,6 +83,9 @@ export default function Home() {
   // Restart cooldown states
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
   const [restartCooldownRemaining, setRestartCooldownRemaining] = useState<number>(0);
+//remaining
+const [cardSelectionTimeRemaining, setCardSelectionTimeRemaining] = useState<number>(0);
+const [cardSelectionTotalDuration, setCardSelectionTotalDuration] = useState<number>(0);
 
   // ==================== CHECK IF USER HAS CARD IN ACTIVE GAME ====================
   const checkPlayerCardInActiveGame = async () => {
@@ -238,6 +241,33 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [gameData?._id]);
 
+// Add this effect to update card selection countdown
+useEffect(() => {
+  if (gameData && gameData.status === 'CARD_SELECTION' && gameData.cardSelectionTimeRemaining) {
+    setCardSelectionTimeRemaining(gameData.cardSelectionTimeRemaining);
+    setCardSelectionTotalDuration(gameData.cardSelectionTotalDuration || 30000); // 30 seconds default
+    
+    // Update the countdown every second
+    const interval = setInterval(() => {
+      setCardSelectionTimeRemaining(prev => {
+        const newValue = prev - 1000;
+        return newValue < 0 ? 0 : newValue;
+      });
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  } else {
+    setCardSelectionTimeRemaining(0);
+  }
+}, [gameData]);
+
+// Format time function
+const formatTime = (milliseconds: number) => {
+  const seconds = Math.ceil(milliseconds / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
   // ==================== LOAD ACTIVE GAMES ON INITIALIZATION ====================
   useEffect(() => {
        console.log("Defar = "+shouldDisableCardSelection);
@@ -629,6 +659,75 @@ console.log("Defar game",playerGameStatus+" = "+shouldDisableCardSelection);
           </div>
         </motion.div>
       )} */}
+      {/* CARD SELECTION COUNTDOWN DISPLAY */}
+{gameStatus === 'CARD_SELECTION' && cardSelectionTimeRemaining > 0 && (
+  <motion.div 
+    className="bg-purple-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-purple-500/30"
+    initial={{ opacity: 0, scale: 0.95 }}
+    animate={{ opacity: 1, scale: 1 }}
+    transition={{ type: "spring", stiffness: 300 }}
+  >
+    <div className="flex flex-col items-center">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="relative">
+          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+            <span className="text-white font-bold text-lg">
+              {formatTime(cardSelectionTimeRemaining)}
+            </span>
+          </div>
+          <div className="absolute inset-0 rounded-full border-2 border-purple-300/50 animate-ping"></div>
+        </div>
+        <div className="flex-1">
+          <h3 className="text-white font-bold text-lg">Card Selection Active!</h3>
+          <p className="text-purple-200 text-sm">
+            Select your bingo card before the timer runs out
+          </p>
+        </div>
+      </div>
+      
+      {/* Progress bar */}
+      <div className="w-full">
+        <div className="flex justify-between text-xs text-purple-200 mb-1">
+          <span>Time remaining</span>
+          <span>{formatTime(cardSelectionTimeRemaining)}</span>
+        </div>
+        <div className="w-full bg-purple-400/20 rounded-full h-3">
+          <div 
+            className="bg-gradient-to-r from-purple-400 to-pink-400 h-3 rounded-full transition-all duration-1000"
+            style={{ 
+              width: `${((cardSelectionTotalDuration - cardSelectionTimeRemaining) / cardSelectionTotalDuration) * 100}%` 
+            }}
+          />
+        </div>
+      </div>
+      
+      {/* Players info */}
+      <div className="mt-4 grid grid-cols-2 gap-4 w-full">
+        <div className="text-center p-3 bg-purple-500/10 rounded-xl">
+          <div className="text-white font-bold text-xl">{playersWithCards}</div>
+          <div className="text-purple-200 text-xs">Players Selected</div>
+        </div>
+        <div className="text-center p-3 bg-purple-500/10 rounded-xl">
+          <div className="text-white font-bold text-xl">{gameData?.cardsNeeded || 0}</div>
+          <div className="text-purple-200 text-xs">Needed to Start</div>
+        </div>
+      </div>
+      
+      {/* Urgent message when time is running out */}
+      {cardSelectionTimeRemaining < 10000 && (
+        <motion.div 
+          className="mt-3 p-3 bg-red-500/20 rounded-lg border border-red-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <p className="text-red-300 text-sm text-center font-bold">
+            ⚡ Hurry! Time is running out to select your card!
+          </p>
+        </motion.div>
+      )}
+    </div>
+  </motion.div>
+)}
 
       {/* CONDITIONAL GAME INFO DISPLAY */}
       {!hasCardInActiveGame && shouldDisplayGameInfo() ? (

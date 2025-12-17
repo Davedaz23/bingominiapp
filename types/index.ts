@@ -152,6 +152,25 @@ export interface Game {
       winningPatternPositions?: number[];
     };
   };
+   cardSelectionStartTime?: string;
+  cardSelectionTimeRemaining?: number;  // This is used in your implementation
+  cardSelectionTotalDuration?: number;  // For percentage calculation
+  hasCardSelectionTimer?: boolean;      // Flag for card selection timer
+  noWinner?: boolean;                   // Used in your game service
+  refunded?: boolean;                   // Used in your game service
+  refundedAt?: string;                  // Used in your game service
+  totalRefunded?: number;               // Used in your game service
+  uniquePlayersRefunded?: number;       // Used in your game service
+  archived?: boolean;                   // Used in your game service
+  archivedAt?: string;                  // Used in your game service
+
+  winningAmount?: number;               // Prize amount for winner
+  previousGameId?: string;              // For game lineage tracking
+  message?: string;                     // Status message from formatGameForFrontend
+  serverTime?: string;                  // For time synchronization
+  isValidActiveGame?: boolean;          // For validation
+  canSelectCard?: boolean;              // From formatGameForFrontend
+  canJoin?: boolean;                    // From formatGameForFrontend
 }
 
 export interface WinnerInfo {
