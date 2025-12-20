@@ -1313,33 +1313,33 @@ useEffect(() => {
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
   <div className="flex justify-between items-center mb-4">
     <div className="flex items-center gap-3">
-      <h3 className="text-white font-bold text-lg">Your Bingo Card</h3>
+      <h3 className="text-white font-bold text-base md:text-lg">Your Bingo Card</h3>
       {selectedNumber && (
-        <span className="text-white/90 text-sm bg-gradient-to-r from-purple-500/30 to-blue-500/30 px-4 py-1.5 rounded-full font-medium">
+        <span className="text-white/90 text-sm bg-gradient-to-r from-purple-500/30 to-blue-500/30 px-3 py-1 rounded-full font-medium">
           Card #{selectedNumber}
         </span>
       )}
     </div>
-    <div className="text-white/70 text-sm bg-white/10 px-4 py-1.5 rounded-full">
+    <div className="text-white/70 text-sm bg-white/10 px-3 py-1 rounded-full">
       Marked: <span className="text-white font-bold ml-1">{displayBingoCard?.markedPositions?.length || 0}</span>/24
     </div>
   </div>
 
   {displayBingoCard ? (
     <div className="mb-4">
-      {/* BINGO Header - Cleaner, no rounded corners */}
+      {/* BINGO Header - Larger */}
       <div className="grid grid-cols-5 mb-2">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
           <div
             key={letter}
-            className="h-12 flex items-center justify-center font-bold text-xl text-white bg-gradient-to-b from-purple-600 to-blue-700"
+            className="h-10 flex items-center justify-center font-bold text-lg text-white bg-gradient-to-b from-purple-600 to-blue-700"
           >
             {letter}
           </div>
         ))}
       </div>
 
-      {/* Card Numbers - Clean grid without rounded corners, larger cells */}
+      {/* Card Numbers - Larger with no rounding */}
       <div className="grid grid-cols-5">
         {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
           row.map((number: number | string, colIndex: number) => {
@@ -1361,14 +1361,14 @@ useEffect(() => {
                   backgroundColor: 'rgba(255, 255, 255, 0.25)'
                 } : {}}
                 className={`
-                  h-16 flex items-center justify-center 
+                  h-20 flex items-center justify-center 
                   font-bold transition-all duration-200 relative
                   border border-white/10
                   ${isMarked
                     ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
                     : isFreeSpace
                       ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'
-                      : 'bg-white/10 text-white'
+                      : 'bg-white/15 text-white'
                   }
                   ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE'
                     ? 'cursor-pointer'
@@ -1382,9 +1382,9 @@ useEffect(() => {
                 }}
                 title={
                   isFreeSpace ? 'FREE SPACE (Always marked)' :
-                    isMarked ? `Marked: ${number}` :
-                      isCalled ? `Click to mark ${number}` :
-                        `${number} (Not called yet)`
+                  isMarked ? `Marked: ${number}` :
+                  isCalled ? `Click to mark ${number}` :
+                  `${number} (Not called yet)`
                 }
               >
                 {isFreeSpace ? (
@@ -1394,7 +1394,11 @@ useEffect(() => {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center w-full h-full relative">
-                    <span className={`text-xl ${isMarked ? 'line-through' : ''}`}>
+                    <span className={`
+                      text-lg md:text-xl font-medium
+                      ${isMarked ? 'line-through' : ''}
+                      ${number.toString().length > 2 ? 'text-sm md:text-base' : ''}
+                    `}>
                       {number}
                     </span>
                     {isMarked && (
@@ -1421,7 +1425,7 @@ useEffect(() => {
       {game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION' ? (
         <button
           onClick={() => router.push('/')}
-          className="bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-6 py-2.5 rounded-lg hover:from-purple-500/40 hover:to-blue-500/40 transition-all text-base"
+          className="bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-6 py-2 rounded-lg hover:from-purple-500/40 hover:to-blue-500/40 transition-all text-base"
         >
           Select a Card
         </button>
