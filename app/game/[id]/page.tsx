@@ -1310,37 +1310,37 @@ useEffect(() => {
             </div>
           )}
           
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-  <div className="flex justify-between items-center mb-4">
-    <div className="flex items-center gap-3">
-      <h3 className="text-white font-bold text-base md:text-lg">Your Bingo Card</h3>
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 sm:p-4 border border-white/20">
+  <div className="flex justify-between items-center mb-3 sm:mb-4">
+    <div className="flex items-center gap-2 sm:gap-3">
+      <h3 className="text-white font-bold text-sm sm:text-base md:text-md">Your Bingo Card</h3>
       {selectedNumber && (
-        <span className="text-white/90 text-sm bg-gradient-to-r from-purple-500/30 to-blue-500/30 px-3 py-1 rounded-full font-medium">
+        <span className="text-white/90 text-xs sm:text-sm bg-gradient-to-r from-purple-500/30 to-blue-500/30 px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 rounded-full font-medium">
           Card #{selectedNumber}
         </span>
       )}
     </div>
-    <div className="text-white/70 text-sm bg-white/10 px-3 py-1 rounded-full">
-      Marked: <span className="text-white font-bold ml-1">{displayBingoCard?.markedPositions?.length || 0}</span>/24
+    <div className="text-white/70 text-xs sm:text-sm bg-white/10 px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 rounded-full">
+      Marked: <span className="text-white font-bold ml-0.5 sm:ml-1">{displayBingoCard?.markedPositions?.length || 0}</span>/24
     </div>
   </div>
 
   {displayBingoCard ? (
-    <div className="mb-4">
-      {/* BINGO Header - Larger */}
-      <div className="grid grid-cols-5 mb-2">
+    <div className="mb-3 sm:mb-4">
+      {/* BINGO Header - Square and larger */}
+      <div className="grid grid-cols-5 gap-0 sm:gap-0 mb-1 sm:mb-2">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
           <div
             key={letter}
-            className="h-10 flex items-center justify-center font-bold text-lg text-white bg-gradient-to-b from-purple-600 to-blue-700"
+            className="h-12 sm:h-14 flex items-center justify-center font-bold text-lg sm:text-xl text-white bg-gradient-to-b from-purple-600 to-blue-700"
           >
             {letter}
           </div>
         ))}
       </div>
 
-      {/* Card Numbers - Larger with no rounding */}
-      <div className="grid grid-cols-5">
+      {/* Card Numbers - Square grid with no gaps and larger cells */}
+      <div className="grid grid-cols-5 gap-0">
         {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
           row.map((number: number | string, colIndex: number) => {
             const flatIndex = rowIndex * 5 + colIndex;
@@ -1361,14 +1361,14 @@ useEffect(() => {
                   backgroundColor: 'rgba(255, 255, 255, 0.25)'
                 } : {}}
                 className={`
-                  h-20 flex items-center justify-center 
+                  h-16 sm:h-20 w-full flex items-center justify-center 
                   font-bold transition-all duration-200 relative
-                  border border-white/10
+                  border border-white/20
                   ${isMarked
                     ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
                     : isFreeSpace
                       ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'
-                      : 'bg-white/15 text-white'
+                      : 'bg-white/10 text-white'
                   }
                   ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE'
                     ? 'cursor-pointer'
@@ -1388,16 +1388,16 @@ useEffect(() => {
                 }
               >
                 {isFreeSpace ? (
-                  <div className="flex flex-col items-center justify-center w-full h-full">
-                    <span className="text-sm font-bold">FREE</span>
-                    <div className="absolute top-1 right-1 text-xs opacity-90">✓</div>
+                  <div className="flex flex-col items-center justify-center w-full h-full p-1">
+                    <span className="text-xs sm:text-sm font-bold">FREE</span>
+                    <div className="absolute top-1 right-1 sm:top-2 sm:right-2 text-[10px] sm:text-xs opacity-90">✓</div>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center w-full h-full relative">
+                  <div className="flex flex-col items-center justify-center w-full h-full p-1 relative">
                     <span className={`
-                      text-lg md:text-xl font-medium
+                      text-sm sm:text-base md:text-lg font-bold
                       ${isMarked ? 'line-through' : ''}
-                      ${number.toString().length > 2 ? 'text-sm md:text-base' : ''}
+                      truncate max-w-full px-1
                     `}>
                       {number}
                     </span>
@@ -1405,7 +1405,7 @@ useEffect(() => {
                       <motion.div
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        className="absolute top-1 right-1 text-xs opacity-90"
+                        className="absolute top-1 right-1 sm:top-2 sm:right-2 text-xs sm:text-sm opacity-90"
                       >
                         ✓
                       </motion.div>
@@ -1419,18 +1419,18 @@ useEffect(() => {
       </div>
     </div>
   ) : (
-    <div className="text-center text-white/70 py-8">
-      <p className="text-lg mb-2">No bingo card found</p>
-      <p className="text-sm mb-6">{spectatorMessage || 'Join the game to get a card'}</p>
+    <div className="text-center text-white/70 py-6 sm:py-8">
+      <p className="text-base sm:text-lg mb-1.5 sm:mb-2">No bingo card found</p>
+      <p className="text-xs sm:text-sm mb-4 sm:mb-6">{spectatorMessage || 'Join the game to get a card'}</p>
       {game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION' ? (
         <button
           onClick={() => router.push('/')}
-          className="bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-6 py-2 rounded-lg hover:from-purple-500/40 hover:to-blue-500/40 transition-all text-base"
+          className="bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-4 sm:px-6 py-1.5 sm:py-2.5 rounded-lg hover:from-purple-500/40 hover:to-blue-500/40 transition-all text-sm sm:text-base"
         >
           Select a Card
         </button>
       ) : (
-        <p className="text-white/50 text-sm">
+        <p className="text-white/50 text-xs sm:text-sm">
           Game has already started. You can watch as a spectator.
         </p>
       )}
