@@ -1492,74 +1492,66 @@ useEffect(() => {
       </div>
 
       {/* Claim Bingo Button - Fixed Position */}
-      {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode &&  allCalledNumbers.length>0 && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-10 w-full max-w-md">
-          <div className="flex flex-col items-center">
-            {/* <div className="mb-2 text-center">
-              <div className="text-white/70 text-xs bg-black/40 px-3 py-1 rounded-full inline-block mb-1 border border-white/20">
-                ⚡ Manual Marking Active
-              </div>
-              <div className="text-white/60 text-xs max-w-xs">
-                Mark numbers manually, complete a line, then claim!
-              </div>
-            </div> */}
+     {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && allCalledNumbers.length > 0 && (
+  <div className="fixed bottom-6 right-6 z-10">
+    <div className="flex flex-col items-end">
+      <button
+        onClick={handleClaimBingo}
+        disabled={isClaimingBingo}
+        className={`
+          bg-gradient-to-r from-yellow-500 to-orange-500 
+          text-white px-8 py-4 rounded-2xl font-bold text-lg
+          shadow-lg shadow-orange-500/30
+          hover:from-yellow-600 hover:to-orange-600
+          active:scale-95 transition-all duration-200
+          flex items-center gap-3 justify-center
+          ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
+          whitespace-nowrap
+        `}
+      >
+        {isClaimingBingo ? (
+          <>
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            Verifying Claim...
+          </>
+        ) : (
+          <>
+            <span className="text-2xl">🏆</span>
+            CLAIM BINGO
+            <span className="text-2xl">🏆</span>
+          </>
+        )}
+      </button>
 
-            <button
-              onClick={handleClaimBingo}
-              disabled={isClaimingBingo}
-              className={`
-                bg-gradient-to-r from-yellow-500 to-orange-500 
-                text-white px-10 py-4 rounded-2xl font-bold text-lg
-                shadow-lg shadow-orange-500/30
-                hover:from-yellow-600 hover:to-orange-600
-                active:scale-95 transition-all duration-200
-                flex items-center gap-3 w-full justify-center
-                ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
-              `}
-            >
-              {isClaimingBingo ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  Verifying Claim...
-                </>
-              ) : (
-                <>
-                  <span className="text-2xl">🏆</span>
-                  CLAIM BINGO
-                  <span className="text-2xl">🏆</span>
-                </>
-              )}
-            </button>
-
-            {/* Claim Result Message */}
-            {/* {claimResult && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`
-                  mt-3 p-3 rounded-xl text-center text-sm font-medium w-full
-                  ${claimResult.success
-                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                    : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                  }
-                `}
-              >
-                {claimResult.message}
-                {claimResult.patternType && (
-                  <div className="text-xs mt-1">
-                    Winning Pattern: <span className="font-bold">{claimResult.patternType}</span>
-                  </div>
-                )}
-                {claimResult.prizeAmount && (
-                  <div className="text-xs mt-1 font-bold">
-                    Prize: <span className="text-yellow-300">{claimResult.prizeAmount} ብር</span>
-                  </div>
-                )}
-              </motion.div>
-            )} */}
-          </div>
-        </div>
+      {/* Claim Result Message - optional, keep if needed */}
+      {claimResult && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`
+            mt-3 p-3 rounded-xl text-center text-sm font-medium
+            ${claimResult.success
+              ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+              : 'bg-red-500/20 text-red-300 border border-red-500/30'
+            }
+          `}
+        >
+          {claimResult.message}
+          {claimResult.patternType && (
+            <div className="text-xs mt-1">
+              Winning Pattern: <span className="font-bold">{claimResult.patternType}</span>
+            </div>
+          )}
+          {claimResult.prizeAmount && (
+            <div className="text-xs mt-1 font-bold">
+              Prize: <span className="text-yellow-300">{claimResult.prizeAmount} ብር</span>
+            </div>
+          )}
+        </motion.div>
       )}
+    </div>
+  </div>
+)}
 
       {/* Spectator Mode Notice */}
 
