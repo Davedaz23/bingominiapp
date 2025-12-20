@@ -1327,20 +1327,20 @@ useEffect(() => {
 
   {displayBingoCard ? (
     <div className="mb-3 sm:mb-4">
-      {/* BINGO Header - Square and larger */}
-      <div className="grid grid-cols-5 gap-0 sm:gap-0 mb-1 sm:mb-2">
+      {/* BINGO Header - Matches the called grid style */}
+      <div className="grid grid-cols-5 gap-0.5 sm:gap-1 mb-1.5 sm:mb-2">
         {['B', 'I', 'N', 'G', 'O'].map((letter) => (
           <div
             key={letter}
-            className="h-12 sm:h-14 flex items-center justify-center font-bold text-lg sm:text-xl text-white bg-gradient-to-b from-purple-600 to-blue-700"
+            className="h-10 sm:h-12 flex items-center justify-center font-bold text-base sm:text-lg text-white bg-gradient-to-b from-purple-600/80 to-blue-700/80 rounded-lg"
           >
             {letter}
           </div>
         ))}
       </div>
 
-      {/* Card Numbers - Square grid with no gaps and larger cells */}
-      <div className="grid grid-cols-5 gap-0">
+      {/* Card Numbers - Square grid matching called numbers style */}
+      <div className="grid grid-cols-5 gap-0.5 sm:gap-1">
         {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
           row.map((number: number | string, colIndex: number) => {
             const flatIndex = rowIndex * 5 + colIndex;
@@ -1358,20 +1358,22 @@ useEffect(() => {
                 }}
                 whileHover={isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' ? {
                   scale: 1.05,
-                  backgroundColor: 'rgba(255, 255, 255, 0.25)'
+                  backgroundColor: 'rgba(255, 255, 255, 0.15)'
                 } : {}}
                 className={`
-                  h-16 sm:h-20 w-full flex items-center justify-center 
+                  aspect-square w-full flex items-center justify-center 
                   font-bold transition-all duration-200 relative
-                  border border-white/20
+                  rounded-lg border border-white/10
                   ${isMarked
-                    ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white'
+                    ? 'bg-gradient-to-br from-green-600/80 to-emerald-700/80 text-white'
                     : isFreeSpace
-                      ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'
-                      : 'bg-white/10 text-white'
+                      ? 'bg-gradient-to-br from-purple-600/80 to-pink-600/80 text-white'
+                      : isCalled && !isMarked && game?.status === 'ACTIVE'
+                        ? 'bg-gradient-to-br from-purple-500/40 to-blue-500/40 text-white'
+                        : 'bg-white/5 text-white/70'
                   }
                   ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE'
-                    ? 'cursor-pointer'
+                    ? 'cursor-pointer hover:bg-white/10'
                     : 'cursor-default'
                   }
                 `}
@@ -1390,13 +1392,13 @@ useEffect(() => {
                 {isFreeSpace ? (
                   <div className="flex flex-col items-center justify-center w-full h-full p-1">
                     <span className="text-xs sm:text-sm font-bold">FREE</span>
-                    <div className="absolute top-1 right-1 sm:top-2 sm:right-2 text-[10px] sm:text-xs opacity-90">✓</div>
+                    <div className="absolute top-1 right-1 sm:top-1 sm:right-1 text-[10px] sm:text-xs opacity-90">✓</div>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center w-full h-full p-1 relative">
                     <span className={`
-                      text-sm sm:text-base md:text-lg font-bold
-                      ${isMarked ? 'line-through' : ''}
+                      text-sm sm:text-base font-bold
+                      ${isMarked ? 'line-through opacity-90' : ''}
                       truncate max-w-full px-1
                     `}>
                       {number}
@@ -1405,10 +1407,17 @@ useEffect(() => {
                       <motion.div
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        className="absolute top-1 right-1 sm:top-2 sm:right-2 text-xs sm:text-sm opacity-90"
+                        className="absolute top-1 right-1 sm:top-1 sm:right-1 text-xs sm:text-sm opacity-90"
                       >
                         ✓
                       </motion.div>
+                    )}
+                    {isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' && (
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        className="absolute bottom-0.5 left-0 right-0 mx-auto w-3/4 h-0.5 bg-blue-400/50 rounded-full"
+                      />
                     )}
                   </div>
                 )}
