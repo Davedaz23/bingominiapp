@@ -1310,7 +1310,7 @@ useEffect(() => {
             </div>
           )}
           
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-3 sm:p-4 border border-white/20">
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl  border border-white/20">
             <div className="flex justify-between items-center mb-3 sm:mb-4">
               <div className="flex items-center gap-2 sm:gap-3">
                 <h3 className="text-white font-bold text-sm sm:text-base md:text-md">Your Bingo Card</h3>
