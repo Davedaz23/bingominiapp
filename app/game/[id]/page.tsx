@@ -1492,69 +1492,58 @@ useEffect(() => {
       </div>
 
       {/* Claim Bingo Button - Fixed Position */}
-{game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && allCalledNumbers.length > 0 && (
-  <>
-    {/* Mobile: Floating circle button */}
-    <div className="md:hidden fixed bottom-4 right-4 z-10">
+ {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && allCalledNumbers.length > 0 && (
+  <div className="fixed bottom-4 right-2 sm:right-4 md:right-6 z-10">
+    <div className="flex flex-col items-end">
       <button
         onClick={handleClaimBingo}
         disabled={isClaimingBingo}
         className={`
-          w-16 h-16 rounded-full
-          bg-gradient-to-r from-yellow-500 to-orange-500 
-          text-white
-          shadow-lg shadow-orange-500/30
+          bg-gradient-to-r from-yellow-600 to-orange-600 
+          text-white px-4 py-3 sm:px-6 sm:py-3 md:px-8 md:py-4 
+          rounded-xl sm:rounded-2xl font-bold 
+          text-sm sm:text-base md:text-lg
+          shadow-lg shadow-orange-800
           hover:from-yellow-600 hover:to-orange-600
           active:scale-95 transition-all duration-200
-          flex items-center justify-center
+          flex items-center gap-1 sm:gap-2 md:gap-3 justify-center
           ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
+          whitespace-nowrap
+          max-w-[200px] sm:max-w-none
         `}
-        title="Claim Bingo"
       >
         {isClaimingBingo ? (
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+          <>
+            <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
+            <span className="text-xs sm:text-sm">Verifying...</span>
+          </>
         ) : (
-          <div className="flex flex-col items-center">
-            <span className="text-xl">🏆</span>
-            <span className="text-[10px] font-bold mt-[-2px]">BINGO</span>
-          </div>
+          <>
+            <span className="text-lg sm:text-xl md:text-2xl">🏆</span>
+            <span className="text-xs sm:text-sm md:text-base">CLAIM BINGO</span>
+            <span className="text-lg sm:text-xl md:text-2xl">🏆</span>
+          </>
         )}
       </button>
-    </div>
 
-    {/* Desktop: Full button */}
-    <div className="hidden md:block fixed bottom-6 right-6 z-10">
-      <div className="flex flex-col items-end">
-        <button
-          onClick={handleClaimBingo}
-          disabled={isClaimingBingo}
+      {/* Optional: Compact result message for mobile */}
+      {claimResult && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
           className={`
-            bg-gradient-to-r from-yellow-500 to-orange-500 
-            text-white px-8 py-4 rounded-2xl font-bold text-lg
-            shadow-lg shadow-orange-500/30
-            hover:from-yellow-600 hover:to-orange-600
-            active:scale-95 transition-all duration-200
-            flex items-center gap-3 justify-center
-            ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
-            whitespace-nowrap
+            mt-2 p-2 rounded-lg text-center text-xs font-medium max-w-[200px]
+            ${claimResult.success
+              ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+              : 'bg-red-500/20 text-red-300 border border-red-500/30'
+            }
           `}
         >
-          {isClaimingBingo ? (
-            <>
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              Verifying Claim...
-            </>
-          ) : (
-            <>
-              <span className="text-2xl">🏆</span>
-              CLAIM BINGO
-              <span className="text-2xl">🏆</span>
-            </>
-          )}
-        </button>
-      </div>
+          {claimResult.message}
+        </motion.div>
+      )}
     </div>
-  </>
+  </div>
 )}
 
       {/* Spectator Mode Notice */}
