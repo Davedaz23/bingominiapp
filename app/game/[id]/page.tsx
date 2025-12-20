@@ -1492,44 +1492,47 @@ useEffect(() => {
       </div>
 
       {/* Claim Bingo Button - Fixed Position */}
-     {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && allCalledNumbers.length > 0 && (
-  <div className="fixed bottom-6 right-6 z-10">
+ {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && allCalledNumbers.length > 0 && (
+  <div className="fixed bottom-4 right-2 sm:right-4 md:right-6 z-10">
     <div className="flex flex-col items-end">
       <button
         onClick={handleClaimBingo}
         disabled={isClaimingBingo}
         className={`
           bg-gradient-to-r from-yellow-500 to-orange-500 
-          text-white px-8 py-4 rounded-2xl font-bold text-lg
+          text-white px-4 py-3 sm:px-6 sm:py-3 md:px-8 md:py-4 
+          rounded-xl sm:rounded-2xl font-bold 
+          text-sm sm:text-base md:text-lg
           shadow-lg shadow-orange-500/30
           hover:from-yellow-600 hover:to-orange-600
           active:scale-95 transition-all duration-200
-          flex items-center gap-3 justify-center
+          flex items-center gap-1 sm:gap-2 md:gap-3 justify-center
           ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
           whitespace-nowrap
+          max-w-[200px] sm:max-w-none
         `}
       >
         {isClaimingBingo ? (
           <>
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-            Verifying Claim...
+            <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
+            <span className="text-xs sm:text-sm">Verifying...</span>
           </>
         ) : (
           <>
-            <span className="text-2xl">🏆</span>
-            CLAIM BINGO
-            <span className="text-2xl">🏆</span>
+            <span className="text-lg sm:text-xl md:text-2xl">🏆</span>
+            <span className="text-xs sm:text-sm md:text-base">CLAIM BINGO</span>
+            <span className="text-lg sm:text-xl md:text-2xl">🏆</span>
           </>
         )}
       </button>
 
-      {/* Claim Result Message - optional, keep if needed */}
+      {/* Optional: Compact result message for mobile */}
       {claimResult && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className={`
-            mt-3 p-3 rounded-xl text-center text-sm font-medium
+            mt-2 p-2 rounded-lg text-center text-xs font-medium max-w-[200px]
             ${claimResult.success
               ? 'bg-green-500/20 text-green-300 border border-green-500/30'
               : 'bg-red-500/20 text-red-300 border border-red-500/30'
@@ -1537,16 +1540,6 @@ useEffect(() => {
           `}
         >
           {claimResult.message}
-          {claimResult.patternType && (
-            <div className="text-xs mt-1">
-              Winning Pattern: <span className="font-bold">{claimResult.patternType}</span>
-            </div>
-          )}
-          {claimResult.prizeAmount && (
-            <div className="text-xs mt-1 font-bold">
-              Prize: <span className="text-yellow-300">{claimResult.prizeAmount} ብር</span>
-            </div>
-          )}
         </motion.div>
       )}
     </div>
