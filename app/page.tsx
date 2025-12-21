@@ -297,37 +297,63 @@ const formatTime = (milliseconds: number) => {
   // Redirect when:
   // 1. User has card in ACTIVE game
   // 2. OR Game is ACTIVE (even if user doesn't have card yet - redirect as spectator/late entry)
-  useEffect(() => {
-    // Don't redirect if checking status, page loading, or already redirected
-    if (isCheckingPlayerStatus || pageLoading || autoRedirected) return;
-    
-    // Condition 1: User has card in ACTIVE game
-    if (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && playerGameId) {
-      console.log(`🚨 Player has card #${playerCardNumber} in ACTIVE game ${playerGameId}, redirecting!`);
-      setAutoRedirected(true);
-      router.push(`/game/${playerGameId}`);
-      return;
-    }
-    
-    // Condition 2: Game is ACTIVE and user doesn't have card (redirect as spectator)
-    if (gameStatus === 'ACTIVE' && !hasCardInActiveGame && activeGames.length > 0) {
-      console.log(`🎮 Game is ACTIVE, redirecting as spectator to game ${activeGames[0]._id}`);
-      setAutoRedirected(true);
-      router.push(`/game/${activeGames[0]._id}?spectator=true`);
-      return;
-    }
-  }, [
-    hasCardInActiveGame, 
-    playerGameStatus, 
-    playerGameId, 
-    playerCardNumber,
+  // ==================== SIMPLIFIED REDIRECT LOGIC ====================
+useEffect(() => {
+  // Don't redirect during loading states
+  if (isCheckingPlayerStatus || pageLoading || autoRedirected) return;
+  
+  console.log('🔍 Redirect check:', {
     gameStatus,
-    activeGames,
-    isCheckingPlayerStatus, 
-    pageLoading, 
-    autoRedirected, 
-    router
-  ]);
+    hasCardInActiveGame,
+    playerGameStatus,
+    activeGamesCount: activeGames.length,
+    autoRedirected
+  });
+  
+  // Condition 1: User has card in ACTIVE game
+  if (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && playerGameId) {
+    console.log(`🚨 Player has card in ACTIVE game, redirecting to game ${playerGameId}`);
+    setAutoRedirected(true);
+    router.push(`/game/${playerGameId}`);
+    return;
+  }
+  
+  // Condition 2: Game is ACTIVE in the main game state
+  if (gameStatus === 'ACTIVE' && !hasCardInActiveGame) {
+    console.log('🎮 Main game is ACTIVE, looking for active game to join/watch');
+    
+    // Find the active game
+    if (activeGames.length > 0) {
+      const activeGame = activeGames[0];
+      console.log(`🔗 Redirecting to active game: ${activeGame._id}`);
+      setAutoRedirected(true);
+      router.push(`/game/${activeGame._id}?spectator=true`);
+    } else {
+      // If no active game found, try to get one
+      console.log('⚠️ No active games found in list, checking API...');
+      loadActiveGames(); // Refresh active games list
+    }
+    return;
+  }
+  
+  // Condition 3: Any waiting game is available for card selection
+  if (gameStatus === 'WAITING_FOR_PLAYERS' && !hasCardInActiveGame) {
+    console.log('⏳ Game is waiting for players - staying on card selection page');
+    // Stay on this page for card selection
+    return;
+  }
+}, [
+  hasCardInActiveGame, 
+  playerGameStatus, 
+  playerGameId,
+  playerCardNumber,
+  gameStatus,
+  activeGames,
+  isCheckingPlayerStatus, 
+  pageLoading, 
+  autoRedirected, 
+  router
+]);
 
   // ==================== FIXED: GAME INFO FOOTER MESSAGE ====================
   const getGameStatusMessage = () => {
