@@ -1103,29 +1103,29 @@ useEffect(() => {
      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
   <div className="grid grid-cols-6 gap-4 text-center">
     <div>
-      <p className="text-white font-bold text-base">{walletBalance} ብር</p>
+      <p className="text-white text-xs font-bold text-xs">{walletBalance} ብር</p>
       <p className="text-white/60 text-xs">Balance</p>
     </div>
     <div>
-      <p className="text-white font-bold text-base">{(game.currentPlayers||0)*10*0.8} ብር</p>
+      <p className="text-white font-bold text-xs">{(game.currentPlayers||0)*10*0.8} ብር</p>
       <p className="text-white/60 text-xs">Pot</p>
     </div>
     <div>
-      <p className="text-white font-bold text-base">{game.currentPlayers || 0}</p>
+      <p className="text-white font-bold text-xs">{game.currentPlayers || 0}</p>
       <p className="text-white/60 text-xs">Players</p>
     </div>
     <div>
-      <p className="text-white font-bold text-base">10 ብር</p>
+      <p className="text-white font-bold text-xs">10 ብር</p>
       <p className="text-white/60 text-xs">Bet</p>
     </div>
     <div>
-      <p className="text-white font-bold text-base">
+      <p className="text-white font-bold text-xs">
         {selectedNumber ? `#${selectedNumber}` : 'N/A'}
       </p>
       <p className="text-white/60 text-xs">Your Card</p>
     </div>
     <div>
-      <p className="text-white font-bold text-base">{allCalledNumbers.length}/75</p>
+      <p className="text-white font-bold text-xs">{allCalledNumbers.length}/75</p>
       <p className="text-white/60 text-xs">Called</p>
     </div>
   </div>
