@@ -78,10 +78,10 @@ export default function GamePage() {
     gameData,
 
   } = useGameState();
-  const {
-    selectedNumber,
-
-  } = useCardSelection(gameData, gameStatus);
+ const {
+  selectedNumber,
+  clearSelectedCard // Add this
+} = useCardSelection(gameData, gameStatus);
 
   // const [walletBalance, setWalletBalance] = useState<number>(0);
 
@@ -366,6 +366,10 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
         });
       }
 
+      // 🆕 CLEAR THE STORED CARD WHEN GAME ENDS
+      clearSelectedCard();
+      console.log('🗑️ Cleared stored card selection because game ended');
+
       setTimeout(() => {
         setShowWinnerModal(true);
         setIsWinnerLoading(false);
@@ -393,12 +397,15 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
             endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
             totalPlayers: gameData.currentPlayers || 0,
             numbersCalled: gameData.numbersCalled?.length || 0,
-          // message: 'Game ended without a winner - All players refunded'
           });
           
           setIsUserWinner(false);
           setWinningAmount(0);
           
+          // 🆕 CLEAR THE STORED CARD WHEN NO WINNER
+          clearSelectedCard();
+          console.log('🗑️ Cleared stored card selection because game ended with no winner');
+
           setTimeout(() => {
             setShowWinnerModal(true);
             setIsWinnerLoading(false);
@@ -409,7 +416,7 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
             }
           }, 1500);
         } else if (gameData.status === 'FINISHED') {
-          // Game is finished but we don't have winner data - try to get it
+          // Game is finished but we don't have winner data
           console.log('Game finished but no winner data, fetching...');
           // The getWinnerInfo should handle this case
         }
@@ -423,7 +430,38 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
   } finally {
     abortControllerRef.current = null;
   }
-}, [getWinnerInfo, showWinnerModal]);
+}, [getWinnerInfo, showWinnerModal, clearSelectedCard]); // Add clearSelectedCard to dependencies
+
+// Also update the effect that handles game status changes
+useEffect(() => {
+  if (!game) return;
+
+  // Update polling based on game status
+  if (game.status === 'ACTIVE' && !pollingRef.current) {
+    startPolling();
+  } else if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'CANCELLED' || game.status === 'COOLDOWN') && pollingRef.current) {
+    clearInterval(pollingRef.current);
+    pollingRef.current = null;
+  }
+
+  // Check for winner or no-winner
+  if ((game.status === 'FINISHED' || game.status === 'NO_WINNER') && !showWinnerModal && !gameEndedCheckRef.current) {
+    gameEndedCheckRef.current = true;
+    checkForWinner(game as Game);
+  }
+  
+  // Handle COOLDOWN state (same as FINISHED for display purposes)
+  if (game.status === 'COOLDOWN' && !showWinnerModal && !gameEndedCheckRef.current) {
+    gameEndedCheckRef.current = true;
+    checkForWinner(game as Game);
+  }
+
+  // 🆕 Clear card if game is CANCELLED
+  if (game.status === 'CANCELLED') {
+    clearSelectedCard();
+    console.log('🗑️ Cleared stored card selection because game was cancelled');
+  }
+}, [game,  showWinnerModal, checkForWinner, clearSelectedCard]);
 
   // FIXED: Update game state
   const updateGameState = useCallback(async (force = false) => {

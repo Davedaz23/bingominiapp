@@ -89,6 +89,12 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
     return false;
   };
+  const clearSelectedCard = useCallback(() => {
+  setSelectedNumber(null);
+  setBingoCard(null);
+  removeAccountData('selected_number');
+  console.log('✅ Cleared selected card from storage');
+}, [removeAccountData]);
 
   // Rest of your hook code remains the same...
   // Real-time polling for taken cards
@@ -361,6 +367,8 @@ console.log("Defar negn");
     fetchAvailableCards,
     checkCardSelectionStatus,
     setCardSelectionError,
-    fetchTakenCards
+    fetchTakenCards,
+      clearSelectedCard // Add this
+
   };
 };
