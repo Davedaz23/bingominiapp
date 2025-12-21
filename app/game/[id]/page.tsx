@@ -1100,96 +1100,95 @@ useEffect(() => {
       )}
 
       {/* Header */}
-      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
-        <div className="grid grid-cols-6 gap-4 text-center">
-          <div>
-            <p className="text-white font-bold text-lg">{walletBalance} ብር</p>
-            <p className="text-white/60 text-xs">Balance</p>
-          </div>
-          <div>
-<p className="text-white font-bold text-lg">{(game.currentPlayers||0)*10*0.8} ብር</p>
-            <p className="text-white/60 text-xs">Pot</p>
-          </div>
-          <div>
-            <p className="text-white font-bold text-lg">{game.currentPlayers || 0}</p>
-            <p className="text-white/60 text-xs">Players</p>
-          </div>
-          <div>
-            <p className="text-white font-bold text-lg">10 ብር</p>
-            <p className="text-white/60 text-xs">Bet</p>
-          </div>
-          <div>
-            <p className="text-white font-bold text-lg">
-              {selectedNumber ? `#${selectedNumber}` : 'N/A'}
-            </p>
-            <p className="text-white/60 text-xs">Your Card</p>
-          </div>
-          <div>
-            <p className="text-white font-bold text-lg">{allCalledNumbers.length}/75</p>
-            <p className="text-white/60 text-xs">Called</p>
-          </div>
-        </div>
+     <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
+  <div className="grid grid-cols-6 gap-4 text-center">
+    <div>
+      <p className="text-white font-bold text-base">{walletBalance} ብር</p>
+      <p className="text-white/60 text-xs">Balance</p>
+    </div>
+    <div>
+      <p className="text-white font-bold text-base">{(game.currentPlayers||0)*10*0.8} ብር</p>
+      <p className="text-white/60 text-xs">Pot</p>
+    </div>
+    <div>
+      <p className="text-white font-bold text-base">{game.currentPlayers || 0}</p>
+      <p className="text-white/60 text-xs">Players</p>
+    </div>
+    <div>
+      <p className="text-white font-bold text-base">10 ብር</p>
+      <p className="text-white/60 text-xs">Bet</p>
+    </div>
+    <div>
+      <p className="text-white font-bold text-base">
+        {selectedNumber ? `#${selectedNumber}` : 'N/A'}
+      </p>
+      <p className="text-white/60 text-xs">Your Card</p>
+    </div>
+    <div>
+      <p className="text-white font-bold text-base">{allCalledNumbers.length}/75</p>
+      <p className="text-white/60 text-xs">Called</p>
+    </div>
+  </div>
 
-        {/* Game Status Badge */}
+  {/* Game Status Badge */}
+  <div className={`px-4 py-1 rounded-full text-xs font-medium ${
+    game.status === 'WAITING_FOR_PLAYERS' ? 'bg-yellow-500/20 text-yellow-300' :
+    game.status === 'CARD_SELECTION' ? 'bg-blue-500/20 text-blue-300' :
+    game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
+    game.status === 'NO_WINNER' ? 'bg-red-500/20 text-red-300' :
+    'bg-gray-500/20 text-gray-300'
+  }`}>
+    {game.status === 'WAITING_FOR_PLAYERS' ? '⏳ Waiting for players' :
+     game.status === 'CARD_SELECTION' ? '🎲 Card Selection' :
+     game.status === 'ACTIVE' ? '🎮 Game Active' :
+     game.status === 'NO_WINNER' ? '🏁 No Winner (Refunded)' :
+     '🏁 Game Ended'}
+  </div>
 
-<div className={`px-4 py-1 rounded-full text-sm font-medium ${
-  game.status === 'WAITING_FOR_PLAYERS' ? 'bg-yellow-500/20 text-yellow-300' :
-  game.status === 'CARD_SELECTION' ? 'bg-blue-500/20 text-blue-300' :
-  game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
-  game.status === 'NO_WINNER' ? 'bg-red-500/20 text-red-300' :
-  'bg-gray-500/20 text-gray-300'
-}`}>
-  {game.status === 'WAITING_FOR_PLAYERS' ? '⏳ Waiting for players' :
-   game.status === 'CARD_SELECTION' ? '🎲 Card Selection' :
-   game.status === 'ACTIVE' ? '🎮 Game Active' :
-   game.status === 'NO_WINNER' ? '🏁 No Winner (Refunded)' :
-   '🏁 Game Ended'}
-</div>
+  {/* Spectator Mode Message */}
+  {isSpectatorMode && spectatorMessage && (
+    <div className="mt-3 p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
+      <p className="text-blue-300 text-xs text-center">{spectatorMessage}</p>
+      {game.status === 'WAITING_FOR_PLAYERS' && (
+        <button
+          onClick={() => router.push('/')}
+          className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-lg text-xs mx-auto block hover:bg-blue-600 transition-all"
+        >
+          Join Game
+        </button>
+      )}
+    </div>
+  )}
 
-        {/* Spectator Mode Message */}
-        {isSpectatorMode && spectatorMessage && (
-          <div className="mt-3 p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
-            <p className="text-blue-300 text-sm text-center">{spectatorMessage}</p>
-            {game.status === 'WAITING_FOR_PLAYERS' && (
-              <button
-                onClick={() => router.push('/')}
-                className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-lg text-sm mx-auto block hover:bg-blue-600 transition-all"
-              >
-                Join Game
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Card Error Display */}
-        {cardError && !isSpectatorMode && (
-          <div className="mt-3 p-3 bg-red-500/20 rounded-lg border border-red-500/30">
-            <p className="text-red-300 text-sm text-center">{cardError}</p>
-            <div className="flex gap-2 justify-center mt-2">
-              <button
-                onClick={() => {
-                  setIsLoadingCard(true);
-                  setCardError('');
-                  hasCardCheckedRef.current = false;
-                  initializeUserCard(true);
-                }}
-                className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-600 transition-all"
-              >
-                Retry
-              </button>
-              <button
-                onClick={() => {
-                  setIsSpectatorMode(true);
-                  setCardError('');
-                }}
-                className="bg-white/20 text-white px-4 py-2 rounded-lg text-sm hover:bg-white/30 transition-all"
-              >
-                Watch Spectator
-              </button>
-            </div>
-          </div>
-        )}
+  {/* Card Error Display */}
+  {cardError && !isSpectatorMode && (
+    <div className="mt-3 p-3 bg-red-500/20 rounded-lg border border-red-500/30">
+      <p className="text-red-300 text-xs text-center">{cardError}</p>
+      <div className="flex gap-2 justify-center mt-2">
+        <button
+          onClick={() => {
+            setIsLoadingCard(true);
+            setCardError('');
+            hasCardCheckedRef.current = false;
+            initializeUserCard(true);
+          }}
+          className="bg-red-500 text-white px-4 py-2 rounded-lg text-xs hover:bg-red-600 transition-all"
+        >
+          Retry
+        </button>
+        <button
+          onClick={() => {
+            setIsSpectatorMode(true);
+            setCardError('');
+          }}
+          className="bg-white/20 text-white px-4 py-2 rounded-lg text-xs hover:bg-white/30 transition-all"
+        >
+          Watch Spectator
+        </button>
       </div>
+    </div>
+  )}
+</div>
 
       {/* Remove this section - it's no longer needed here */}
       {/* 
