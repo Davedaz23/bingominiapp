@@ -89,6 +89,7 @@ export default function GamePage() {
   const [isLoadingCard, setIsLoadingCard] = useState<boolean>(true);
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
+const [initializationAttempted, setInitializationAttempted] = useState(false);
 
   const [currentCalledNumber, setCurrentCalledNumber] = useState<{
     number: number;
@@ -536,107 +537,67 @@ useEffect(() => {
   ]);
 
   // FIXED: Start polling
-  const startPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-    }
-
-    pollingRef.current = setInterval(() => {
-      updateGameState();
-    }, POLL_INTERVAL);
-  }, [updateGameState, POLL_INTERVAL]);
-  // Real-time wallet balance polling during active games
-
-useEffect(() => {
-  if (game?.status === 'ACTIVE' && !showWinnerModal) {
-    console.log('💰 Starting wallet balance polling during active game...');
-    
-    // Refresh immediately when game becomes active
-    refreshWalletBalance();
-    
-    // Then poll every 5 seconds
-    const walletPollingInterval = setInterval(() => {
-      refreshWalletBalance();
-    }, 5000);
-    
-    return () => {
-      clearInterval(walletPollingInterval);
-      console.log('💰 Stopped wallet balance polling');
-    };
-  }
-}, [game?.status, showWinnerModal, refreshWalletBalance]);
-  // FIXED: Main initialization - simplified and reliable
-  useEffect(() => {
-    if (hasInitializedRef.current) return;
-
-    const initializeGame = async () => {
-      try {
-        console.log('🎮 Initializing game page...');
-        hasInitializedRef.current = true;
-
-        // Load wallet balance
-        // await loadWalletBalance();
-
-        // Wait for game data if still loading
-        if (isLoading) {
-          console.log('⏳ Waiting for game data...');
-          return;
-        }
-
-        if (!game) {
-          setCardError('Game not found. Redirecting to lobby...');
-          setTimeout(() => router.push('/'), 1000);
-          return;
-        }
-
-        // Initialize user card
-        await initializeUserCard();
-
-        // Set initial called numbers
-        if (game.numbersCalled && game.numbersCalled.length > 0) {
-          setAllCalledNumbers(game.numbersCalled);
-
-          const lastNumber = game.numbersCalled[game.numbersCalled.length - 1];
-          if (lastNumber) {
-            setCurrentCalledNumber({
-              number: lastNumber,
-              letter: getNumberLetter(lastNumber),
-              isNew: false
-            });
-          }
-        }
-
-        // Store initial game state
-        lastGameStateRef.current = game;
-
-        // Start polling if game is active
-        if (game.status === 'ACTIVE') {
-          startPolling();
-        }
-
-      } catch (error) {
-        console.error('Failed to initialize game:', error);
-        setCardError('Failed to initialize game. Please refresh.');
-
-        // Ensure we exit loading state
-        setIsLoadingCard(false);
-      }
-    };
-
-    initializeGame();
-
-    return () => {
-      // Cleanup
-      if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
+const startPolling = useCallback(() => {
+  if (pollingRef.current) return; // Don't start multiple polls
+  
+  console.log('📡 Starting efficient polling...');
+  
+  // Initial immediate update
+  updateGameState(true);
+  
+  // Then poll at reasonable intervals
+  pollingRef.current = setInterval(() => {
+    // Only update if game is still active
+    if (game?.status === 'ACTIVE' && !showWinnerModal) {
+      updateGameState(false);
+    } else {
+      // Clean up if game is no longer active
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
-      if (cardUpdateTimeoutRef.current) clearTimeout(cardUpdateTimeoutRef.current);
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-    };
-  }, [game, isLoading, initializeUserCard, router, startPolling]);
+    }
+  }, POLL_INTERVAL);
+}, [updateGameState, game?.status, showWinnerModal, POLL_INTERVAL]);
+  // Real-time wallet balance polling during active games
+
+useEffect(() => {
+  if (initializationAttempted) return;
+  
+  const initializeGame = async () => {
+    try {
+      setInitializationAttempted(true);
+      console.log('🎮 Initializing game page...');
+      
+      // SIMPLIFIED: Only initialize what's absolutely necessary
+      if (!game) {
+        setCardError('Game not found. Redirecting to lobby...');
+        setTimeout(() => router.push('/'), 1000);
+        return;
+      }
+      
+      // Quick card check - with timeout
+      const cardCheckTimeout = setTimeout(() => {
+        if (isLoadingCard) {
+          console.log('⏱️ Card check timeout, proceeding...');
+          setIsLoadingCard(false);
+        }
+      }, 3000);
+      
+      await initializeUserCard();
+      clearTimeout(cardCheckTimeout);
+      
+    } catch (error) {
+      console.error('Failed to initialize game:', error);
+      // Don't block the UI - let user see the game
+      setIsLoadingCard(false);
+    }
+  };
+  
+  if (!isLoading && game && !initializationAttempted) {
+    initializeGame();
+  }
+}, [game, isLoading, router, initializeUserCard, initializationAttempted]);
 
   // FIXED: Effect to handle game status changes
 // Replace the useEffect that handles game status changes with this:

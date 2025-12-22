@@ -298,60 +298,45 @@ const formatTime = (milliseconds: number) => {
   // 1. User has card in ACTIVE game
   // 2. OR Game is ACTIVE (even if user doesn't have card yet - redirect as spectator/late entry)
   // ==================== SIMPLIFIED REDIRECT LOGIC ====================
+
 useEffect(() => {
   // Don't redirect during loading states
   if (isCheckingPlayerStatus || pageLoading || autoRedirected) return;
   
-  console.log('🔍 Redirect check:', {
+  console.log('🔍 Redirect check - Simplified:', {
     gameStatus,
     hasCardInActiveGame,
-    playerGameStatus,
-    activeGamesCount: activeGames.length,
-    autoRedirected
+    playerGameStatus
   });
   
-  // Condition 1: User has card in ACTIVE game
-  if (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && playerGameId) {
-    console.log(`🚨 Player has card in ACTIVE game, redirecting to game ${playerGameId}`);
-    setAutoRedirected(true);
-    router.push(`/game/${playerGameId}`);
-    return;
-  }
+  // ONLY redirect if game is ACTIVE in main state OR player has card in ACTIVE game
+  const shouldRedirect = 
+    gameStatus === 'ACTIVE' || 
+    (hasCardInActiveGame && playerGameStatus === 'ACTIVE');
   
-  // Condition 2: Game is ACTIVE in the main game state
-  if (gameStatus === 'ACTIVE' && !hasCardInActiveGame) {
-    console.log('🎮 Main game is ACTIVE, looking for active game to join/watch');
+  if (shouldRedirect) {
+    console.log('🚨 Redirecting to game...');
     
-    // Find the active game
-    if (activeGames.length > 0) {
-      const activeGame = activeGames[0];
-      console.log(`🔗 Redirecting to active game: ${activeGame._id}`);
+    // Find the game to redirect to
+    const targetGameId = playerGameId || (activeGames[0]?._id);
+    
+    if (targetGameId) {
       setAutoRedirected(true);
-      router.push(`/game/${activeGame._id}?spectator=true`);
-    } else {
-      // If no active game found, try to get one
-      console.log('⚠️ No active games found in list, checking API...');
-      loadActiveGames(); // Refresh active games list
+      
+      // Redirect as spectator if no card, otherwise join with card
+      const queryParams = hasCardInActiveGame ? '' : '?spectator=true';
+      router.push(`/game/${targetGameId}${queryParams}`);
     }
-    return;
-  }
-  
-  // Condition 3: Any waiting game is available for card selection
-  if (gameStatus === 'WAITING_FOR_PLAYERS' && !hasCardInActiveGame) {
-    console.log('⏳ Game is waiting for players - staying on card selection page');
-    // Stay on this page for card selection
-    return;
   }
 }, [
-  hasCardInActiveGame, 
-  playerGameStatus, 
-  playerGameId,
-  playerCardNumber,
   gameStatus,
+  hasCardInActiveGame,
+  playerGameStatus,
+  playerGameId,
   activeGames,
-  isCheckingPlayerStatus, 
-  pageLoading, 
-  autoRedirected, 
+  isCheckingPlayerStatus,
+  pageLoading,
+  autoRedirected,
   router
 ]);
 
@@ -601,29 +586,21 @@ console.log("Defar game",playerGameStatus+" = "+shouldDisableCardSelection);
       )}
 
       {/* GAME ACTIVE NOTIFICATION (for users without card) */}
-      {gameStatus === 'ACTIVE' && !hasCardInActiveGame && (
-        <motion.div 
-          className="bg-blue-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center gap-3">
-            <Users className="w-5 h-5 text-blue-300" />
-            <div className="flex-1">
-              <p className="text-blue-300 font-bold text-sm">
-                Game in Progress!
-              </p>
-              <p className="text-blue-200 text-xs">
-                A game is currently active. You can watch or join late.
-              </p>
-            </div>
-            <div className="bg-blue-500/30 px-3 py-1 rounded-full animate-pulse">
-              <span className="text-blue-300 font-bold text-xs">Live</span>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
+    {gameStatus === 'ACTIVE' && !hasCardInActiveGame && (
+  <motion.div 
+    className="bg-blue-500/10 backdrop-blur-lg rounded-xl p-3 mb-4 border border-blue-500/20"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+  >
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+        <p className="text-blue-300 text-sm">Game in progress...</p>
+      </div>
+      <p className="text-blue-200 text-xs">Redirecting...</p>
+    </div>
+  </motion.div>
+)}
       {/* BALANCE WARNING */}
       {!hasCardInActiveGame && effectiveWalletBalance < 10 && (
         <motion.div 
