@@ -1058,6 +1058,7 @@ console.log("Defar game",playerGameStatus+" = "+shouldDisableCardSelection);
                 🎮 A game is currently active - Redirecting to watch...
               </p>
             </div>
+            
           )}
         </div>
       </motion.div>
