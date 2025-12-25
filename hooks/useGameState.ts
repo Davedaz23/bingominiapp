@@ -255,7 +255,7 @@ export const useGameState = () => {
       // Check auto-start every 5 seconds
       const interval = setInterval(() => {
         checkAutoStart(gameData._id);
-      }, 5000);
+      }, 20000);
 
       return () => {
         console.log('🛑 Stopping auto-start polling');
