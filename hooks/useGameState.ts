@@ -114,10 +114,10 @@ export const useGameState = () => {
         await fetchGameData(game);
         console.log('✅ Game found (waiting check):', game?._id, 'status:', status);
         
-        // Check auto-start status
-        if (game._id) {
-          checkAutoStart(game._id);
-        }
+        // // Check auto-start status
+        // if (game._id) {
+        //   checkAutoStart(game._id);
+        // }
         return true;
       }
       
@@ -147,47 +147,47 @@ export const useGameState = () => {
   }, [fetchGameData]);
 
   // Auto-start check function
-  const checkAutoStart = useCallback(async (gameId: string) => {
-    try {
-      console.log('🔍 Checking auto-start for game:', gameId);
+  // const checkAutoStart = useCallback(async (gameId: string) => {
+  //   try {
+  //     console.log('🔍 Checking auto-start for game:', gameId);
       
-      const response = await gameAPI.checkAutoStart(gameId);
-      console.log('📦 Auto-start response:', response.data);
+  //     const response = await gameAPI.checkAutoStart(gameId);
+  //     console.log('📦 Auto-start response:', response.data);
       
-      if (response.data.success && response.data.autoStartInfo) {
-        const { willAutoStart, timeRemaining, playersWithCards } = response.data.autoStartInfo;
+  //     if (response.data.success && response.data.autoStartInfo) {
+  //       const { willAutoStart, timeRemaining, playersWithCards } = response.data.autoStartInfo;
         
-        setHasAutoStartTimer(willAutoStart);
-        setAutoStartTimeRemaining(timeRemaining);
-        setPlayersWithCards(playersWithCards);
+  //       setHasAutoStartTimer(willAutoStart);
+  //       setAutoStartTimeRemaining(timeRemaining);
+  //       setPlayersWithCards(playersWithCards);
         
-        console.log('📊 Auto-start status:', {
-          willAutoStart,
-          timeRemaining: `${Math.floor(timeRemaining / 1000)}s`,
-          playersWithCards
-        });
+  //       console.log('📊 Auto-start status:', {
+  //         willAutoStart,
+  //         timeRemaining: `${Math.floor(timeRemaining / 1000)}s`,
+  //         playersWithCards
+  //       });
         
-        // If auto-start is scheduled, start countdown
-        if (willAutoStart && timeRemaining > 0) {
-          console.log('⏰ Auto-start scheduled, starting countdown...');
-        }
-      } else if (response.data.success && response.data.gameStarted) {
-        console.log('✅ Game already started');
-        setHasAutoStartTimer(false);
-        setAutoStartTimeRemaining(0);
-        // Refresh game status since game is active
-        setTimeout(() => checkGameStatus(), 1000);
-      } else {
-        console.log('⏳ Auto-start not scheduled yet');
-        setHasAutoStartTimer(false);
-        setAutoStartTimeRemaining(0);
-      }
-    } catch (error: any) {
-      console.error('❌ Auto-start check failed:', error.message);
-      setHasAutoStartTimer(false);
-      setAutoStartTimeRemaining(0);
-    }
-  }, [checkGameStatus]);
+  //       // If auto-start is scheduled, start countdown
+  //       if (willAutoStart && timeRemaining > 0) {
+  //         console.log('⏰ Auto-start scheduled, starting countdown...');
+  //       }
+  //     } else if (response.data.success && response.data.gameStarted) {
+  //       console.log('✅ Game already started');
+  //       setHasAutoStartTimer(false);
+  //       setAutoStartTimeRemaining(0);
+  //       // Refresh game status since game is active
+  //       setTimeout(() => checkGameStatus(), 1000);
+  //     } else {
+  //       console.log('⏳ Auto-start not scheduled yet');
+  //       setHasAutoStartTimer(false);
+  //       setAutoStartTimeRemaining(0);
+  //     }
+  //   } catch (error: any) {
+  //     console.error('❌ Auto-start check failed:', error.message);
+  //     setHasAutoStartTimer(false);
+  //     setAutoStartTimeRemaining(0);
+  //   }
+  // }, [checkGameStatus]);
 
   // Real-time countdown for restart cooldown
   useEffect(() => {
@@ -248,29 +248,29 @@ export const useGameState = () => {
   }, [hasAutoStartTimer, autoStartTimeRemaining, checkGameStatus]);
 
   // Poll for auto-start updates when game is WAITING
-  useEffect(() => {
-    if (gameStatus === 'WAITING_FOR_PLAYERS' && gameData?._id && !hasAutoStartTimer) {
-      console.log('🔄 Starting auto-start polling for waiting game');
+  // useEffect(() => {
+  //   if (gameStatus === 'WAITING_FOR_PLAYERS' && gameData?._id && !hasAutoStartTimer) {
+  //     console.log('🔄 Starting auto-start polling for waiting game');
       
-      // Check auto-start every 5 seconds
-      const interval = setInterval(() => {
-        checkAutoStart(gameData._id);
-      }, 20000);
+  //     // Check auto-start every 5 seconds
+  //     const interval = setInterval(() => {
+  //       checkAutoStart(gameData._id);
+  //     }, 20000);
 
-      return () => {
-        console.log('🛑 Stopping auto-start polling');
-        clearInterval(interval);
-      };
-    }
-  }, [gameStatus, gameData, hasAutoStartTimer, checkAutoStart]);
+  //     return () => {
+  //       console.log('🛑 Stopping auto-start polling');
+  //       clearInterval(interval);
+  //     };
+  //   }
+  // }, [gameStatus, gameData, hasAutoStartTimer, checkAutoStart]);
 
   // Initial auto-start check when game status changes to WAITING
-  useEffect(() => {
-    if (gameData?._id && gameStatus === 'WAITING_FOR_PLAYERS') {
-      console.log('🔄 Initial auto-start check for waiting game');
-      checkAutoStart(gameData._id);
-    }
-  }, [gameData, gameStatus, checkAutoStart]);
+  // useEffect(() => {
+  //   if (gameData?._id && gameStatus === 'WAITING_FOR_PLAYERS') {
+  //     console.log('🔄 Initial auto-start check for waiting game');
+  //     checkAutoStart(gameData._id);
+  //   }
+  // }, [gameData, gameStatus, checkAutoStart]);
 
   // Game status polling
   useEffect(() => {
@@ -348,6 +348,6 @@ export const useGameState = () => {
     refreshGameById,
     setGameData,
     setGameStatus,
-    checkAutoStart
+    // checkAutoStart
   };
 };
