@@ -61,6 +61,59 @@ export default function Home() {
   // Use refs to prevent multiple initialization calls
   const initializedRef = useRef(false);
   const redirectingRef = useRef(false);
+  const balanceRefreshTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const balanceCallCountRef = useRef(0);
+  const lastBalanceUpdateRef = useRef<number>(0);
+
+  // ==================== DEBOUNCED BALANCE REFRESH ====================
+  const refreshWalletBalanceLocal = useCallback(async (force: boolean = false) => {
+    // Prevent too many calls - limit to once per 5 seconds
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastBalanceUpdateRef.current;
+    
+    if (!force && timeSinceLastUpdate < 5000) {
+      console.log('⏳ Skipping balance refresh - too soon');
+      return;
+    }
+
+    // Clear any pending timeout
+    if (balanceRefreshTimeoutRef.current) {
+      clearTimeout(balanceRefreshTimeoutRef.current);
+      balanceRefreshTimeoutRef.current = null;
+    }
+
+    try {
+      setIsRefreshingBalance(true);
+      
+      // Use Promise.race with timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Balance fetch timeout')), 10000);
+      });
+
+      const balancePromise = walletAPIAuto.getBalance();
+      const response = await Promise.race([balancePromise, timeoutPromise]) as any;
+      
+      if (response?.data?.balance !== undefined) {
+        setLocalWalletBalance(response.data.balance);
+        lastBalanceUpdateRef.current = Date.now();
+        balanceCallCountRef.current++;
+        console.log(`✅ Balance updated: ${response.data.balance} (call #${balanceCallCountRef.current})`);
+      }
+
+      // Also call the auth context refresh if available
+      if (refreshWalletBalance && balanceCallCountRef.current % 3 === 0) {
+        // Only call this every 3rd balance update to reduce load
+        await refreshWalletBalance();
+      }
+    } catch (error) {
+      console.error('❌ Failed to refresh wallet balance:', error);
+      // Don't update the balance on error
+    } finally {
+      setIsRefreshingBalance(false);
+    }
+  }, [refreshWalletBalance]);
+
+  const effectiveWalletBalance = localWalletBalance > 0 ? localWalletBalance : walletBalance;
 
   // ==================== IMMEDIATE REDIRECT FOR ACTIVE GAMES ====================
   useEffect(() => {
@@ -76,25 +129,7 @@ export default function Home() {
     }
   }, [gameStatus, gameData, router]);
 
-  // ==================== REFRESH WALLET BALANCE ====================
-  const refreshWalletBalanceLocal = useCallback(async () => {
-    try {
-      setIsRefreshingBalance(true);
-      if (refreshWalletBalance) {
-        await refreshWalletBalance();
-      }
-      const response = await walletAPIAuto.getBalance();
-      setLocalWalletBalance(response.data.balance);
-    } catch (error) {
-      console.error('❌ Failed to refresh wallet balance:', error);
-    } finally {
-      setIsRefreshingBalance(false);
-    }
-  }, [refreshWalletBalance]);
-
-  const effectiveWalletBalance = localWalletBalance > 0 ? localWalletBalance : walletBalance;
-
-  // ==================== FETCH GAME PARTICIPANTS ====================
+  // ==================== OPTIMIZED FETCH GAME PARTICIPANTS ====================
   useEffect(() => {
     // Don't fetch if we're redirecting or if there's no game
     if (redirectingRef.current || !gameData?._id || gameStatus === 'ACTIVE') {
@@ -103,10 +138,17 @@ export default function Home() {
 
     const fetchGameParticipants = async () => {
       try {
-        const response = await gameAPI.getGameParticipants(gameData._id);
-        if (response.data.success) {
+        // Add timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Participants fetch timeout')), 8000);
+        });
+
+        const participantsPromise = gameAPI.getGameParticipants(gameData._id);
+        const response = await Promise.race([participantsPromise, timeoutPromise]) as any;
+        
+        if (response?.data?.success) {
           const participants = response.data.participants || [];
-          const playersWithCardsCount = participants.filter(p => p.hasCard).length;
+          const playersWithCardsCount = participants.filter((p: any) => p.hasCard).length;
           setPlayersWithCards(playersWithCardsCount);
         }
       } catch (error) {
@@ -116,8 +158,8 @@ export default function Home() {
 
     fetchGameParticipants();
     
-    // Only set interval if we're not redirecting
-    const interval = setInterval(fetchGameParticipants, 5000);
+    // Use longer interval to reduce load
+    const interval = setInterval(fetchGameParticipants, 10000); // Increased from 5s to 10s
     return () => clearInterval(interval);
   }, [gameData?._id, gameStatus]);
 
@@ -146,8 +188,14 @@ export default function Home() {
       try {
         // Only initialize once
         if (!initializedRef.current) {
-          await refreshWalletBalanceLocal();
+          // Initialize game state first (most important)
           await initializeGameState();
+          
+          // Then refresh balance with delay to spread out API calls
+          setTimeout(() => {
+            refreshWalletBalanceLocal();
+          }, 1000);
+          
           initializedRef.current = true;
           console.log('✅ App initialization complete');
         }
@@ -164,6 +212,12 @@ export default function Home() {
       // Reset refs on unmount
       initializedRef.current = false;
       redirectingRef.current = false;
+      
+      // Clear any pending timeouts
+      if (balanceRefreshTimeoutRef.current) {
+        clearTimeout(balanceRefreshTimeoutRef.current);
+        balanceRefreshTimeoutRef.current = null;
+      }
     };
   }, [authLoading, isAuthenticated, user, initializeGameState, refreshWalletBalanceLocal]);
 
@@ -173,6 +227,23 @@ export default function Home() {
       initializedRef.current = false;
     }
   }, [isAuthenticated]);
+
+  // ==================== PERIODIC BALANCE CHECK ====================
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    
+    // Check balance every 30 seconds, not constantly
+    const interval = setInterval(() => {
+      refreshWalletBalanceLocal();
+    }, 30000); // 30 seconds
+    
+    return () => {
+      clearInterval(interval);
+      if (balanceRefreshTimeoutRef.current) {
+        clearTimeout(balanceRefreshTimeoutRef.current);
+      }
+    };
+  }, [isAuthenticated, user, refreshWalletBalanceLocal]);
 
   // ==================== SHOW LOADING SCREENS ====================
   // If game is active and we have game data, show redirect loading
@@ -231,13 +302,13 @@ export default function Home() {
             <div className="flex-1">
               <p className="text-red-300 font-bold text-sm">Insufficient Balance</p>
               <p className="text-red-200 text-xs">
-                You need 10 ብር to play. Current: {effectiveWalletBalance} ብር
+                You need 10 ብር to play. Current: {effectiveWalletBalance.toFixed(2)} ብር
               </p>
             </div>
             <button
-              onClick={refreshWalletBalanceLocal}
+              onClick={() => refreshWalletBalanceLocal(true)} // Force refresh
               disabled={isRefreshingBalance}
-              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50 flex items-center gap-1"
+              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50 flex items-center gap-1 min-w-[100px]"
             >
               {isRefreshingBalance ? (
                 <>
@@ -358,7 +429,7 @@ export default function Home() {
               : selectedNumber && effectiveWalletBalance >= 10
               ? `✅ Card ${selectedNumber} selected - Waiting for game to start`
               : effectiveWalletBalance < 10
-              ? `💡 Add balance to play (Current: ${effectiveWalletBalance} ብር)`
+              ? `💡 Add balance to play (Current: ${effectiveWalletBalance.toFixed(2)} ብር)`
               : 'Select your card number to play!'}
           </p>
           
