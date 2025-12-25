@@ -1,37 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/page.tsx - OPTIMIZED (with reduced API calls)
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
-import { gameAPI, walletAPIAuto } from '../services/api';
+import { gameAPI } from '../services/api';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-
-// Import all components
-import { BingoCardPreview } from '../components/bingo/BingoCardPreview';
+import { useGameState } from '../hooks/useGameState';
+import { useCardSelection } from '../hooks/useCardSelection';
+import { Clock, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
 import { UserInfoDisplay } from '../components/user/UserInfoDisplay';
 import { AdminControls } from '../components/admin/AdminControls';
 import { ModeratorControls } from '../components/admin/ModeratorControls';
 import { GameStatusDisplay } from '../components/game/GameStatusDisplay';
-
-// Import hooks
-import { useGameState } from '../hooks/useGameState';
-import { useCardSelection } from '../hooks/useCardSelection';
-import { Clock, Check, Rocket, AlertCircle, RefreshCw, Users } from 'lucide-react';
-
-// Debounce function to limit API calls
-const debounce = <T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
-): ((...args: Parameters<T>) => void) => {
-  let timeout: NodeJS.Timeout;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-};
 
 export default function Home() {
   const { 
@@ -41,182 +23,163 @@ export default function Home() {
     isAdmin, 
     isModerator, 
     userRole, 
-    walletBalance,
-    refreshWalletBalance
+    walletBalance
   } = useAuth();
 
   const router = useRouter();
   
-  // Use custom hooks
+  // Game state
   const {
     gameStatus,
     restartCountdown,
-    currentPlayers,
     gameData,
-    calledNumbers,
     pageLoading,
-    checkGameStatus,
     initializeGameState,
-    autoStartTimeRemaining,
-    hasAutoStartTimer
   } = useGameState();
 
+  // Card selection
   const {
     selectedNumber,
     bingoCard,
     availableCards,
     takenCards,
-    cardSelectionStatus,
-    cardSelectionError,
-    shouldEnableCardSelection,
     handleCardSelect,
-    handleCardRelease,
-    setCardSelectionError,
   } = useCardSelection(gameData, gameStatus);
 
-  const [joinError, setJoinError] = useState<string>('');
+  // Local states
   const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
-  const [gameParticipants, setGameParticipants] = useState<any[]>([]);
   const [playersWithCards, setPlayersWithCards] = useState<number>(0);
-  const [activeGames, setActiveGames] = useState<any[]>([]);
-  const [loadingActiveGames, setLoadingActiveGames] = useState<boolean>(false);
-
-  // NEW STATES FOR PLAYER'S CARD IN ACTIVE GAME
   const [hasCardInActiveGame, setHasCardInActiveGame] = useState<boolean>(false);
-  const [playerGameId, setPlayerGameId] = useState<string | null>(null);
   const [playerCardNumber, setPlayerCardNumber] = useState<number | null>(null);
   const [playerGameStatus, setPlayerGameStatus] = useState<string | null>(null);
-  const [isCheckingPlayerStatus, setIsCheckingPlayerStatus] = useState<boolean>(false);
-
-  // Balance refresh states
-  const [localWalletBalance, setLocalWalletBalance] = useState<number>(0);
-  const [isRefreshingBalance, setIsRefreshingBalance] = useState<boolean>(false);
-
-  // Restart cooldown states
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
   const [restartCooldownRemaining, setRestartCooldownRemaining] = useState<number>(0);
 
-  // Card selection timer
-  const [cardSelectionTimeRemaining, setCardSelectionTimeRemaining] = useState<number>(0);
-  const [cardSelectionTotalDuration, setCardSelectionTotalDuration] = useState<number>(0);
+  // Refs for tracking
+  const isCheckingPlayerStatusRef = useRef<boolean>(false);
+  const lastPlayerCheckRef = useRef<number>(0);
+  const playerCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Refs to track intervals
-  const balanceRefreshIntervalRef = useState<NodeJS.Timeout | null>(null);
-  const activeGamesIntervalRef = useState<NodeJS.Timeout | null>(null);
-  const playerStatusIntervalRef = useState<NodeJS.Timeout | null>(null);
-  const participantsIntervalRef = useState<NodeJS.Timeout | null>(null);
+  // Format time
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
-  // ==================== CHECK IF USER HAS CARD IN ACTIVE GAME ====================
-  const checkPlayerCardInActiveGame = useCallback(async () => {
-    if (!user?.id || isCheckingPlayerStatus) return false;
+  // Check player card status - HEAVILY OPTIMIZED
+  const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
+    if (!user?.id || isCheckingPlayerStatusRef.current) return false;
     
+    // Throttle checks - min 30 seconds between checks
+    const now = Date.now();
+    if (!force && now - lastPlayerCheckRef.current < 30000) {
+      return hasCardInActiveGame;
+    }
+
     try {
-      setIsCheckingPlayerStatus(true);
-      console.log('🔄 Checking if player has card in active game...');
+      isCheckingPlayerStatusRef.current = true;
+      lastPlayerCheckRef.current = now;
       
-      // Use cached activeGames if available
-      if (activeGames.length > 0) {
-        for (const game of activeGames) {
-          if (game.status === 'ACTIVE' || game.status === 'WAITING_FOR_PLAYERS') {
-            const participantsResponse = await gameAPI.getGameParticipants(game._id);
-            if (participantsResponse.data.success) {
-              const participants = participantsResponse.data.participants || [];
-              const playerParticipant = participants.find((p: any) => p.userId === user.id);
-              
-              if (playerParticipant && playerParticipant.hasCard) {
-                console.log(`✅ Player has card #${playerParticipant.cardNumber} in game with status: ${game.status}`);
-                setHasCardInActiveGame(true);
-                setPlayerGameId(game._id);
-                setPlayerCardNumber(playerParticipant.cardNumber || 0);
-                setPlayerGameStatus(game.status);
-                setIsCheckingPlayerStatus(false);
-                return true;
-              }
+      console.log('🔄 Checking player card status...');
+      
+      // Single API call approach
+      const response = await gameAPI.getActiveGames();
+      
+      if (response.data.success && response.data.games.length > 0) {
+        const game = response.data.games[0];
+        
+        if (game.status === 'ACTIVE' || game.status === 'WAITING_FOR_PLAYERS') {
+          const participantsResponse = await gameAPI.getGameParticipants(game._id);
+          
+          if (participantsResponse.data.success) {
+            const participants = participantsResponse.data.participants || [];
+            const playerParticipant = participants.find((p: any) => p.userId === user.id);
+            
+            if (playerParticipant?.hasCard) {
+              console.log(`✅ Player has card #${playerParticipant.cardNumber}`);
+              setHasCardInActiveGame(true);
+              setPlayerCardNumber(playerParticipant.cardNumber||0);
+              setPlayerGameStatus(game.status);
+              isCheckingPlayerStatusRef.current = false;
+              return true;
             }
           }
         }
       }
       
-      // If not found in cached games, do a fresh check
-      const waitingGamesResponse = await gameAPI.getWaitingGames();
-      
-      if (waitingGamesResponse.data.success && waitingGamesResponse.data.games.length > 0) {
-        const waitingGame = waitingGamesResponse.data.games[0];
-        
-        const participantsResponse = await gameAPI.getGameParticipants(waitingGame._id);
-        if (participantsResponse.data.success) {
-          const participants = participantsResponse.data.participants || [];
-          const playerParticipant = participants.find((p: any) => p.userId === user.id);
-          
-          if (playerParticipant && playerParticipant.hasCard) {
-            console.log(`✅ Player has card #${playerParticipant.cardNumber} in waiting game`);
-            setHasCardInActiveGame(true);
-            setPlayerGameId(waitingGame._id);
-            setPlayerCardNumber(playerParticipant.cardNumber || 0);
-            setPlayerGameStatus(waitingGame.status);
-            setIsCheckingPlayerStatus(false);
-            return true;
-          }
-        }
-      }
-      
-      // If we get here, player doesn't have a card in any active game
+      // No card found
       setHasCardInActiveGame(false);
-      setPlayerGameId(null);
       setPlayerCardNumber(null);
       setPlayerGameStatus(null);
       return false;
-    } catch (error) {
-      console.error('❌ Error checking player card status:', error);
-      setHasCardInActiveGame(false);
-      setPlayerGameId(null);
-      setPlayerCardNumber(null);
-      setPlayerGameStatus(null);
-      return false;
-    } finally {
-      setIsCheckingPlayerStatus(false);
-    }
-  }, [user?.id, activeGames]);
-
-  // ==================== LOAD ACTIVE GAMES ====================
-  const loadActiveGames = useCallback(async () => {
-    try {
-      setLoadingActiveGames(true);
-      const response = await gameAPI.getActiveGames();
-      if (response.data.success) {
-        setActiveGames(response.data.games || []);
-        console.log('🎮 Active games loaded:', response.data.games.length);
-      }
-    } catch (error) {
-      console.error('❌ Failed to load active games:', error);
-    } finally {
-      setLoadingActiveGames(false);
-    }
-  }, []);
-
-  // ==================== REFRESH WALLET BALANCE FUNCTION ====================
-  const refreshWalletBalanceLocal = useCallback(async () => {
-    try {
-      setIsRefreshingBalance(true);
-      console.log('💰 Refreshing wallet balance...');
       
-      if (refreshWalletBalance) {
-        await refreshWalletBalance();
-      }
-      
-      const response = await walletAPIAuto.getBalance();
-      setLocalWalletBalance(response.data.balance);
     } catch (error) {
-      console.error('❌ Failed to refresh wallet balance:', error);
+      console.error('❌ Error checking player card:', error);
+      // Don't change state on error
+      return hasCardInActiveGame;
     } finally {
-      setIsRefreshingBalance(false);
+      isCheckingPlayerStatusRef.current = false;
     }
-  }, [refreshWalletBalance]);
+  }, [user?.id, hasCardInActiveGame]);
 
-  // ==================== USE CORRECT BALANCE SOURCE ====================
-  const effectiveWalletBalance = localWalletBalance > 0 ? localWalletBalance : walletBalance;
+  // Check for active game and redirect - SIMPLIFIED
+  useEffect(() => {
+    if (authLoading || pageLoading || autoRedirected) return;
+    
+    const shouldRedirect = gameStatus === 'ACTIVE' || 
+                          (hasCardInActiveGame && playerGameStatus === 'ACTIVE');
+    
+    if (shouldRedirect) {
+      console.log('🚨 Redirecting to game...');
+      setAutoRedirected(true);
+      
+      // Use gameData ID if available, otherwise use a placeholder
+      const gameId = gameData?._id || 'active';
+      const query = hasCardInActiveGame ? '' : '?spectator=true';
+      
+      router.push(`/game/${gameId}${query}`);
+    }
+  }, [gameStatus, hasCardInActiveGame, playerGameStatus, gameData, authLoading, pageLoading, autoRedirected, router]);
 
-  // ==================== UPDATE RESTART COOLDOWN FROM GAME DATA ====================
+  // Initialize - ONE TIME ONLY
+  useEffect(() => {
+    if (authLoading) return;
+
+    const init = async () => {
+      console.log('🚀 Initializing page...');
+      await initializeGameState();
+      
+      if (isAuthenticated && user) {
+        // Wait 5 seconds before checking player status to avoid immediate flooding
+        playerCheckTimeoutRef.current = setTimeout(() => {
+          checkPlayerCardInActiveGame(true);
+        }, 5000);
+      }
+    };
+
+    init();
+
+    return () => {
+      if (playerCheckTimeoutRef.current) {
+        clearTimeout(playerCheckTimeoutRef.current);
+      }
+    };
+  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame]);
+
+  // Periodic player check - VERY INFREQUENT
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+
+    // Check every 2 minutes
+    const interval = setInterval(() => {
+      checkPlayerCardInActiveGame();
+    }, 120000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, user, checkPlayerCardInActiveGame]);
+
+  // Update cooldown from gameData
   useEffect(() => {
     if (gameData) {
       const cooldown = gameData.hasRestartCooldown || false;
@@ -224,300 +187,41 @@ export default function Home() {
       
       setHasRestartCooldown(cooldown);
       setRestartCooldownRemaining(cooldownRemaining);
-      
-      if (cooldown && cooldownRemaining > 0) {
-        console.log(`⏳ Restart cooldown active: ${Math.ceil(cooldownRemaining/1000)}s remaining`);
-      }
     }
   }, [gameData]);
 
-  // ==================== FETCH GAME PARTICIPANTS WITH REDUCED FREQUENCY ====================
+  // Get players with cards from gameData
   useEffect(() => {
-    const fetchGameParticipants = async () => {
-      if (gameData?._id) {
-        try {
-          const response = await gameAPI.getGameParticipants(gameData._id);
-          if (response.data.success) {
-            const participants = response.data.participants || [];
-            setGameParticipants(participants);
-            
-            const playersWithCardsCount = participants.filter(p => p.hasCard).length;
-            setPlayersWithCards(playersWithCardsCount);
-            
-            console.log(`👥 Game participants: ${participants.length}, Players with cards: ${playersWithCardsCount}`);
-          }
-        } catch (error) {
-          console.error('❌ Failed to fetch game participants:', error);
-        }
-      }
-    };
-
-    // Initial fetch
-    fetchGameParticipants();
-    
-    // Only poll if game is WAITING_FOR_PLAYERS
-    if (gameStatus === 'WAITING_FOR_PLAYERS') {
-      const interval = setInterval(fetchGameParticipants, 10000); // Reduced from 5s to 10s
-      
-      return () => {
-        clearInterval(interval);
-      };
-    }
-  }, [gameData?._id, gameStatus]);
-
-  // Add this effect to update card selection countdown
-  useEffect(() => {
-    if (gameData && gameData.status === 'CARD_SELECTION' && gameData.cardSelectionTimeRemaining) {
-      setCardSelectionTimeRemaining(gameData.cardSelectionTimeRemaining);
-      setCardSelectionTotalDuration(gameData.cardSelectionTotalDuration || 30000);
-      
-      // Update the countdown every second
-      const interval = setInterval(() => {
-        setCardSelectionTimeRemaining(prev => {
-          const newValue = prev - 1000;
-          return newValue < 0 ? 0 : newValue;
-        });
-      }, 1000);
-      
-      return () => clearInterval(interval);
-    } else {
-      setCardSelectionTimeRemaining(0);
+    if (gameData?.playersWithCards !== undefined) {
+      setPlayersWithCards(gameData.playersWithCards);
     }
   }, [gameData]);
 
-  // Format time function
-  const formatTime = (milliseconds: number) => {
-    const seconds = Math.ceil(milliseconds / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
-
-  // ==================== LOAD ACTIVE GAMES ON INITIALIZATION ====================
-  useEffect(() => {
-    loadActiveGames();
-    
-    // Refresh active games every 30 seconds instead of 10
-    const interval = setInterval(loadActiveGames, 30000);
-    
-    return () => {
-      clearInterval(interval);
-    };
-  }, [loadActiveGames]);
-
-  // ==================== CHECK PLAYER'S CARD STATUS WITH REDUCED FREQUENCY ====================
-  useEffect(() => {
-    if (!user?.id || authLoading) return;
-    
-    const checkPlayerStatus = async () => {
-      await checkPlayerCardInActiveGame();
-    };
-    
-    // Initial check
-    checkPlayerStatus();
-    
-    // Check every 15 seconds instead of 5
-    const interval = setInterval(checkPlayerStatus, 15000);
-    
-    return () => {
-      clearInterval(interval);
-    };
-  }, [user?.id, authLoading, checkPlayerCardInActiveGame]);
-
-  // ==================== UPDATED REDIRECT LOGIC ====================
-  useEffect(() => {
-    // Don't redirect during loading states
-    if (isCheckingPlayerStatus || pageLoading || autoRedirected) return;
-    
-    console.log('🔍 Redirect check - Simplified:', {
-      gameStatus,
-      hasCardInActiveGame,
-      playerGameStatus
-    });
-    
-    // ONLY redirect if game is ACTIVE in main state OR player has card in ACTIVE game
-    const shouldRedirect = 
-      gameStatus === 'ACTIVE' || 
-      (hasCardInActiveGame && playerGameStatus === 'ACTIVE');
-    
-    if (shouldRedirect) {
-      console.log('🚨 Redirecting to game...');
-      
-      // Find the game to redirect to
-      const targetGameId = playerGameId || (activeGames[0]?._id);
-      
-      if (targetGameId) {
-        setAutoRedirected(true);
-        
-        // Redirect as spectator if no card, otherwise join with card
-        const queryParams = hasCardInActiveGame ? '' : '?spectator=true';
-        router.push(`/game/${targetGameId}${queryParams}`);
-      }
-    }
-  }, [
-    gameStatus,
-    hasCardInActiveGame,
-    playerGameStatus,
-    playerGameId,
-    activeGames,
-    isCheckingPlayerStatus,
-    pageLoading,
-    autoRedirected,
-    router
-  ]);
-
-  // ==================== FIXED: GAME INFO FOOTER MESSAGE ====================
-  const getGameStatusMessage = () => {
-    if (hasCardInActiveGame) {
-      if (playerGameStatus === 'ACTIVE') {
-        return `🎯 You have card #${playerCardNumber} in active game - Redirecting...`;
-      } else if (playerGameStatus === 'WAITING_FOR_PLAYERS') {
-        return `⏳ You have card #${playerCardNumber} - Waiting for game to start...`;
-      }
-      return `🎯 You have card #${playerCardNumber} in game`;
-    }
-
-    if (hasRestartCooldown) {
-      return `🔄 Game restarting in ${Math.ceil(restartCooldownRemaining / 1000)}s - Select your card now!`;
-    }
-
-    if (!selectedNumber && effectiveWalletBalance >= 10) {
-      switch (gameStatus) {
-        case 'WAITING_FOR_PLAYERS':
-          return '🎯 Select a card number to join the waiting game';
-        case 'ACTIVE':
-          return '🎮 Game in progress - Redirecting to watch...';
-        case 'FINISHED':
-          return `🔄 Select a card for the next game (starting in ${restartCountdown}s)`;
-        case 'RESTARTING':
-          return '⚡ New game starting soon - Select your card!';
-        default:
-          return 'Select your card number to play!';
-      }
-    }
-
-    if (!selectedNumber && effectiveWalletBalance < 10) {
-      return `💡 Add balance to play (Current: ${effectiveWalletBalance} ብር)`;
-    }
-
-    if (selectedNumber && effectiveWalletBalance >= 10) {
-      if (playersWithCards < 2) {
-        return `⏳ Waiting for ${2 - playersWithCards} more player(s)...`;
-      }
-      
-      switch (gameStatus) {
-        case 'WAITING_FOR_PLAYERS':
-          return `✅ Card ${selectedNumber} selected - Waiting for game to start`;
-        case 'ACTIVE':
-          return '🎮 Game active - You can still join!';
-        case 'FINISHED':
-          return `🔄 Card ${selectedNumber} reserved for next game`;
-        default:
-          return `✅ Card ${selectedNumber} selected - Waiting for game to start`;
-      }
-    }
-
-    return '';
-  };
-
-  // ==================== CONDITIONAL GAME INFO DISPLAY ====================
-  const shouldDisplayGameInfo = () => {
-    // If user has card in active game, don't display anything
-    if (hasCardInActiveGame && playerGameStatus === 'ACTIVE') {
-      return false;
-    }
-    
-    // Don't display if game is active (we'll redirect)
-    if (gameStatus === 'ACTIVE') {
-      return false;
-    }
-    
-    // Only show game info for waiting games or other states
-    return gameStatus === 'WAITING_FOR_PLAYERS' && playersWithCards >= 2;
-  };
-
-  // ==================== MAIN INITIALIZATION WITH OPTIMIZED BALANCE REFRESH ====================
-  useEffect(() => {
-    const initializeApp = async () => {
-      console.log('🚀 Starting app initialization...');
-      
-      if (authLoading) {
-        console.log('⏳ Waiting for auth to load...');
-        return;
-      }
-
-      if (!isAuthenticated || !user) {
-        console.log('⚠️ User not authenticated, showing limited UI');
-        await initializeGameState();
-        return;
-      }
-
-      try {
-        console.log('💰 Initial balance refresh...');
-        await refreshWalletBalanceLocal();
-        
-        // Check if player already has a card in active game
-        await checkPlayerCardInActiveGame();
-        
-        await initializeGameState();
-        
-        console.log('✅ App initialization complete');
-        console.log(`💰 User balance: ${effectiveWalletBalance} ብር`);
-        console.log(`🎮 Has card in active game: ${hasCardInActiveGame}, Game status: ${playerGameStatus}`);
-      } catch (error) {
-        console.error('❌ Initialization error:', error);
-      }
-    };
-
-    initializeApp();
-  }, [authLoading, isAuthenticated, user, initializeGameState, refreshWalletBalanceLocal, checkPlayerCardInActiveGame]);
-
-  // ==================== REDUCED PERIODIC BALANCE REFRESH ====================
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      refreshWalletBalanceLocal();
-    }, 60000); // Reduced from 30s to 60s
-
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [refreshWalletBalanceLocal]);
-
-  // ==================== DISABLE CARD SELECTION IF PLAYER HAS CARD IN ACTIVE GAME ====================
-  const shouldDisableCardSelection = (hasCardInActiveGame && playerGameStatus === 'ACTIVE');
-  const shouldShowActiveGameWarning = hasCardInActiveGame && playerGameStatus === 'ACTIVE';
-  const hasWaitingGame = hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS';
-
-  // ==================== SHOW REDIRECT LOADING SCREEN ====================
+  // Show redirect loading
   if ((hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected) ||
       (gameStatus === 'ACTIVE' && !hasCardInActiveGame && !autoRedirected)) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
-          <div className="text-2xl font-bold mb-4">
-            {hasCardInActiveGame ? 'Redirecting to Your Game...' : 'Game in Progress!'}
-          </div>
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
           <p className="mt-4">
             {hasCardInActiveGame 
-              ? `You have card #${playerCardNumber} in an active game!`
-              : 'A game is currently active. Redirecting to watch...'
+              ? `Redirecting to your game (Card #${playerCardNumber})...`
+              : 'Game in progress. Redirecting...'
             }
           </p>
-          <p className="text-sm opacity-75 mt-2">Taking you to the game page...</p>
         </div>
       </div>
     );
   }
 
-  // Show loading only when both auth and page are loading
+  // Show loading
   if (authLoading || pageLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
-          <div className="text-2xl font-bold mb-4">Loading Bingo Game...</div>
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-          <p className="mt-4">Initializing your game experience...</p>
+          <p className="mt-4">Loading...</p>
         </div>
       </div>
     );
@@ -525,49 +229,28 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-      {/* Updated Navbar with Role Info and Balance Refresh */}
+      {/* Navbar */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-white font-bold text-xl">Bingo Game</h1>
             <p className="text-white/60 text-sm">
               {hasCardInActiveGame 
-                ? playerGameStatus === 'ACTIVE' 
-                  ? 'Already in active game - Redirecting...' 
-                  : `Waiting for game to start (Card #${playerCardNumber})`
-                : gameStatus === 'ACTIVE'
-                ? 'Game in progress - Redirecting...'
-                : isAdmin ? 'Admin Dashboard' : 
-                isModerator ? 'Moderator View' : 
-                'Select your card number'}
+                ? `Card #${playerCardNumber} - ${playerGameStatus === 'ACTIVE' ? 'Active' : 'Waiting'}`
+                : 'Select your card number'
+              }
             </p>
           </div>
           
-          {/* User Info with Role Badge and Balance Refresh */}
-          <div className="flex items-center gap-3">
-            <UserInfoDisplay user={user} userRole={userRole} />
-          </div>
+          <UserInfoDisplay user={user} userRole={userRole} />
         </div>
       </div>
 
-      {/* Admin Controls */}
-      {isAdmin && (
-        <AdminControls 
-          onStartGame={() => {}} // Placeholder functions
-          onEndGame={() => {}} 
-          onManageUsers={() => {}}
-        />
-      )}
+      {/* Admin/Moderator Controls */}
+      {/* {isAdmin && <AdminControls />}
+      {isModerator && !isAdmin && <ModeratorControls />} */}
 
-      {/* Moderator Controls */}
-      {isModerator && !isAdmin && (
-        <ModeratorControls 
-          onModerateGames={() => {}} // Placeholder functions
-          onViewReports={() => {}}
-        />
-      )}
-
-      {/* PLAYER ALREADY IN GAME NOTIFICATION */}
+      {/* Player status notification */}
       {hasCardInActiveGame && (
         <motion.div 
           className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
@@ -592,28 +275,15 @@ export default function Home() {
                   ? 'You are in an active game!' 
                   : 'Waiting for game to start'}
               </p>
-              <p className={`text-xs ${
-                playerGameStatus === 'ACTIVE' ? 'text-green-200' : 'text-yellow-200'
-              }`}>
-                You have card #{playerCardNumber} in {playerGameStatus === 'ACTIVE' ? 'an active' : 'a waiting'} game
+              <p className="text-xs opacity-75">
+                Card #{playerCardNumber} • {playerGameStatus}
               </p>
-            </div>
-            <div className={`px-3 py-1 rounded-full ${
-              playerGameStatus === 'ACTIVE' 
-                ? 'bg-green-500/30 animate-pulse' 
-                : 'bg-yellow-500/30'
-            }`}>
-              <span className={`font-bold text-xs ${
-                playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
-              }`}>
-                {playerGameStatus === 'ACTIVE' ? 'Redirecting...' : 'Waiting...'}
-              </span>
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* GAME ACTIVE NOTIFICATION (for users without card) */}
+      {/* Game active notification */}
       {gameStatus === 'ACTIVE' && !hasCardInActiveGame && (
         <motion.div 
           className="bg-blue-500/10 backdrop-blur-lg rounded-xl p-3 mb-4 border border-blue-500/20"
@@ -621,17 +291,14 @@ export default function Home() {
           animate={{ opacity: 1 }}
         >
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-              <p className="text-blue-300 text-sm">Game in progress...</p>
-            </div>
+            <p className="text-blue-300 text-sm">Game in progress...</p>
             <p className="text-blue-200 text-xs">Redirecting...</p>
           </div>
         </motion.div>
       )}
 
-      {/* BALANCE WARNING */}
-      {!hasCardInActiveGame && effectiveWalletBalance < 10 && (
+      {/* Balance warning */}
+      {!hasCardInActiveGame && walletBalance < 10 && (
         <motion.div 
           className="bg-red-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-red-500/30"
           initial={{ opacity: 0, y: -10 }}
@@ -640,325 +307,96 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-300" />
             <div className="flex-1">
-              <p className="text-red-300 font-bold text-sm">
-                Insufficient Balance
-              </p>
-              <p className="text-red-200 text-xs">
-                You need 10 ብር to play. Current: {effectiveWalletBalance} ብር
-              </p>
+              <p className="text-red-300 font-bold text-sm">Insufficient Balance</p>
+              <p className="text-red-200 text-xs">Need 10 ብር to play</p>
             </div>
-            <button
-              onClick={refreshWalletBalanceLocal}
-              disabled={isRefreshingBalance}
-              className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all disabled:opacity-50 flex items-center gap-1"
-            >
-              {isRefreshingBalance ? (
-                <>
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-3 h-3" />
-                  Refresh
-                </>
-              )}
-            </button>
           </div>
         </motion.div>
       )}
 
-      {/* CARD SELECTION COUNTDOWN DISPLAY */}
-      {gameStatus === 'CARD_SELECTION' && cardSelectionTimeRemaining > 0 && (
-        <motion.div 
-          className="bg-purple-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-purple-500/30"
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring", stiffness: 300 }}
-        >
-          <div className="flex flex-col items-center">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="relative">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">
-                    {formatTime(cardSelectionTimeRemaining)}
-                  </span>
-                </div>
-                <div className="absolute inset-0 rounded-full border-2 border-purple-300/50 animate-ping"></div>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-white font-bold text-lg">Card Selection Active!</h3>
-                <p className="text-purple-200 text-sm">
-                  Select your bingo card before the timer runs out
-                </p>
-              </div>
-            </div>
-            
-            {/* Progress bar */}
-            <div className="w-full">
-              <div className="flex justify-between text-xs text-purple-200 mb-1">
-                <span>Time remaining</span>
-                <span>{formatTime(cardSelectionTimeRemaining)}</span>
-              </div>
-              <div className="w-full bg-purple-400/20 rounded-full h-3">
-                <div 
-                  className="bg-gradient-to-r from-purple-400 to-pink-400 h-3 rounded-full transition-all duration-1000"
-                  style={{ 
-                    width: `${((cardSelectionTotalDuration - cardSelectionTimeRemaining) / cardSelectionTotalDuration) * 100}%` 
-                  }}
-                />
-              </div>
-            </div>
-            
-            {/* Players info */}
-            <div className="mt-4 grid grid-cols-2 gap-4 w-full">
-              <div className="text-center p-3 bg-purple-500/10 rounded-xl">
-                <div className="text-white font-bold text-xl">{playersWithCards}</div>
-                <div className="text-purple-200 text-xs">Players Selected</div>
-              </div>
-              <div className="text-center p-3 bg-purple-500/10 rounded-xl">
-                <div className="text-white font-bold text-xl">{gameData?.cardsNeeded || 0}</div>
-                <div className="text-purple-200 text-xs">Needed to Start</div>
-              </div>
-            </div>
-            
-            {/* Urgent message when time is running out */}
-            {cardSelectionTimeRemaining < 10000 && (
-              <motion.div 
-                className="mt-3 p-3 bg-red-500/20 rounded-lg border border-red-500/30"
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <p className="text-red-300 text-sm text-center font-bold">
-                  ⚡ Hurry! Time is running out to select your card!
-                </p>
-              </motion.div>
-            )}
-          </div>
-        </motion.div>
-      )}
+      {/* Game status display */}
+      {/* {!hasCardInActiveGame && gameStatus !== 'ACTIVE' && (
+        <GameStatusDisplay 
+          gameStatus={gameStatus}
+          currentPlayers={playersWithCards}
+          restartCountdown={restartCountdown}
+          selectedNumber={selectedNumber}
+          walletBalance={walletBalance}
+        />
+      )} */}
 
-      {/* CONDITIONAL GAME INFO DISPLAY */}
-      {!hasCardInActiveGame && shouldDisplayGameInfo() ? (
-        <>
-          {/* Game Status Display */}
-          <GameStatusDisplay 
-            gameStatus={gameStatus}
-            currentPlayers={currentPlayers}
-            restartCountdown={restartCountdown}
-            selectedNumber={selectedNumber}
-            walletBalance={effectiveWalletBalance}
-            shouldEnableCardSelection={shouldEnableCardSelection()}
-            autoStartTimeRemaining={autoStartTimeRemaining}
-            hasAutoStartTimer={hasAutoStartTimer}
-            hasRestartCooldown={hasRestartCooldown}
-            restartCooldownRemaining={restartCooldownRemaining}
-          />
-
-          {/* Card Selection Status */}
-          {shouldEnableCardSelection() && cardSelectionStatus.isSelectionActive && (
-            <motion.div 
-              className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
-                hasRestartCooldown
-                  ? 'bg-purple-500/20 border-purple-500/30' 
-                  : hasAutoStartTimer 
-                    ? 'bg-orange-500/20 border-orange-500/30' 
-                    : 'bg-green-500/20 border-green-500/30'
-              }`}
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {hasRestartCooldown ? (
-                    <Clock className="w-4 h-4 text-purple-300" />
-                  ) : hasAutoStartTimer ? (
-                    <Rocket className="w-4 h-4 text-orange-300" />
-                  ) : (
-                    <Clock className="w-4 h-4 text-green-300" />
-                  )}
-                  <p className={`font-bold text-sm ${
-                    hasRestartCooldown ? 'text-purple-300' :
-                    hasAutoStartTimer ? 'text-orange-300' : 'text-green-300'
-                  }`}>
-                    {hasRestartCooldown ? '🔄 Restart Cooldown' : 
-                     hasAutoStartTimer ? '🚀 Game Starting Soon!' : 
-                     'Card Selection Active'}
-                  </p>
-                </div>
-              </div>
-              
-              {cardSelectionError && (
-                <p className="text-red-300 text-xs mt-2 text-center">
-                  {cardSelectionError}
-                </p>
-              )}
-            </motion.div>
-          )}
-        </>
-      ) : null}
-
-      {/* Card Selection Grid - Only show for WAITING games, not ACTIVE games */}
-      {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') ? (
+      {/* Card selection grid - Only for non-active states */}
+      {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
         <CardSelectionGrid
           availableCards={availableCards}
           takenCards={takenCards}
           selectedNumber={selectedNumber}
-          walletBalance={effectiveWalletBalance}
+          walletBalance={walletBalance}
           gameStatus={gameStatus}
           onCardSelect={handleCardSelect}
         />
-      ) : null}
+      )}
 
-      {/* Selected Card Preview - Show below the grid when a card is selected */}
-      {!hasCardInActiveGame && selectedNumber && gameStatus !== 'ACTIVE' && (
+      {/* Selected card preview */}
+      {!hasCardInActiveGame && selectedNumber && gameStatus !== 'ACTIVE' && bingoCard && (
         <motion.div
           className="mb-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
         >
-          {/* Selection Header */}
-          <motion.div 
-            className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-          >
-            <h3 className="text-white font-bold text-sm mb-3 text-center">Card Combination Details</h3>
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mt-4 border border-white/20">
+            <h3 className="text-white font-bold text-sm mb-3 text-center">Card #{selectedNumber}</h3>
             
-            {/* Column-wise breakdown */}
-            <div className="grid grid-cols-5 gap-2 mb-4">
-              {['B', 'I', 'N', 'G', 'O'].map((letter, index) => (
-                <div key={letter} className="text-center">
-                  <div className="text-telegram-button font-bold text-lg">{letter}</div>
-                  <div className="text-white/60 text-xs">Column</div>
+            <div className="grid grid-cols-5 gap-1">
+              {bingoCard.map((column, colIndex) => (
+                <div key={colIndex} className="space-y-1">
+                  <div className="text-telegram-button font-bold text-center text-sm">
+                    {['B', 'I', 'N', 'G', 'O'][colIndex]}
+                  </div>
+                  {column.map((number, rowIndex) => (
+                    <div
+                      key={`${colIndex}-${rowIndex}`}
+                      className={`text-center py-2 rounded text-sm ${
+                        number === 'FREE' 
+                          ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
+                          : 'bg-white/20 text-white'
+                      }`}
+                    >
+                      {number}
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
-
-            {/* Number breakdown */}
-            <div className="space-y-3">
-              {bingoCard && bingoCard.map((column, colIndex) => (
-                <div key={colIndex} className="flex items-center">
-                  <div className="w-8 text-telegram-button font-bold text-sm">
-                    {['B', 'I', 'N', 'G', 'O'][colIndex]}:
-                  </div>
-                  <div className="flex-1 flex gap-1">
-                    {column.map((number, rowIndex) => (
-                      <div
-                        key={`${colIndex}-${rowIndex}`}
-                        className={`
-                          flex-1 text-center py-1 rounded text-xs font-medium
-                          ${number === 'FREE' 
-                            ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
-                            : 'bg-white/20 text-white'
-                          }
-                        `}
-                      >
-                        {number}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-white/20">
-              <div className="text-center text-white/60 text-xs">
-                Total Numbers: {bingoCard ? bingoCard.flat().filter(num => num !== 'FREE').length : 0} • 
-                FREE Space: 1
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-
-      {/* Join Error Display */}
-      {!hasCardInActiveGame && joinError && (
-        <motion.div 
-          className="bg-red-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-red-500/30"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-red-300" />
-            <p className="text-red-300 text-sm">{joinError}</p>
           </div>
         </motion.div>
       )}
 
-      {/* Game Info Footer */}
+      {/* Footer */}
       <motion.div 
         className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.4 }}
       >
-        <div className="grid grid-cols-2 gap-4 text-center mb-3">
-          <div>
-            <p className="text-white font-bold">10 ብር</p>
-            <p className="text-white/60 text-xs">Entry Fee</p>
-          </div>
-          <div>
-            <p className="text-white font-bold">
-              {hasRestartCooldown ? '60s Wait' : 'Auto'}
-            </p>
-            <p className="text-white/60 text-xs">
-              {hasRestartCooldown ? 'Restart Cooldown' : 'Game Start'}
-            </p>
-          </div>
-        </div>
-        
-        <div className="space-y-2">
-          {/* Dynamic game status message */}
-          <p className={`text-sm text-center font-medium ${
-            hasCardInActiveGame && playerGameStatus === 'ACTIVE' ? 'text-green-300' :
-            hasCardInActiveGame && playerGameStatus === 'WAITING_FOR_PLAYERS' ? 'text-yellow-300' :
-            gameStatus === 'ACTIVE' ? 'text-blue-300' :
-            hasRestartCooldown ? 'text-purple-300' :
-            gameStatus === 'WAITING_FOR_PLAYERS' ? 'text-yellow-300' :
-            gameStatus === 'FINISHED' ? 'text-orange-300' :
-            'text-purple-300'
-          }`}>
-            {getGameStatusMessage()}
-          </p>
-          
-          <p className="text-white/60 text-xs text-center">
-            {hasRestartCooldown 
-              ? 'Games restart 60 seconds after completion'
-              : 'Games restart automatically 60 seconds after completion'
-            }
-          </p>
-          <p className="text-white/40 text-xs text-center">
-            Minimum 2 players required to start the game
-          </p>
-          
-          {/* Additional info for players with cards */}
-          {hasCardInActiveGame && (
-            <div className={`mt-2 p-2 rounded-lg ${
-              playerGameStatus === 'ACTIVE' 
-                ? 'bg-green-500/10 border border-green-500/20' 
-                : 'bg-yellow-500/10 border border-yellow-500/20'
-            }`}>
-              <p className={`text-xs text-center ${
-                playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
-              }`}>
-                {playerGameStatus === 'ACTIVE'
-                  ? '✅ Your game is active - Redirecting now'
-                  : '⏳ Your game is waiting for players - Stay on this page'}
+        <div className="text-center space-y-2">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-white font-bold">10 ብር</p>
+              <p className="text-white/60 text-xs">Entry Fee</p>
+            </div>
+            <div>
+              <p className="text-white font-bold">
+                {hasRestartCooldown ? formatTime(restartCountdown) : 'Auto'}
+              </p>
+              <p className="text-white/60 text-xs">
+                {hasRestartCooldown ? 'Next Game' : 'Auto Start'}
               </p>
             </div>
-          )}
+          </div>
           
-          {/* Info for active game without card */}
-          {gameStatus === 'ACTIVE' && !hasCardInActiveGame && (
-            <div className="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-              <p className="text-blue-300 text-xs text-center">
-                🎮 A game is currently active - Redirecting to watch...
-              </p>
-            </div>
-          )}
+          <p className="text-white/60 text-xs">
+            Minimum 2 players required to start
+          </p>
         </div>
       </motion.div>
     </div>
