@@ -2,7 +2,7 @@
 // app/page.tsx - ULTRA SIMPLIFIED VERSION
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { gameAPI, walletAPIAuto } from '../services/api';
 import { useRouter } from 'next/navigation';
@@ -57,18 +57,27 @@ export default function Home() {
   const [localWalletBalance, setLocalWalletBalance] = useState<number>(0);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState<boolean>(false);
   const [playersWithCards, setPlayersWithCards] = useState<number>(0);
+  
+  // Use refs to prevent multiple initialization calls
+  const initializedRef = useRef(false);
+  const redirectingRef = useRef(false);
 
   // ==================== IMMEDIATE REDIRECT FOR ACTIVE GAMES ====================
   useEffect(() => {
-    // If game is active, redirect immediately
+    // Prevent multiple redirects
+    if (redirectingRef.current) return;
+    
+    // If game is active and we have game data, redirect immediately
     if (gameStatus === 'ACTIVE' && gameData?._id) {
       console.log('🚨 Immediate redirect to active game:', gameData._id);
-      router.push(`/game/${gameData._id}`);
+      redirectingRef.current = true;
+      // Use replace instead of push to prevent going back
+      router.replace(`/game/${gameData._id}`);
     }
   }, [gameStatus, gameData, router]);
 
   // ==================== REFRESH WALLET BALANCE ====================
-  const refreshWalletBalanceLocal = async () => {
+  const refreshWalletBalanceLocal = useCallback(async () => {
     try {
       setIsRefreshingBalance(true);
       if (refreshWalletBalance) {
@@ -81,58 +90,92 @@ export default function Home() {
     } finally {
       setIsRefreshingBalance(false);
     }
-  };
+  }, [refreshWalletBalance]);
 
   const effectiveWalletBalance = localWalletBalance > 0 ? localWalletBalance : walletBalance;
 
   // ==================== FETCH GAME PARTICIPANTS ====================
   useEffect(() => {
+    // Don't fetch if we're redirecting or if there's no game
+    if (redirectingRef.current || !gameData?._id || gameStatus === 'ACTIVE') {
+      return;
+    }
+
     const fetchGameParticipants = async () => {
-      if (gameData?._id) {
-        try {
-          const response = await gameAPI.getGameParticipants(gameData._id);
-          if (response.data.success) {
-            const participants = response.data.participants || [];
-            const playersWithCardsCount = participants.filter(p => p.hasCard).length;
-            setPlayersWithCards(playersWithCardsCount);
-          }
-        } catch (error) {
-          console.error('❌ Failed to fetch game participants:', error);
+      try {
+        const response = await gameAPI.getGameParticipants(gameData._id);
+        if (response.data.success) {
+          const participants = response.data.participants || [];
+          const playersWithCardsCount = participants.filter(p => p.hasCard).length;
+          setPlayersWithCards(playersWithCardsCount);
         }
+      } catch (error) {
+        console.error('❌ Failed to fetch game participants:', error);
       }
     };
 
     fetchGameParticipants();
+    
+    // Only set interval if we're not redirecting
     const interval = setInterval(fetchGameParticipants, 5000);
     return () => clearInterval(interval);
-  }, [gameData?._id]);
+  }, [gameData?._id, gameStatus]);
 
-  // ==================== INITIALIZATION ====================
+  // ==================== SINGLE INITIALIZATION ====================
   useEffect(() => {
     const initializeApp = async () => {
+      // Prevent multiple initializations
+      if (initializedRef.current) {
+        console.log('⏩ Skipping re-initialization');
+        return;
+      }
+
       console.log('🚀 Starting app initialization...');
       
       if (authLoading) return;
 
+      // If we're authenticated, don't reinitialize on auth changes
       if (!isAuthenticated || !user) {
-        await initializeGameState();
+        if (!initializedRef.current) {
+          await initializeGameState();
+          initializedRef.current = true;
+        }
         return;
       }
 
       try {
-        await refreshWalletBalanceLocal();
-        await initializeGameState();
-        console.log('✅ App initialization complete');
+        // Only initialize once
+        if (!initializedRef.current) {
+          await refreshWalletBalanceLocal();
+          await initializeGameState();
+          initializedRef.current = true;
+          console.log('✅ App initialization complete');
+        }
       } catch (error) {
         console.error('❌ Initialization error:', error);
+        initializedRef.current = false; // Reset on error
       }
     };
 
     initializeApp();
-  }, [authLoading, isAuthenticated, user, initializeGameState]);
+    
+    // Cleanup function
+    return () => {
+      // Reset refs on unmount
+      initializedRef.current = false;
+      redirectingRef.current = false;
+    };
+  }, [authLoading, isAuthenticated, user, initializeGameState, refreshWalletBalanceLocal]);
+
+  // Reset initialization when user logs out
+  useEffect(() => {
+    if (!isAuthenticated) {
+      initializedRef.current = false;
+    }
+  }, [isAuthenticated]);
 
   // ==================== SHOW LOADING SCREENS ====================
-  // If game is active and we have game data, we'll redirect - show loading
+  // If game is active and we have game data, show redirect loading
   if (gameStatus === 'ACTIVE' && gameData?._id) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
