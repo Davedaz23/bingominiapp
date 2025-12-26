@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// components/bingo/CardSelectionGrid.tsx - UPDATED
+
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 

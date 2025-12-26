@@ -79,13 +79,14 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   }, [user]);
 
   const shouldEnableCardSelection = () => {
+    console.log('🔍 Checking if card selection should be enabled:', gameData?._id);
     if (!gameData?._id) {
       return false;
     }
 
-    // if (walletBalance >= 10) {
-    //   return true;
-    // }
+    if (walletBalance >= 10) {
+      return true;
+    }
 
     return false;
   };
