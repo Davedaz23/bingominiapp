@@ -83,9 +83,9 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       return false;
     }
 
-    if (walletBalance >= 10) {
-      return true;
-    }
+    // if (walletBalance >= 10) {
+    //   return true;
+    // }
 
     return false;
   };
