@@ -1,8 +1,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable react-hooks/preserve-manual-memoization */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/hooks/useCardSelection.ts - FIXED VERSION
-import { useState, useEffect, useCallback, useMemo } from 'react';
+// app/hooks/useCardSelection.ts - OPTIMIZED VERSION
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { gameAPI } from '../services/api';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { useAccountStorage } from './useAccountStorage';
@@ -66,20 +66,30 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     timeRemaining: 0
   });
   const [cardSelectionError, setCardSelectionError] = useState<string>('');
+  
+  // Refs to track last request times and prevent flooding
+  const lastTakenCardsFetchRef = useRef<number>(0);
+  const lastAvailableCardsFetchRef = useRef<number>(0);
+  const lastStatusCheckRef = useRef<number>(0);
+  const isFetchingRef = useRef<boolean>(false);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Constants for request throttling
+  const TAKEN_CARDS_INTERVAL = 30000; // 30 seconds
+  const AVAILABLE_CARDS_INTERVAL = 60000; // 60 seconds
+  const STATUS_CHECK_INTERVAL = 120000; // 2 minutes
 
   // Load selected number from account-specific storage
   useEffect(() => {
     const savedSelectedNumber = getAccountData('selected_number');
     if (savedSelectedNumber) {
-     
       setSelectedNumber(savedSelectedNumber);
-      setBingoCard(generateBingoCard(savedSelectedNumber)); // ✅ Now this works
+      setBingoCard(generateBingoCard(savedSelectedNumber));
       console.log('✅ Loaded saved card selection:', savedSelectedNumber);
     }
-  }, [user]);
+  }, [user, getAccountData]);
 
-  const shouldEnableCardSelection = () => {
-    console.log('🔍 Checking if card selection should be enabled:', gameData?._id);
+  const shouldEnableCardSelection = useCallback(() => {
     if (!gameData?._id) {
       return false;
     }
@@ -89,25 +99,34 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     }
 
     return false;
-  };
-  const clearSelectedCard = useCallback(() => {
-  setSelectedNumber(null);
-  setBingoCard(null);
-  removeAccountData('selected_number');
-  console.log('✅ Cleared selected card from storage');
-}, [removeAccountData]);
+  }, [gameData?._id, walletBalance]);
 
-  // Rest of your hook code remains the same...
-  // Real-time polling for taken cards
-  const fetchTakenCards = useCallback(async () => {
-    if (!gameData?._id) return;
+  const clearSelectedCard = useCallback(() => {
+    setSelectedNumber(null);
+    setBingoCard(null);
+    removeAccountData('selected_number');
+    console.log('✅ Cleared selected card from storage');
+  }, [removeAccountData]);
+
+  // Throttled fetchTakenCards - only called when needed
+  const fetchTakenCards = useCallback(async (force = false) => {
+    if (!gameData?._id || isFetchingRef.current) return;
+
+    const now = Date.now();
+    if (!force && now - lastTakenCardsFetchRef.current < TAKEN_CARDS_INTERVAL) {
+      console.log('⏸️ Skipping taken cards fetch - too soon');
+      return;
+    }
 
     try {
+      isFetchingRef.current = true;
+      lastTakenCardsFetchRef.current = now;
+      
       console.log('🔄 Polling for taken cards...');
       const response = await gameAPI.getTakenCards(gameData._id);
-      console.log("taken payload",response);
+      console.log("taken payload", response);
+      
       if (response.data.success) {
-        // Merge with current user's selection to avoid flickering
         setTakenCards(() => {
           const backendCards = response.data.takenCards;
           
@@ -130,12 +149,23 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       }
     } catch (error: any) {
       console.error('❌ Error fetching taken cards:', error.message);
+    } finally {
+      isFetchingRef.current = false;
     }
   }, [gameData?._id, selectedNumber, user?.id]);
 
-  const fetchAvailableCards = async () => {
+  // Throttled fetchAvailableCards - called less frequently
+  const fetchAvailableCards = useCallback(async (force = false) => {
     try {
-      if (!gameData?._id || !user?.id) return;
+      if (!gameData?._id || !user?.id || isFetchingRef.current) return;
+      
+      const now = Date.now();
+      if (!force && now - lastAvailableCardsFetchRef.current < AVAILABLE_CARDS_INTERVAL) {
+        console.log('⏸️ Skipping available cards fetch - too soon');
+        return;
+      }
+      
+      lastAvailableCardsFetchRef.current = now;
       
       console.log('🔍 Fetching available cards with:', {
         gameId: gameData._id,
@@ -150,8 +180,10 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
         setAvailableCards(response.data.cards);
         console.log('✅ Available cards fetched:', response.data.cards.length);
         
-        // Also fetch taken cards initially
-        await fetchTakenCards();
+        // Also fetch taken cards initially (but throttled)
+        setTimeout(() => {
+          fetchTakenCards(true);
+        }, 1000);
       }
     } catch (error: any) {
       console.error('❌ Error fetching available cards:', {
@@ -161,23 +193,28 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
         url: error.config?.url
       });
     }
-  };
+  }, [gameData?._id, user?.id, fetchTakenCards]);
 
   const handleCardSelect = async (cardNumber: number) => {
     if (!gameData?._id || !user?.id) return;
-console.log("Defar negn");
+    console.log("Defar negn");
+    
     try {
       setCardSelectionError('');
-       if (selectedNumber && selectedNumber !== cardNumber) {
-      await handleCardRelease(); // Release the previous card
-    }
+      
+      if (selectedNumber && selectedNumber !== cardNumber) {
+        await handleCardRelease(); // Release the previous card
+      }
+
       // Check if card is already taken (real-time check)
       const isCardTaken = takenCards.some(card => card.cardNumber === cardNumber);
       if (isCardTaken) {
         setCardSelectionError(`Card #${cardNumber} is already taken by another player`);
         
-        // Refresh taken cards to get latest status
-        await fetchTakenCards();
+        // Refresh taken cards to get latest status (throttled)
+        setTimeout(() => {
+          fetchTakenCards(true);
+        }, 100);
         return;
       }
 
@@ -186,6 +223,10 @@ console.log("Defar negn");
       
       if (!selectedCardData) {
         setCardSelectionError('Selected card not found');
+        // Refresh available cards if selection not found
+        setTimeout(() => {
+          fetchAvailableCards(true);
+        }, 100);
         return;
       }
 
@@ -214,8 +255,14 @@ console.log("Defar negn");
         // Save to account storage
         setAccountData('selected_number', cardNumber);
         
-        // Immediately update taken cards to reflect this selection
-        await fetchTakenCards();
+        // Update taken cards locally immediately (no API call)
+        setTakenCards(prev => {
+          const newTakenCards = prev.filter(card => !(card.userId === user.id && card.cardNumber !== cardNumber));
+          if (!newTakenCards.some(card => card.cardNumber === cardNumber)) {
+            newTakenCards.push({ cardNumber, userId: user.id });
+          }
+          return newTakenCards;
+        });
         
         // Show success message based on action
         if (response.data.action === 'UPDATED') {
@@ -235,9 +282,11 @@ console.log("Defar negn");
       if (error.response?.data?.error) {
         setCardSelectionError(error.response.data.error);
         
-        // If card is taken, refresh the taken cards list
+        // If card is taken, refresh the taken cards list (throttled)
         if (error.response.data.error.includes('already taken')) {
-          await fetchTakenCards();
+          setTimeout(() => {
+            fetchTakenCards(true);
+          }, 100);
         }
       } else {
         setCardSelectionError('Failed to select card. Please try again.');
@@ -257,20 +306,36 @@ console.log("Defar negn");
       removeAccountData('selected_number');
       setBingoCard(null);
       
+      // Remove from local taken cards
+      setTakenCards(prev => 
+        prev.filter(card => !(card.userId === user.id && card.cardNumber === selectedNumber))
+      );
+      
       console.log('✅ Card released successfully (local state only)');
       
-      // Refresh available cards and taken cards after release
-      await fetchAvailableCards();
-      await fetchTakenCards();
+      // Refresh available cards and taken cards after release (throttled)
+      setTimeout(() => {
+        fetchAvailableCards(true);
+        fetchTakenCards(true);
+      }, 500);
     } catch (error: any) {
       console.error('❌ Card release error:', error);
     }
   };
 
-  const checkCardSelectionStatus = async () => {
-    if (!gameData?._id) return;
+  const checkCardSelectionStatus = useCallback(async () => {
+    if (!gameData?._id || isFetchingRef.current) return;
     
+    const now = Date.now();
+    if (now - lastStatusCheckRef.current < STATUS_CHECK_INTERVAL) {
+      console.log('⏸️ Skipping status check - too soon');
+      return;
+    }
+
     try {
+      lastStatusCheckRef.current = now;
+      isFetchingRef.current = true;
+      
       console.log('🔍 Checking card selection status for game:', gameData._id);
       
       const response = await gameAPI.getCardSelectionStatus(gameData._id);
@@ -297,26 +362,53 @@ console.log("Defar negn");
         status: error.response?.status,
         data: error.response?.data
       });
+    } finally {
+      isFetchingRef.current = false;
     }
-  };
+  }, [gameData?._id, gameStatus]);
 
-  // Real-time polling for taken cards
+  // Clean up polling on unmount
   useEffect(() => {
-    if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, []);
 
-    console.log('⏰ Starting real-time taken cards polling');
+  // Set up INFREQUENT polling only when selection is active
+  useEffect(() => {
+    if (!gameData?._id || !cardSelectionStatus.isSelectionActive) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+        console.log('🛑 Stopped polling - selection not active');
+      }
+      return;
+    }
+
+    console.log('⏰ Starting INFREQUENT polling for taken cards');
     
-    const interval = setInterval(() => {
+    // Clear existing interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+    
+    // Only poll every 30 seconds when selection is active
+    pollingIntervalRef.current = setInterval(() => {
       fetchTakenCards();
-    }, 2000); // Poll every 2 seconds for real-time updates
+    }, TAKEN_CARDS_INTERVAL);
 
     return () => {
-      console.log('🛑 Stopping real-time taken cards polling');
-      clearInterval(interval);
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
     };
   }, [gameData?._id, cardSelectionStatus.isSelectionActive, fetchTakenCards]);
 
-  // Fetch available cards when game data changes
+  // Fetch available cards when game data changes - WITH THROTTLING
   useEffect(() => {
     console.log('🔄 useCardSelection effect triggered:', {
       gameId: gameData?._id,
@@ -327,9 +419,15 @@ console.log("Defar negn");
     });
 
     if (gameData?._id && shouldEnableCardSelection() && user?.id) {
-      console.log('🚀 Fetching available cards...');
-      fetchAvailableCards();
-      checkCardSelectionStatus();
+      console.log('🚀 Fetching available cards (throttled)...');
+      
+      // Use setTimeout to avoid immediate fetch on every render
+      const timeoutId = setTimeout(() => {
+        fetchAvailableCards();
+        checkCardSelectionStatus();
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
     } else {
       console.log('⏸️ Skipping card fetch - conditions not met:', {
         hasGameId: !!gameData?._id,
@@ -337,23 +435,23 @@ console.log("Defar negn");
         hasUserId: !!user?.id
       });
     }
-  }, [gameData, gameStatus, walletBalance, user, selectedNumber]);
+  }, [gameData, gameStatus, walletBalance, user, selectedNumber, fetchAvailableCards, checkCardSelectionStatus, shouldEnableCardSelection]);
 
-  // Check card selection status periodically
+  // Check card selection status periodically - INFREQUENT
   useEffect(() => {
     if (!gameData?._id || !cardSelectionStatus.isSelectionActive) return;
 
-    console.log('⏰ Starting card selection status polling');
+    console.log('⏰ Starting INFREQUENT card selection status polling');
     
     const interval = setInterval(() => {
       checkCardSelectionStatus();
-    }, 10000); // Check every 10 seconds
+    }, STATUS_CHECK_INTERVAL); // Check every 2 minutes
 
     return () => {
       console.log('🛑 Stopping card selection status polling');
       clearInterval(interval);
     };
-  }, [gameData, cardSelectionStatus.isSelectionActive]);
+  }, [gameData, cardSelectionStatus.isSelectionActive, checkCardSelectionStatus]);
 
   return {
     selectedNumber,
@@ -369,7 +467,6 @@ console.log("Defar negn");
     checkCardSelectionStatus,
     setCardSelectionError,
     fetchTakenCards,
-      clearSelectedCard // Add this
-
+    clearSelectedCard
   };
 };
