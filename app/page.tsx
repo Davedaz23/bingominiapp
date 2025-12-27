@@ -310,14 +310,14 @@ export default function Home() {
       {/* Card selection grid - Only for non-active states */}
       {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
         <>
-          {/* <CardSelectionGrid
+          <CardSelectionGrid
             availableCards={availableCards}
             takenCards={takenCards}
             selectedNumber={selectedNumber}
             walletBalance={walletBalance}
             gameStatus={gameStatus}
             onCardSelect={handleCardSelect}
-          /> */}
+          />
           
           {/* Selected card preview */}
           {selectedNumber && bingoCard && (
