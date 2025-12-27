@@ -12,6 +12,11 @@ import { Clock, Check, AlertCircle } from 'lucide-react';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
 import { UserInfoDisplay } from '../components/user/UserInfoDisplay';
 
+// Constants for throttling
+const BALANCE_CHECK_INTERVAL = 120000; // 2 minutes in milliseconds
+const PLAYER_CHECK_INTERVAL = 180000; // 3 minutes for player status
+const MIN_REDIRECT_DELAY = 5000; // 5 seconds minimum before redirect
+
 export default function Home() {
   const { 
     user, 
@@ -20,7 +25,8 @@ export default function Home() {
     isAdmin, 
     isModerator, 
     userRole, 
-    walletBalance
+    walletBalance,
+    // refreshBalance // Add this to your AuthContext if not exists
   } = useAuth();
 
   const router = useRouter();
@@ -48,14 +54,19 @@ export default function Home() {
   const [playerCardNumber, setPlayerCardNumber] = useState<number | null>(null);
   const [playerGameStatus, setPlayerGameStatus] = useState<string | null>(null);
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
+  const [lastBalanceCheck, setLastBalanceCheck] = useState<number>(0);
+  const [balanceLoading, setBalanceLoading] = useState<boolean>(false);
 
   // Refs for tracking - prevent reloads
   const isCheckingPlayerStatusRef = useRef<boolean>(false);
   const lastPlayerCheckRef = useRef<number>(0);
+  const lastBalanceCheckRef = useRef<number>(0);
   const isInitializedRef = useRef<boolean>(false);
   const redirectAttemptedRef = useRef<boolean>(false);
   const gameStatusRef = useRef<string>('');
   const hasCardRef = useRef<boolean>(false);
+  const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const balanceCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync refs with state
   useEffect(() => {
@@ -63,19 +74,25 @@ export default function Home() {
     hasCardRef.current = hasCardInActiveGame;
   }, [gameStatus, hasCardInActiveGame]);
 
-  // Check player card status - ULTRA OPTIMIZED
+
+  // Check player card status - ULTRA OPTIMIZED with better throttling
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
     if (!user?.id || isCheckingPlayerStatusRef.current) return false;
     
-    // Throttle checks - min 60 seconds between checks
     const now = Date.now();
-    if (!force && now - lastPlayerCheckRef.current < 60000) {
+    const timeSinceLastCheck = now - lastPlayerCheckRef.current;
+    
+    // Throttle checks - min 3 minutes between checks
+    if (!force && timeSinceLastCheck < PLAYER_CHECK_INTERVAL) {
+      console.log(`Skipping player check - ${Math.floor(timeSinceLastCheck/1000)}s since last check`);
       return hasCardRef.current;
     }
 
     try {
       isCheckingPlayerStatusRef.current = true;
       lastPlayerCheckRef.current = now;
+      
+      console.log('Checking player card status...');
       
       // Single API call with minimal data
       const response = await gameAPI.getActiveGames();
@@ -91,6 +108,7 @@ export default function Home() {
             const playerParticipant = participants.find((p: any) => p.userId === user.id);
             
             if (playerParticipant?.hasCard) {
+              console.log(`Player has card #${playerParticipant.cardNumber} in game status: ${game.status}`);
               setHasCardInActiveGame(true);
               setPlayerCardNumber(playerParticipant.cardNumber || 0);
               setPlayerGameStatus(game.status);
@@ -101,7 +119,7 @@ export default function Home() {
         }
       }
       
-      // No card found
+      console.log('No active card found for player');
       setHasCardInActiveGame(false);
       setPlayerCardNumber(null);
       setPlayerGameStatus(null);
@@ -115,7 +133,7 @@ export default function Home() {
     }
   }, [user?.id]);
 
-  // Check for active game and redirect - NO RELOADS
+  // Check for active game and redirect - WITH DELAY to prevent rapid redirects
   useEffect(() => {
     if (authLoading || pageLoading || autoRedirected || redirectAttemptedRef.current) return;
     
@@ -124,15 +142,27 @@ export default function Home() {
     
     if (shouldRedirect) {
       redirectAttemptedRef.current = true;
-      setAutoRedirected(true);
       
-      // Use setTimeout to prevent blocking
-      setTimeout(() => {
+      // Clear any existing timer
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+      
+      // Add delay to prevent rapid redirects
+      redirectTimerRef.current = setTimeout(() => {
+        setAutoRedirected(true);
         const gameId = gameData?._id || 'active';
         const query = hasCardRef.current ? '' : '?spectator=true';
+        console.log(`Redirecting to game: ${gameId}${query}`);
         router.push(`/game/${gameId}${query}`);
-      }, 100);
+      }, MIN_REDIRECT_DELAY);
     }
+    
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+    };
   }, [gameStatus, playerGameStatus, gameData, authLoading, pageLoading, autoRedirected, router]);
 
   // Initialize - ONE TIME ONLY with memory
@@ -153,26 +183,51 @@ export default function Home() {
       
       // Check player status only if authenticated
       if (isAuthenticated && user) {
-        // Wait 2 seconds before first check
+        // Wait 3 seconds before first check
         setTimeout(() => {
           checkPlayerCardInActiveGame(true);
-        }, 2000);
+        }, 3000);
+        
+       
       }
     };
 
     init();
   }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData]);
 
-  // INFREQUENT player check - only every 5 minutes
+  // Set up periodic checks - INFREQUENT
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
-    const interval = setInterval(() => {
+    console.log('Setting up periodic checks...');
+    
+    // Player check every 3 minutes
+    const playerCheckInterval = setInterval(() => {
       checkPlayerCardInActiveGame();
-    }, 300000); // 5 minutes
+    }, PLAYER_CHECK_INTERVAL);
+    
 
-    return () => clearInterval(interval);
+
+    return () => {
+      clearInterval(playerCheckInterval);
+      // clearInterval(balanceCheckInterval);
+      if (balanceCheckTimerRef.current) {
+        clearTimeout(balanceCheckTimerRef.current);
+      }
+    };
   }, [isAuthenticated, user, checkPlayerCardInActiveGame]);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+      if (balanceCheckTimerRef.current) {
+        clearTimeout(balanceCheckTimerRef.current);
+      }
+    };
+  }, []);
 
   // Show redirect loading
   if ((hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected) ||
@@ -183,10 +238,11 @@ export default function Home() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
           <p className="mt-4">
             {hasCardInActiveGame 
-              ? `Redirecting to your game...`
-              : 'Game in progress. Redirecting...'
+              ? `Redirecting to your game (Card #${playerCardNumber})...`
+              : 'Game in progress. Redirecting to watch...'
             }
           </p>
+          <p className="text-sm opacity-75 mt-2">Please wait...</p>
         </div>
       </div>
     );
@@ -227,6 +283,14 @@ export default function Home() {
     return 'Select your card to play';
   };
 
+  // Get time since last balance check
+  const getTimeSinceLastBalanceCheck = () => {
+    if (lastBalanceCheck === 0) return 'Never';
+    const seconds = Math.floor((Date.now() - lastBalanceCheck) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    return `${Math.floor(seconds / 60)}m ago`;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
       {/* Navbar */}
@@ -239,7 +303,16 @@ export default function Home() {
             </p>
           </div>
           
-          <UserInfoDisplay user={user} userRole={userRole} />
+       
+          
+          {/* Debug info - remove in production */}
+          <div className="hidden md:block text-xs opacity-50 text-white">
+            <p>Balance checked: {getTimeSinceLastBalanceCheck()}</p>
+            <p>Player checked: {lastPlayerCheckRef.current ? 
+              `${Math.floor((Date.now() - lastPlayerCheckRef.current) / 1000)}s ago` : 
+              'Never'}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -269,7 +342,7 @@ export default function Home() {
                   : 'Waiting for game to start'}
               </p>
               <p className="text-xs opacity-75">
-                Card #{playerCardNumber}
+                Card #{playerCardNumber} • Next check in {Math.floor((PLAYER_CHECK_INTERVAL - (Date.now() - lastPlayerCheckRef.current)) / 1000)}s
               </p>
             </div>
           </div>
@@ -301,7 +374,11 @@ export default function Home() {
             <AlertCircle className="w-5 h-5 text-red-300" />
             <div className="flex-1">
               <p className="text-red-300 font-bold text-sm">Insufficient Balance</p>
-              <p className="text-red-200 text-xs">Need 10 ብር to play (Current: {walletBalance} ብር)</p>
+              <p className="text-red-200 text-xs">
+                Need 10 ብር to play (Current: {walletBalance} ብር) • 
+                Last updated: {getTimeSinceLastBalanceCheck()}
+              </p>
+           
             </div>
           </div>
         </motion.div>
@@ -391,6 +468,14 @@ export default function Home() {
                 </p>
                 <p className="text-white/60 text-xs">
                   {hasRestartCooldown ? 'Cooldown' : 'Start'}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-white font-bold">
+                  {balanceLoading ? '...' : '2m'}
+                </p>
+                <p className="text-white/60 text-xs">
+                  Balance Refresh
                 </p>
               </div>
             </div>
