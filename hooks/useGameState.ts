@@ -273,18 +273,19 @@ export const useGameState = () => {
   // }, [gameData, gameStatus, checkAutoStart]);
 
   // Game status polling
-  useEffect(() => {
-    console.log('🔄 Starting game status polling');
-    
-    const interval = setInterval(async () => {
-      await checkGameStatus();
-    }, 10000); // Check every 10 seconds
+ useEffect(() => {
+  console.log('🔄 Starting game status polling');
+  
+  // INCREASE polling interval from 10s to 60s
+  const interval = setInterval(async () => {
+    await checkGameStatus();
+  }, 60000); // Check every 60 seconds instead of 10 seconds
 
-    return () => {
-      console.log('🛑 Stopping game status polling');
-      clearInterval(interval);
-    };
-  }, [checkGameStatus]);
+  return () => {
+    console.log('🛑 Stopping game status polling');
+    clearInterval(interval);
+  };
+}, [checkGameStatus]);
 
   const initializeGameState = async () => {
     try {
