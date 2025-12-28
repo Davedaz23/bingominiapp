@@ -484,7 +484,7 @@ const processQueue = async () => {
       )}
 
       {/* Simple footer with minimal info */}
-      {gameStatus !== 'ACTIVE' && (
+      {/* {gameStatus !== 'ACTIVE' && (
         <motion.div 
           className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20"
           initial={{ opacity: 0 }}
@@ -527,7 +527,7 @@ const processQueue = async () => {
             </div>
           </div>
         </motion.div>
-      )}
+      )} */}
     </div>
   );
 }
