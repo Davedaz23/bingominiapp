@@ -24,23 +24,11 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   pendingSelection,
   userId
 }) => {
-  // ⭐ FIX: Create a map of taken cards EXCLUDING current user's old selections
-  const takenCardMap = new Map();
+  // Create a map of ALL taken cards
+  const takenCardMap = new Map<number, {cardNumber: number, userId: string}>();
   
-  // Only show cards as "taken" if:
-  // 1. They're taken by OTHER users, OR
-  // 2. They're the user's CURRENTLY SELECTED card
+  // Always show ALL taken cards, regardless of who took them
   takenCards.forEach(card => {
-    const isCurrentUsersCard = userId && card.userId === userId;
-    const isCurrentlySelected = card.cardNumber === selectedNumber;
-    
-    // If it's the current user's card but NOT the currently selected one, skip it
-    // (This happens when user switches cards - old one should no longer show as "taken")
-    if (isCurrentUsersCard && !isCurrentlySelected) {
-      return; // Skip adding to map
-    }
-    
-    // Otherwise, add to map
     takenCardMap.set(card.cardNumber, card);
   });
 
@@ -62,7 +50,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           const isCurrentlySelected = selectedNumber === number;
           const isProcessing = pendingSelection === number;
           
-          // ⭐ FIX: A card should NOT show as "taken by current user" unless it's the currently selected one
+          // A card is considered "taken by current user" only if:
+          // 1. It's actually taken by current user
+          // 2. AND it's the currently selected card (optional, remove if you want all user's cards to show)
           const shouldShowAsTakenByUser = isTakenByCurrentUser && isCurrentlySelected;
           
           return (
@@ -77,9 +67,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                   ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white border-yellow-400 shadow-lg scale-105 animate-pulse'
                   : isCurrentlySelected
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
-                  : shouldShowAsTakenByUser // ⭐ CHANGED: Only show as user's card if currently selected
-                  ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-md'
-                  : isTaken
+                  : isTakenByCurrentUser // Show current user's taken cards differently
+                  ? 'bg-gradient-to-br from-blue-400/70 to-telegram-button/70 text-white border-blue-400/70 shadow-md'
+                  : isTaken // Show other users' taken cards
                   ? 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
                   : isSelectable
                   ? gameStatus === 'ACTIVE' 
@@ -109,10 +99,10 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
-              {/* Taken by other player indicator - ONLY if not current user's card */}
-              {!isProcessing && isTaken && !shouldShowAsTakenByUser && !isCurrentlySelected && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-4 h-4 text-red-300">
+              {/* Taken by OTHER player indicator */}
+              {!isProcessing && isTaken && !isTakenByCurrentUser && !isCurrentlySelected && (
+                <div className="absolute inset-0 flex items-center justify-center opacity-80">
+                  <div className="w-5 h-5 text-red-300">
                     <svg fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                     </svg>
@@ -120,9 +110,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
-              {/* Taken by current user indicator - ONLY if currently selected */}
-              {!isProcessing && shouldShowAsTakenByUser && !isCurrentlySelected && (
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-telegram-button rounded-full border-2 border-white flex items-center justify-center">
+              {/* Taken by current user indicator */}
+              {!isProcessing && isTakenByCurrentUser && !isCurrentlySelected && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-400 rounded-full border-2 border-white flex items-center justify-center">
                   <Check className="w-2 h-2 text-white" />
                 </div>
               )}
@@ -191,9 +181,6 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           </div>
         </motion.div>
       )}
-      
-      {/* Debug info - Remove in production */}
-     
     </div>
   );
 };
