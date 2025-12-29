@@ -41,7 +41,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           const isSelectable = canSelect && isAvailable && !isTaken;
           const isCurrentlySelected = selectedNumber === number;
           const takenBy = isTaken ? takenCardMap.get(number) : null;
-
+// gjklfdkg
           return (
             <motion.button
               key={number}
