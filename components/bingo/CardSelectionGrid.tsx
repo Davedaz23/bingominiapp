@@ -37,7 +37,6 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
           const isTaken = takenCardMap.has(number);
           const isAvailable = availableCards.some(card => card.cardIndex === number);
-          console.log('Rendering card number:', walletBalance, 'isTaken:', isTaken, 'isAvailable:', isAvailable);
           const canSelect = walletBalance >= 10;
           const isSelectable = canSelect && isAvailable && !isTaken;
           const isCurrentlySelected = selectedNumber === number;
