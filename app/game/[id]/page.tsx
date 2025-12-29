@@ -1026,6 +1026,39 @@ export default function GamePage() {
         </div>
       )}
 
+      {/* Header */}
+      <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
+        <div className="grid grid-cols-6 gap-4 text-center">
+          <div>
+            <p className="text-white text-xs font-semibold">{walletBalance} ብር</p>
+            <p className="text-white/60 text-xs">Balance</p>
+          </div>
+          <div>
+            <p className="text-white font-semibold text-xs">{(game?.currentPlayers||0)*10*0.8} ብር</p>
+            <p className="text-white/60 text-xs">Pot</p>
+          </div>
+          <div>
+            <p className="text-white font-semibold text-xs">{game?.currentPlayers || 0}</p>
+            <p className="text-white/60 text-xs">Players</p>
+          </div>
+          <div>
+            <p className="text-white font-semibold text-xs">10 ብር</p>
+            <p className="text-white/60 text-xs">Bet</p>
+          </div>
+          <div>
+            <p className="text-white font-semibold text-xs">
+              {selectedNumber ? `#${selectedNumber}` : 'N/A'}
+            </p>
+            <p className="text-white/60 text-xs">Your Card</p>
+          </div>
+          <div>
+            <p className="text-white font-semibold text-xs">{allCalledNumbers.length}/75</p>
+            <p className="text-white/60 text-xs">Called</p>
+          </div>
+        </div>
+
+
+      </div>
 
       <div className="grid grid-cols-4 gap-4">
         {/* Left: Called Numbers */}
