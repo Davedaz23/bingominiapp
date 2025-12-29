@@ -43,6 +43,7 @@ export default function Home() {
     availableCards,
     takenCards,
     handleCardSelect,
+     pendingSelection, // Add this
   } = useCardSelection(gameData, gameStatus);
 
   // Local states
@@ -437,14 +438,17 @@ const processQueue = async () => {
       {/* Card selection grid - Only for non-active states */}
       {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
         <>
-          <CardSelectionGrid
-            availableCards={availableCards}
-            takenCards={takenCards}
-            selectedNumber={selectedNumber}
-            walletBalance={walletBalance}
-            gameStatus={gameStatus}
-            onCardSelect={handleCardSelect}
-          />
+         
+<CardSelectionGrid
+  availableCards={availableCards}
+  takenCards={takenCards}
+  selectedNumber={selectedNumber}
+  walletBalance={walletBalance}
+  gameStatus={gameStatus}
+  onCardSelect={handleCardSelect}
+  pendingSelection={pendingSelection} // Add this
+  userId={user?.id} // Add this
+/>
           
           {/* Selected card preview */}
           {selectedNumber && bingoCard && (
