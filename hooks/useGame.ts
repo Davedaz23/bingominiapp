@@ -451,23 +451,6 @@ const updateGameState = useCallback((gameData: Game) => {
     return 'Active game'; // Simplified since we don't have timestamp data
   }, [gameState.currentNumber]);
 
-  // Debug function to check current state
-  const debugCurrentState = useCallback(() => {
-    console.log('🔍 DEBUG - Current state:', {
-      gameId,
-      gameStatus: game?.status,
-      bingoCard: bingoCard ? {
-        markedCount: bingoCard.markedPositions?.length || 0,
-        markedPositions: bingoCard.markedPositions || [],
-        hasNumbers: !!bingoCard.numbers
-      } : null,
-      gameState: {
-        currentNumber: gameState.currentNumber,
-        calledNumbersCount: gameState.calledNumbers?.length || 0,
-        isStarted: gameState.isStarted
-      }
-    });
-  }, [gameId, game, bingoCard, gameState]);
 
   // Enhanced game state with time info
   const enhancedGameState = {
