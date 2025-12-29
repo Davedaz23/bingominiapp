@@ -46,7 +46,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
             <motion.button
               key={number}
               onClick={() => isSelectable && onCardSelect(number)}
-              disabled={!isSelectable}
+              disabled={isSelectable}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
