@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface CardSelectionGridProps {
@@ -10,7 +10,8 @@ interface CardSelectionGridProps {
   selectedNumber: number | null;
   walletBalance: number;
   gameStatus: string;
-  onCardSelect: (cardNumber: number) => void;
+  onCardSelect: (cardNumber: number) => Promise<void>; // Changed to async
+  pendingSelection?: number | null; // Track pending backend operation
 }
 
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
@@ -19,77 +20,115 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   selectedNumber,
   walletBalance,
   gameStatus,
-  onCardSelect
+  onCardSelect,
+  pendingSelection = null // Default to null
 }) => {
-  // Local state to track cards that are temporarily "taken" by this user
-  const [localTakenCards, setLocalTakenCards] = useState<Set<number>>(new Set());
-  
-  // Keep localTakenCards in sync with props - when selectedNumber changes, update local taken cards
-  useEffect(() => {
-    if (selectedNumber) {
-      // Add the newly selected card to local taken cards
-      setLocalTakenCards(prev => {
-        const newSet = new Set(prev);
-        newSet.add(selectedNumber);
-        return newSet;
-      });
-    }
-  }, [selectedNumber]);
+  // Local state for optimistic updates
+  const [optimisticSelected, setOptimisticSelected] = useState<number | null>(null);
+  const [optimisticTakenCards, setOptimisticTakenCards] = useState<Set<number>>(new Set());
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [lastProcessedCard, setLastProcessedCard] = useState<number | null>(null);
 
-  // Clear local taken cards when game status changes or component unmounts
-  useEffect(() => {
-    return () => {
-      setLocalTakenCards(new Set());
-    };
-  }, [gameStatus]);
-
-  // Create a map of taken cards for quick lookup
+  // Create a map of taken cards for quick lookup (including optimistic ones)
   const takenCardMap = new Map();
+  
+  // Add actual taken cards
   takenCards.forEach(card => {
     takenCardMap.set(card.cardNumber, card);
   });
+  
+  // Add optimistic taken cards
+  optimisticTakenCards.forEach(cardNumber => {
+    if (!takenCardMap.has(cardNumber)) {
+      takenCardMap.set(cardNumber, { cardNumber, userId: 'optimistic' });
+    }
+  });
 
-  // Handle card selection with immediate visual feedback
-  const handleCardSelect = (cardNumber: number) => {
-    // If user is selecting the same card, do nothing
-    if (selectedNumber === cardNumber) return;
-
-    // Update local taken cards immediately for visual feedback
-    setLocalTakenCards(prev => {
-      const newSet = new Set(prev);
+  // Reset optimistic state when backend confirms selection
+  useEffect(() => {
+    if (selectedNumber && optimisticSelected === selectedNumber) {
+      // Backend confirmed our optimistic selection
+      setOptimisticSelected(null);
+      setIsProcessing(false);
+      setLastProcessedCard(selectedNumber);
       
-      // Remove previous selection from local taken cards
-      if (selectedNumber) {
-        newSet.delete(selectedNumber);
+      // Remove from optimistic taken if it was added
+      if (optimisticTakenCards.has(selectedNumber)) {
+        setOptimisticTakenCards(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(selectedNumber);
+          return newSet;
+        });
       }
-      
-      // Add new selection to local taken cards
-      newSet.add(cardNumber);
-      return newSet;
-    });
+    }
+  }, [selectedNumber, optimisticSelected, optimisticTakenCards]);
 
-    // Call the parent handler to process backend logic
-    onCardSelect(cardNumber);
-  };
-
-  // Helper function to determine if a card is "visually taken" (either actually taken or locally taken)
-  const isCardVisuallyTaken = (cardNumber: number): boolean => {
-    // If it's actually taken in the backend
-    if (takenCardMap.has(cardNumber)) return true;
+  // Handle card selection with optimistic updates
+  const handleCardSelect = async (cardNumber: number) => {
+    // Don't allow new selection while processing
+    if (isProcessing) return;
     
-    // If it's locally taken by this user (except the currently selected one)
-    if (localTakenCards.has(cardNumber) && cardNumber !== selectedNumber) return true;
-    
-    return false;
-  };
-
-  // Helper function to determine if a card is available for selection
-  const isCardAvailableForSelection = (cardNumber: number): boolean => {
+    // Check if card is available and not taken
+    const isTaken = takenCardMap.has(cardNumber);
     const isAvailable = availableCards.some(card => card.cardIndex === cardNumber);
     const canSelect = walletBalance >= 10;
-    const isActuallyTaken = takenCardMap.has(cardNumber);
     
-    return canSelect && isAvailable && !isActuallyTaken && gameStatus === 'ACTIVE';
+    // if (!isSelectable) return;
+    
+    // Start optimistic update
+    setIsProcessing(true);
+    
+    // Optimistically mark as selected
+    setOptimisticSelected(cardNumber);
+    
+    // If there was a previous optimistic selection, add it to taken
+    if (lastProcessedCard && lastProcessedCard !== cardNumber) {
+      setOptimisticTakenCards(prev => new Set(prev).add(lastProcessedCard));
+    }
+    
+    try {
+      // Call the async onCardSelect function
+      await onCardSelect(cardNumber);
+    } catch (error) {
+      // Revert optimistic update on error
+      console.error('Card selection failed:', error);
+      setOptimisticSelected(null);
+      setIsProcessing(false);
+      
+      // Show error feedback (you could add toast notification here)
+      alert('Failed to select card. Please try again.');
+    }
+  };
+
+  // Determine the actual display state
+  const getCardState = (number: number) => {
+    const isTaken = takenCardMap.has(number);
+    const isAvailable = availableCards.some(card => card.cardIndex === number);
+    const canSelect = walletBalance >= 10;
+    const isSelectable = canSelect && isAvailable && !isTaken;
+    
+    // Check if this card is optimistically selected
+    const isOptimisticallySelected = optimisticSelected === number;
+    
+    // Check if this card is being processed
+    const isBeingProcessed = isProcessing && isOptimisticallySelected;
+    
+    // Show selected state optimistically or from backend
+    const isCurrentlySelected = isOptimisticallySelected || (!isProcessing && selectedNumber === number);
+    
+    // If being processed, show loading state
+    const isPending = pendingSelection === number || isBeingProcessed;
+    
+    return {
+      isTaken,
+      isAvailable,
+      canSelect,
+      isSelectable: isSelectable && !isProcessing, // Disable during processing
+      isCurrentlySelected,
+      isBeingProcessed,
+      isPending,
+      isOptimisticallySelected
+    };
   };
 
   return (
@@ -101,47 +140,54 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         transition={{ delay: 0.2 }}
       >
         {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
-          const isVisuallyTaken = isCardVisuallyTaken(number);
-          const isActuallyTaken = takenCardMap.has(number);
-          const isLocallyTaken = localTakenCards.has(number) && number !== selectedNumber;
-          const isAvailableForSelection = isCardAvailableForSelection(number);
-          const isCurrentlySelected = selectedNumber === number;
-          const takenBy = isActuallyTaken ? takenCardMap.get(number) : null;
-
+          const state = getCardState(number);
+          
           return (
             <motion.button
               key={number}
-              onClick={() => isAvailableForSelection && handleCardSelect(number)}
-              disabled={!isAvailableForSelection}
+              onClick={() => handleCardSelect(number)}
+              disabled={!state.isSelectable || isProcessing}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
-                ${isCurrentlySelected
+                ${state.isCurrentlySelected
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
-                  : isVisuallyTaken
+                  : state.isPending
+                  ? 'bg-yellow-500/60 text-white border-yellow-500 shadow-md'
+                  : state.isTaken
                   ? 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
-                  : isAvailableForSelection
-                  ? 'bg-green-500/60 text-white hover:bg-green-600/70 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/60'
+                  : state.isSelectable
+                  ? gameStatus === 'ACTIVE' 
+                    ? 'bg-green-500/60 text-white hover:bg-green-600/70 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/60'
+                    : 'bg-white/30 text-white hover:bg-white/40 hover:scale-105 hover:shadow-md cursor-pointer border-white/30'
                   : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
                 }
-                ${isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
-                ${isVisuallyTaken && !isActuallyTaken ? 'animate-pulse border-dashed' : ''}
+                ${state.isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
+                ${state.isTaken && !state.isOptimisticallySelected ? 'animate-pulse' : ''}
+                ${isProcessing ? 'cursor-wait' : ''}
               `}
-              whileHover={isAvailableForSelection ? { scale: 1.05 } : {}}
-              whileTap={isAvailableForSelection ? { scale: 0.95 } : {}}
+              whileHover={state.isSelectable && !isProcessing ? { scale: 1.05 } : {}}
+              whileTap={state.isSelectable && !isProcessing ? { scale: 0.95 } : {}}
               layout
             >
               {number}
               
+              {/* Processing/Loading indicator */}
+              {state.isBeingProcessed && (
+                <div className="absolute inset-0 flex items-center justify-center bg-yellow-500/20 rounded-xl">
+                  <Loader2 className="w-4 h-4 text-yellow-300 animate-spin" />
+                </div>
+              )}
+              
               {/* Current selection indicator */}
-              {isCurrentlySelected && (
+              {state.isCurrentlySelected && !state.isBeingProcessed && (
                 <div className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-400 rounded-full border-2 border-white flex items-center justify-center">
                   <Check className="w-3 h-3 text-white" />
                 </div>
               )}
               
-              {/* Taken indicator - shows immediately when card is taken */}
-              {isVisuallyTaken && !isCurrentlySelected && (
+              {/* Taken indicator */}
+              {state.isTaken && !state.isCurrentlySelected && !state.isOptimisticallySelected && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-4 h-4 text-red-300">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -151,18 +197,13 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
-              {/* Indicator for locally taken (pending backend confirmation) */}
-              {isLocallyTaken && (
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-orange-400 rounded-full border border-white animate-pulse"></div>
-              )}
-              
               {/* Available for selection indicator */}
-              {!isVisuallyTaken && isAvailableForSelection && !isCurrentlySelected && (
+              {!state.isTaken && state.isSelectable && gameStatus === 'ACTIVE' && !state.isCurrentlySelected && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               )}
               
               {/* Insufficient balance indicator */}
-              {!isVisuallyTaken && !isAvailableForSelection && walletBalance < 10 && (
+              {!state.isTaken && !state.isSelectable && walletBalance < 10 && (
                 <div className="absolute inset-0 flex items-center justify-center opacity-60">
                   <div className="w-3 h-3 text-yellow-400">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -173,7 +214,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               )}
 
               {/* Show available indicator */}
-              {!isVisuallyTaken && isAvailableForSelection && !isCurrentlySelected && (
+              {state.isAvailable && !state.isTaken && state.canSelect && !state.isCurrentlySelected && (
                 <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
               )}
             </motion.button>
@@ -185,38 +226,50 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
       <div className="text-center text-white/60 text-sm mb-3">
         <div className="flex justify-center gap-4">
           <span>✅ {availableCards.length} available</span>
-          <span>❌ {takenCards.length} taken</span>
-          <span>🔄 {localTakenCards.size - (selectedNumber ? 1 : 0)} pending</span>
-          <span>⏳ {400 - availableCards.length - takenCards.length} inactive</span>
+          <span>❌ {takenCardMap.size} taken</span>
+          <span>⏳ {400 - availableCards.length - takenCardMap.size} inactive</span>
+          {isProcessing && <span className="text-yellow-400">🔄 Processing...</span>}
         </div>
         <div className="text-xs text-white/40 mt-1">
-          Updates in real-time • Selected cards show immediately
+          Updates in real-time • Refresh automatically
+          {optimisticTakenCards.size > 0 && (
+            <span className="text-yellow-400 ml-2">
+              • Optimistic updates: {optimisticTakenCards.size}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Selection Info */}
-      {selectedNumber && (
+      {(selectedNumber || optimisticSelected) && (
         <motion.div 
-          className="bg-telegram-button/20 backdrop-blur-lg rounded-2xl p-3 mb-3 border border-telegram-button/30"
+          className={`
+            backdrop-blur-lg rounded-2xl p-3 mb-3 border
+            ${isProcessing 
+              ? 'bg-yellow-500/20 border-yellow-500/30' 
+              : 'bg-telegram-button/20 border-telegram-button/30'
+            }
+          `}
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-telegram-button" />
-              <p className="text-telegram-button font-bold text-sm">Card #{selectedNumber} Selected</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {localTakenCards.has(selectedNumber) && !takenCardMap.has(selectedNumber) && (
-                <span className="text-xs text-orange-400 animate-pulse">Processing...</span>
+              {isProcessing ? (
+                <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4 text-telegram-button" />
               )}
-              <p className="text-telegram-button/80 text-xs">
-                Click another card to change selection
+              <p className={`font-bold text-sm ${isProcessing ? 'text-yellow-400' : 'text-telegram-button'}`}>
+                {isProcessing ? 'Processing Card #' : 'Card #'}{optimisticSelected || selectedNumber}
+                {isProcessing ? '...' : ' Selected'}
               </p>
             </div>
-          </div>
-          <div className="text-xs text-telegram-button/60 mt-1">
-            Previous selections are released immediately. Backend confirmation may take a moment.
+            <p className={`text-xs ${isProcessing ? 'text-yellow-400/80' : 'text-telegram-button/80'}`}>
+              {isProcessing 
+                ? 'Waiting for confirmation...' 
+                : 'Click another card to change selection'}
+            </p>
           </div>
         </motion.div>
       )}
