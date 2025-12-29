@@ -53,6 +53,7 @@ export default function Home() {
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [lastCheckTime, setLastCheckTime] = useState<number>(0);
+  const [pendingSelection, setPendingSelection] = useState<number | null>(null);
 
   // Refs for tracking - prevent reloads
   const isCheckingPlayerStatusRef = useRef<boolean>(false);
@@ -63,34 +64,50 @@ export default function Home() {
   const hasCardRef = useRef<boolean>(false);
   const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const requestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-const initializationQueue = useRef<(() => Promise<void>)[]>([]);
-const isProcessingQueue = useRef(false);
+  const initializationQueue = useRef<(() => Promise<void>)[]>([]);
+  const isProcessingQueue = useRef(false);
 
-const processQueue = async () => {
-  if (isProcessingQueue.current || initializationQueue.current.length === 0) return;
-  
-  isProcessingQueue.current = true;
-  
-  // Process one item at a time with delay
-  for (const task of initializationQueue.current) {
-    try {
-      await task();
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second between tasks
-    } catch (error) {
-      console.error('Queue task failed:', error);
+  const processQueue = useCallback(async () => {
+    if (isProcessingQueue.current || initializationQueue.current.length === 0) return;
+    
+    isProcessingQueue.current = true;
+    
+    // Process one item at a time with delay
+    while (initializationQueue.current.length > 0) {
+      const task = initializationQueue.current.shift();
+      if (task) {
+        try {
+          await task();
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second between tasks
+        } catch (error) {
+          console.error('Queue task failed:', error);
+        }
+      }
     }
-  }
-  
-  initializationQueue.current = [];
-  isProcessingQueue.current = false;
-};
-
+    
+    initializationQueue.current = [];
+    isProcessingQueue.current = false;
+  }, []);
 
   // Sync refs with state
   useEffect(() => {
     gameStatusRef.current = gameStatus;
     hasCardRef.current = hasCardInActiveGame;
   }, [gameStatus, hasCardInActiveGame]);
+
+  // Wrap handleCardSelect to add pending state
+  const handleCardSelectWithPending = useCallback(async (cardNumber: number) => {
+    setPendingSelection(cardNumber);
+    try {
+      await handleCardSelect(cardNumber);
+      // Refresh player status after successful card selection
+      await checkPlayerCardInActiveGame(true);
+    } catch (error) {
+      console.error('Card selection failed:', error);
+    } finally {
+      setPendingSelection(null);
+    }
+  }, [handleCardSelect]);
 
   // Check player card status - WITH TIMEOUT PROTECTION
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
@@ -128,7 +145,7 @@ const processQueue = async () => {
       if (response.data.success && response.data.games.length > 0) {
         const game = response.data.games[0];
         
-        if (game.status === 'ACTIVE' || game.status === 'WAITING_FOR_PLAYERS') {
+        if (game.status === 'ACTIVE' || game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION') {
           // Get participants with timeout protection
           try {
             const participantsPromise = gameAPI.getGameParticipants(game._id);
@@ -214,37 +231,38 @@ const processQueue = async () => {
   }, [gameStatus, playerGameStatus, gameData, authLoading, pageLoading, autoRedirected, router]);
 
   // Initialize - ONE TIME ONLY with memory
- useEffect(() => {
-  if (authLoading || isInitializedRef.current) return;
+  useEffect(() => {
+    if (authLoading || isInitializedRef.current) return;
 
-  const init = async () => {
-    isInitializedRef.current = true;
-    console.log('🔧 Initializing page (one-time) with queue...');
-    
-    // Add tasks to queue with delays
-    initializationQueue.current.push(async () => {
-      console.log('🎮 Task 1: Initializing game state...');
-      await initializeGameState();
-    });
-    
-    if (isAuthenticated && user) {
+    const init = async () => {
+      isInitializedRef.current = true;
+      console.log('🔧 Initializing page (one-time) with queue...');
+      
+      // Add tasks to queue with delays
       initializationQueue.current.push(async () => {
-        console.log('⏳ Waiting 3 seconds before checking player status...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log('🎮 Task 1: Initializing game state...');
+        await initializeGameState();
       });
       
-      initializationQueue.current.push(async () => {
-        console.log('👤 Task 2: Checking player card status...');
-        await checkPlayerCardInActiveGame(true);
-      });
-    }
-    
-    // Start processing queue
-    setTimeout(() => processQueue(), 1000);
-  };
+      if (isAuthenticated && user) {
+        initializationQueue.current.push(async () => {
+          console.log('⏳ Waiting 3 seconds before checking player status...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        });
+        
+        initializationQueue.current.push(async () => {
+          console.log('👤 Task 2: Checking player card status...');
+          await checkPlayerCardInActiveGame(true);
+        });
+      }
+      
+      // Start processing queue
+      setTimeout(() => processQueue(), 1000);
+    };
 
-  init();
-}, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData]);
+    init();
+  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, processQueue]);
+
   // Set up periodic checks - VERY INFREQUENT
   useEffect(() => {
     if (!isAuthenticated || !user) return;
@@ -312,6 +330,10 @@ const processQueue = async () => {
     
     if (gameStatus === 'WAITING_FOR_PLAYERS') {
       return 'Waiting for players';
+    }
+    
+    if (gameStatus === 'CARD_SELECTION') {
+      return 'Card selection phase - Select a card to play';
     }
     
     if (gameStatus === 'FINISHED') {
@@ -435,7 +457,7 @@ const processQueue = async () => {
       )}
 
       {/* Card selection grid - Only for non-active states */}
-      {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
+      {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION') && !hasCardInActiveGame && (
         <>
           <CardSelectionGrid
             availableCards={availableCards}
@@ -443,8 +465,9 @@ const processQueue = async () => {
             selectedNumber={selectedNumber}
             walletBalance={walletBalance}
             gameStatus={gameStatus}
-            onCardSelect={handleCardSelect}
-            
+            onCardSelect={handleCardSelectWithPending}
+            pendingSelection={pendingSelection}
+            userId={user?.id}
           />
           
           {/* Selected card preview */}
@@ -484,51 +507,19 @@ const processQueue = async () => {
         </>
       )}
 
-      {/* Simple footer with minimal info */}
-      {/* {gameStatus !== 'ACTIVE' && (
+      {/* Game status info */}
+      {gameStatus === 'FINISHED' && (
         <motion.div 
-          className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20"
+          className="bg-purple-500/20 backdrop-blur-lg rounded-2xl p-4 border border-purple-500/30"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
         >
           <div className="text-center">
-            <p className="text-white font-bold mb-2">How to Play</p>
-            <div className="grid grid-cols-3 gap-4 mb-3">
-              <div>
-                <p className="text-white text-sm">1. Select Card</p>
-                <p className="text-white/60 text-xs">Pick a number 1-75</p>
-              </div>
-              <div>
-                <p className="text-white text-sm">2. Wait for Game</p>
-                <p className="text-white/60 text-xs">Minimum 2 players</p>
-              </div>
-              <div>
-                <p className="text-white text-sm">3. Play Bingo</p>
-                <p className="text-white/60 text-xs">Match numbers to win</p>
-              </div>
-            </div>
-            
-            <div className="flex justify-center gap-6 mt-3">
-              <div className="text-center">
-                <p className="text-white font-bold">10 ብር</p>
-                <p className="text-white/60 text-xs">Entry Fee</p>
-              </div>
-              <div className="text-center">
-                <p className="text-white font-bold">
-                  {hasRestartCooldown ? '60s' : 'Auto'}
-                </p>
-                <p className="text-white/60 text-xs">
-                  {hasRestartCooldown ? 'Cooldown' : 'Start'}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-white font-bold">5m</p>
-                <p className="text-white/60 text-xs">Status Check</p>
-              </div>
-            </div>
+            <p className="text-purple-300 font-bold text-sm">Game Finished</p>
+            <p className="text-purple-200 text-xs">Next game starting soon...</p>
           </div>
         </motion.div>
-      )} */}
+      )}
     </div>
   );
 }
