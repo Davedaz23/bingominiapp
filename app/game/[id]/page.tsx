@@ -663,51 +663,91 @@ useEffect(() => {
   }, [isLoadingCard]);
 
   // FIXED: Handle manual number marking
-  const handleMarkNumber = async (number: number) => {
-    if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
 
-    try {
-      setIsMarking(true);
-      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      if (!userId) throw new Error('User ID not found');
+const handleMarkNumber = async (number: number) => {
+  if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
 
-      const response = await gameAPI.markNumber(id, userId, number);
+  try {
+    setIsMarking(true);
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    if (!userId) throw new Error('User ID not found');
 
-      if (response.data.success) {
-        console.log(`✅ Successfully marked number: ${number}`);
+    // 🔥 IMMEDIATE UI UPDATE: Mark the number locally first
+    if (localBingoCard) {
+      const numbers = localBingoCard.numbers.flat();
+      const position = numbers.indexOf(number);
 
-        // Update local card
+      if (position !== -1 && !localBingoCard.markedPositions?.includes(position)) {
+        const updatedMarkedPositions = [...(localBingoCard.markedPositions || []), position];
+        setLocalBingoCard({
+          ...localBingoCard,
+          markedPositions: updatedMarkedPositions
+        });
+
+        // Visual feedback
+        setIsAnimating(true);
+        setTimeout(() => setIsAnimating(false), 500);
+      }
+    }
+
+    // Then send to backend (fire-and-forget)
+    gameAPI.markNumber(id, userId, number)
+      .then(response => {
+        if (response.data.success) {
+          console.log(`✅ Successfully marked number: ${number}`);
+        } else {
+          // If backend fails, revert the UI change
+          console.warn('Backend marking failed, reverting UI...');
+          if (localBingoCard) {
+            const numbers = localBingoCard.numbers.flat();
+            const position = numbers.indexOf(number);
+            
+            if (position !== -1) {
+              const updatedMarkedPositions = localBingoCard.markedPositions?.filter(pos => pos !== position) || [];
+              setLocalBingoCard({
+                ...localBingoCard,
+                markedPositions: updatedMarkedPositions
+              });
+            }
+          }
+        }
+      })
+      .catch(error => {
+        console.error('Failed to mark number on backend:', error);
+        // Revert UI change on error
         if (localBingoCard) {
           const numbers = localBingoCard.numbers.flat();
           const position = numbers.indexOf(number);
-
-          if (position !== -1 && !localBingoCard.markedPositions?.includes(position)) {
-            const updatedMarkedPositions = [...(localBingoCard.markedPositions || []), position];
+          
+          if (position !== -1) {
+            const updatedMarkedPositions = localBingoCard.markedPositions?.filter(pos => pos !== position) || [];
             setLocalBingoCard({
               ...localBingoCard,
               markedPositions: updatedMarkedPositions
             });
-
-            setIsAnimating(true);
-            setTimeout(() => setIsAnimating(false), 500);
           }
         }
-
-        // Update game state
-        setTimeout(() => updateGameState(true), 1000);
-      }
-    } catch (error: any) {
-      console.error('Failed to mark number:', error);
-      setClaimResult({
-        success: false,
-        message: error.response?.data?.message || 'Failed to mark number'
+        
+        setClaimResult({
+          success: false,
+          message: error.response?.data?.message || 'Failed to save mark'
+        });
+        setTimeout(() => setClaimResult(null), 3000);
       });
 
-      setTimeout(() => setClaimResult(null), 3000);
-    } finally {
-      setIsMarking(false);
-    }
-  };
+    // Optional: Update game state after marking
+    setTimeout(() => updateGameState(true), 1000);
+  } catch (error: any) {
+    console.error('Failed to mark number:', error);
+    setClaimResult({
+      success: false,
+      message: error.response?.data?.message || 'Failed to mark number'
+    });
+    setTimeout(() => setClaimResult(null), 3000);
+  } finally {
+    setIsMarking(false);
+  }
+};
 
   // FIXED: Handle manual Bingo claim
   const handleClaimBingo = async () => {
@@ -1544,8 +1584,7 @@ useEffect(() => {
   </div>
 )}
 
-      {/* Spectator Mode Notice */}
-
+ 
     </div>
   );
 }
