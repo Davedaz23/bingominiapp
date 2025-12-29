@@ -43,6 +43,9 @@ export default function Home() {
     availableCards,
     takenCards,
     handleCardSelect,
+      cardSelectionError,
+      cardSelectionStatus,
+  isLoadingCards,
   } = useCardSelection(gameData, gameStatus);
 
   // Local states
@@ -414,14 +417,16 @@ export default function Home() {
       {/* Card selection grid - Only for non-active states */}
       {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
         <>
-          <CardSelectionGrid
-            availableCards={availableCards}
-            takenCards={takenCards}
-            selectedNumber={selectedNumber}
-            walletBalance={walletBalance}
-            gameStatus={gameStatus}
-            onCardSelect={handleCardSelect}
-          />
+         <CardSelectionGrid
+  availableCards={availableCards}
+  takenCards={takenCards}
+  selectedNumber={selectedNumber}
+  walletBalance={walletBalance} // from useAuth()
+  gameStatus={gameStatus}
+  isSelectionActive={cardSelectionStatus.isSelectionActive}
+  isLoading={isLoadingCards}
+  onCardSelect={handleCardSelect}
+/>
           
           {/* Selected card preview */}
           {selectedNumber && bingoCard && (
