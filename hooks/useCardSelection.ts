@@ -84,14 +84,17 @@ const [pendingSelection, setPendingSelection] = useState<number | null>(null);
   const STATUS_CHECK_INTERVAL = 120000; // 2 minutes
 
   // Load selected number from account-specific storage
-  useEffect(() => {
+useEffect(() => {
+  // Only load saved selection once when user changes
+  if (user?.id) {
     const savedSelectedNumber = getAccountData('selected_number');
-    if (savedSelectedNumber) {
+    if (savedSelectedNumber && !selectedNumber) {
       setSelectedNumber(savedSelectedNumber);
       setBingoCard(generateBingoCard(savedSelectedNumber));
       console.log('✅ Loaded saved card selection:', savedSelectedNumber);
     }
-  }, [user, getAccountData]);
+  }
+}, [user?.id, getAccountData, selectedNumber]); // Add selectedNumber dependency
 
   const shouldEnableCardSelection = useCallback(() => {
     if (!gameData?._id) {
@@ -457,32 +460,19 @@ const handleCardSelect = async (cardNumber: number) => {
 
   // Fetch available cards when game data changes - WITH THROTTLING
   useEffect(() => {
-    console.log('🔄 useCardSelection effect triggered:', {
-      gameId: gameData?._id,
-      gameStatus,
-      walletBalance,
-      userId: user?.id,
-      shouldEnableCardSelection: shouldEnableCardSelection()
-    });
-
-    if (gameData?._id && shouldEnableCardSelection() && user?.id) {
-      console.log('🚀 Fetching available cards (throttled)...');
-      
-      // Use setTimeout to avoid immediate fetch on every render
-      const timeoutId = setTimeout(() => {
-        fetchAvailableCards();
-        checkCardSelectionStatus();
-      }, 500);
-      
-      return () => clearTimeout(timeoutId);
-    } else {
-      console.log('⏸️ Skipping card fetch - conditions not met:', {
-        hasGameId: !!gameData?._id,
-        shouldEnableCardSelection: shouldEnableCardSelection(),
-        hasUserId: !!user?.id
-      });
-    }
-  }, [gameData, gameStatus, walletBalance, user, selectedNumber, fetchAvailableCards, checkCardSelectionStatus, shouldEnableCardSelection]);
+ 
+if (gameData?._id && shouldEnableCardSelection() && user?.id) {
+    console.log('🚀 Fetching available cards...');
+    
+    // Debounce the fetch to prevent rapid calls
+    const timeoutId = setTimeout(() => {
+      fetchAvailableCards();
+      checkCardSelectionStatus();
+    }, 300);
+    
+    return () => clearTimeout(timeoutId);
+  }
+}, [gameData?._id, gameStatus, user?.id, shouldEnableCardSelection]);
 
   // Check card selection status periodically - INFREQUENT
   useEffect(() => {
