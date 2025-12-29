@@ -193,11 +193,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
       )}
       
       {/* Debug info - Remove in production */}
-      <div className="text-xs text-white/50 mt-2">
-        <p>User ID: {userId}</p>
-        <p>Selected: {selectedNumber}</p>
-        <p>User's taken cards: {takenCards.filter(c => c.userId === userId).map(c => c.cardNumber).join(', ')}</p>
-      </div>
+     
     </div>
   );
 };
