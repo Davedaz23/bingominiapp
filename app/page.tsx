@@ -63,28 +63,6 @@ export default function Home() {
   const hasCardRef = useRef<boolean>(false);
   const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const requestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-const initializationQueue = useRef<(() => Promise<void>)[]>([]);
-const isProcessingQueue = useRef(false);
-
-const processQueue = async () => {
-  if (isProcessingQueue.current || initializationQueue.current.length === 0) return;
-  
-  isProcessingQueue.current = true;
-  
-  // Process one item at a time with delay
-  for (const task of initializationQueue.current) {
-    try {
-      await task();
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second between tasks
-    } catch (error) {
-      console.error('Queue task failed:', error);
-    }
-  }
-  
-  initializationQueue.current = [];
-  isProcessingQueue.current = false;
-};
-
 
   // Sync refs with state
   useEffect(() => {
@@ -214,37 +192,36 @@ const processQueue = async () => {
   }, [gameStatus, playerGameStatus, gameData, authLoading, pageLoading, autoRedirected, router]);
 
   // Initialize - ONE TIME ONLY with memory
- useEffect(() => {
-  if (authLoading || isInitializedRef.current) return;
+  useEffect(() => {
+    if (authLoading || isInitializedRef.current) return;
 
-  const init = async () => {
-    isInitializedRef.current = true;
-    console.log('🔧 Initializing page (one-time) with queue...');
-    
-    // Add tasks to queue with delays
-    initializationQueue.current.push(async () => {
-      console.log('🎮 Task 1: Initializing game state...');
-      await initializeGameState();
-    });
-    
-    if (isAuthenticated && user) {
-      initializationQueue.current.push(async () => {
-        console.log('⏳ Waiting 3 seconds before checking player status...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      });
+    const init = async () => {
+      isInitializedRef.current = true;
+      console.log('🔧 Initializing page (one-time)...');
       
-      initializationQueue.current.push(async () => {
-        console.log('👤 Task 2: Checking player card status...');
-        await checkPlayerCardInActiveGame(true);
-      });
-    }
-    
-    // Start processing queue
-    setTimeout(() => processQueue(), 1000);
-  };
+      try {
+        // Initialize game state once with timeout
+        await initializeGameState();
+        
+        // Set cooldown from initial gameData
+        if (gameData?.hasRestartCooldown) {
+          setHasRestartCooldown(true);
+        }
+        
+        // Check player status only if authenticated - wait 2 seconds
+        if (isAuthenticated && user) {
+          setTimeout(() => {
+            checkPlayerCardInActiveGame(true);
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('❌ Initialization error:', error);
+      }
+    };
 
-  init();
-}, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData]);
+    init();
+  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData]);
+
   // Set up periodic checks - VERY INFREQUENT
   useEffect(() => {
     if (!isAuthenticated || !user) return;
@@ -484,7 +461,7 @@ const processQueue = async () => {
       )}
 
       {/* Simple footer with minimal info */}
-      {/* {gameStatus !== 'ACTIVE' && (
+      {gameStatus !== 'ACTIVE' && (
         <motion.div 
           className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20"
           initial={{ opacity: 0 }}
@@ -527,7 +504,7 @@ const processQueue = async () => {
             </div>
           </div>
         </motion.div>
-      )} */}
+      )}
     </div>
   );
 }
