@@ -162,87 +162,108 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     }
   };
 
-  const handleCardSelect = async (cardNumber: number) => {
-    if (!gameData?._id || !user?.id) return;
-console.log("Defar negn");
-    try {
-      setCardSelectionError('');
-       if (selectedNumber && selectedNumber !== cardNumber) {
-      await handleCardRelease(); // Release the previous card
+const handleCardSelect = async (cardNumber: number) => {
+  if (!gameData?._id || !user?.id) {
+    console.log('❌ Missing gameId or userId');
+    return;
+  }
+
+  try {
+    setCardSelectionError('');
+    
+    console.log('🔄 Selecting card:', {
+      gameId: gameData._id,
+      userId: user.id,
+      cardNumber: cardNumber
+    });
+
+    // Check if card is already taken (from current state)
+    const isCardTaken = takenCards.some(card => 
+      card.cardNumber === cardNumber && card.userId !== user.id
+    );
+    
+    if (isCardTaken) {
+      setCardSelectionError(`Card #${cardNumber} is already taken by another player`);
+      
+      // Refresh taken cards to get latest status
+      await fetchTakenCards();
+      return;
     }
-      // Check if card is already taken (real-time check)
-      const isCardTaken = takenCards.some(card => card.cardNumber === cardNumber);
-      if (isCardTaken) {
-        setCardSelectionError(`Card #${cardNumber} is already taken by another player`);
-        
-        // Refresh taken cards to get latest status
-        await fetchTakenCards();
-        return;
-      }
 
-      // Find the selected card data from availableCards
-      const selectedCardData = availableCards.find(card => card.cardIndex === cardNumber);
+    // Find the selected card data from availableCards
+    // ✅ FIX: Use cardNumber to find the card (not cardIndex)
+    const selectedCardData = availableCards.find(card => card.cardNumber === cardNumber);
+    
+    if (!selectedCardData) {
+      setCardSelectionError('Selected card not found in available cards');
+      console.log('❌ Card not in availableCards:', cardNumber);
       
-      if (!selectedCardData) {
-        setCardSelectionError('Selected card not found');
-        return;
-      }
+      // Refresh available cards
+      await fetchAvailableCards();
+      return;
+    }
 
-      console.log('🔄 Selecting card:', {
-        gameId: gameData._id,
-        userId: user.id,
-        cardIndex: cardNumber,
-        cardNumbers: selectedCardData.numbers
+    // Call the API to select the card
+    const response = await gameAPI.selectCardWithNumber(gameData._id, {
+      userId: user.id,
+      cardNumbers: selectedCardData.numbers,
+      cardNumber: cardNumber
+    });
+    
+    console.log("📡 Backend response:", response.data);
+    
+    if (response.data.success) {
+      console.log(`✅ Card selection successful! Action: ${response.data.action}`);
+      
+      // Update local state IMMEDIATELY
+      setSelectedNumber(cardNumber);
+      setBingoCard(selectedCardData.numbers);
+      
+      // Save to account storage
+      setAccountData('selected_number', cardNumber);
+      
+      // Update taken cards to include our selection
+      setTakenCards(prev => {
+        // Remove any previous selections by this user
+        const filtered = prev.filter(card => card.userId !== user.id);
+        // Add the new selection
+        return [...filtered, { cardNumber, userId: user.id }];
       });
-
-      // Call the API to select the card with card number
-      const response = await gameAPI.selectCardWithNumber(gameData._id, {
-        userId: user.id,
-        cardNumbers: selectedCardData.numbers,
-        cardNumber: cardNumber
-      });
-      console.log("Defar backend", cardNumber);
       
-      if (response.data.success) {
-        console.log(`✅ Card is ${response.data.action === 'UPDATED' ? 'updated' : 'selected'} successfully:`, response.data);
-        
-        // Update local state
-        setSelectedNumber(cardNumber);
-        setBingoCard(selectedCardData.numbers);
-        
-        // Save to account storage
-        setAccountData('selected_number', cardNumber);
-        
-        // Immediately update taken cards to reflect this selection
+      // Refresh data from backend to confirm
+      setTimeout(() => {
+        fetchTakenCards();
+        fetchAvailableCards();
+      }, 1000);
+      
+    } else {
+      // Handle specific backend errors
+      const errorMsg = response.data.error || 'Failed to select card';
+      setCardSelectionError(errorMsg);
+      
+      if (errorMsg.includes('already taken') || errorMsg.includes('taken')) {
+        // Refresh taken cards if there's a conflict
         await fetchTakenCards();
-        
-        // Show success message based on action
-        if (response.data.action === 'UPDATED') {
-          setCardSelectionError(''); // Clear any previous errors
-          console.log('🔄 Card successfully updated!');
-        } else {
-          console.log('✅ Card successfully selected!');
-        }
-        
-      } else {
-        setCardSelectionError(response.data.error || 'Failed to select card');
-      }
-    } catch (error: any) {
-      console.error('❌ Card selection error:', error);
-      
-      // Handle specific error cases
-      if (error.response?.data?.error) {
-        setCardSelectionError(error.response.data.error);
-        
-        // If card is taken, refresh the taken cards list
-        if (error.response.data.error.includes('already taken')) {
-          await fetchTakenCards();
-        }
-      } else {
-        setCardSelectionError('Failed to select card. Please try again.');
       }
     }
-  };
+  } catch (error: any) {
+    console.error('❌ Card selection error:', error);
+    
+    // Handle network/API errors
+    if (error.response?.data?.error) {
+      const errorMsg = error.response.data.error;
+      setCardSelectionError(errorMsg);
+      
+      if (errorMsg.includes('already taken')) {
+        await fetchTakenCards();
+      }
+    } else if (error.message === 'Network Error') {
+      setCardSelectionError('Network error. Please check your connection.');
+    } else {
+      setCardSelectionError('Failed to select card. Please try again.');
+    }
+  }
+};
 
   const handleCardRelease = async () => {
     if (!user?.id || !gameData?._id || !selectedNumber) return;
