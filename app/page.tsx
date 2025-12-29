@@ -43,7 +43,6 @@ export default function Home() {
     availableCards,
     takenCards,
     handleCardSelect,
-     pendingSelection, // Add this
   } = useCardSelection(gameData, gameStatus);
 
   // Local states
@@ -403,7 +402,7 @@ const processQueue = async () => {
       )}
 
       {/* Game active notification */}
-      {gameStatus === 'ACTIVE' && (
+      {gameStatus === 'ACTIVE' && !hasCardInActiveGame && (
         <motion.div 
           className="bg-blue-500/10 backdrop-blur-lg rounded-xl p-3 mb-4 border border-blue-500/20"
           initial={{ opacity: 0 }}
@@ -438,17 +437,15 @@ const processQueue = async () => {
       {/* Card selection grid - Only for non-active states */}
       {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
         <>
-         
-<CardSelectionGrid
-  availableCards={availableCards}
-  takenCards={takenCards}
-  selectedNumber={selectedNumber}
-  walletBalance={walletBalance}
-  gameStatus={gameStatus}
-  onCardSelect={handleCardSelect}
-  pendingSelection={pendingSelection} // Add this
-  userId={user?.id} // Add this
-/>
+          <CardSelectionGrid
+            availableCards={availableCards}
+            takenCards={takenCards}
+            selectedNumber={selectedNumber}
+            walletBalance={walletBalance}
+            gameStatus={gameStatus}
+            onCardSelect={handleCardSelect}
+            
+          />
           
           {/* Selected card preview */}
           {selectedNumber && bingoCard && (
