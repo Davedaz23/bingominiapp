@@ -12,18 +12,21 @@ import { Clock, Check, AlertCircle } from 'lucide-react';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
 import { UserInfoDisplay } from '../components/user/UserInfoDisplay';
 
-// Constants for throttling - INCREASED INTERVALS
-const PLAYER_CHECK_INTERVAL = 300000; // 5 minutes for player status
-const MIN_REDIRECT_DELAY = 3000; // 3 seconds minimum before redirect
-const REQUEST_TIMEOUT = 10000; // 10 seconds timeout for API calls
+// Constants for throttling
+const BALANCE_CHECK_INTERVAL = 120000; // 2 minutes in milliseconds
+const PLAYER_CHECK_INTERVAL = 180000; // 3 minutes for player status
+const MIN_REDIRECT_DELAY = 5000; // 5 seconds minimum before redirect
 
 export default function Home() {
   const { 
     user, 
     isAuthenticated, 
     isLoading: authLoading, 
+    isAdmin, 
+    isModerator, 
     userRole, 
     walletBalance,
+    // refreshBalance // Add this to your AuthContext if not exists
   } = useAuth();
 
   const router = useRouter();
@@ -51,40 +54,19 @@ export default function Home() {
   const [playerCardNumber, setPlayerCardNumber] = useState<number | null>(null);
   const [playerGameStatus, setPlayerGameStatus] = useState<string | null>(null);
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
-  const [checkError, setCheckError] = useState<string | null>(null);
-  const [lastCheckTime, setLastCheckTime] = useState<number>(0);
+  const [lastBalanceCheck, setLastBalanceCheck] = useState<number>(0);
+  const [balanceLoading, setBalanceLoading] = useState<boolean>(false);
 
   // Refs for tracking - prevent reloads
   const isCheckingPlayerStatusRef = useRef<boolean>(false);
   const lastPlayerCheckRef = useRef<number>(0);
+  const lastBalanceCheckRef = useRef<number>(0);
   const isInitializedRef = useRef<boolean>(false);
   const redirectAttemptedRef = useRef<boolean>(false);
   const gameStatusRef = useRef<string>('');
   const hasCardRef = useRef<boolean>(false);
   const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const requestTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-const initializationQueue = useRef<(() => Promise<void>)[]>([]);
-const isProcessingQueue = useRef(false);
-
-const processQueue = async () => {
-  if (isProcessingQueue.current || initializationQueue.current.length === 0) return;
-  
-  isProcessingQueue.current = true;
-  
-  // Process one item at a time with delay
-  for (const task of initializationQueue.current) {
-    try {
-      await task();
-      await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second between tasks
-    } catch (error) {
-      console.error('Queue task failed:', error);
-    }
-  }
-  
-  initializationQueue.current = [];
-  isProcessingQueue.current = false;
-};
-
+  const balanceCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync refs with state
   useEffect(() => {
@@ -92,94 +74,66 @@ const processQueue = async () => {
     hasCardRef.current = hasCardInActiveGame;
   }, [gameStatus, hasCardInActiveGame]);
 
-  // Check player card status - WITH TIMEOUT PROTECTION
+
+  // Check player card status - ULTRA OPTIMIZED with better throttling
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
     if (!user?.id || isCheckingPlayerStatusRef.current) return false;
     
     const now = Date.now();
     const timeSinceLastCheck = now - lastPlayerCheckRef.current;
     
-    // Throttle checks - min 5 minutes between checks
+    // Throttle checks - min 3 minutes between checks
     if (!force && timeSinceLastCheck < PLAYER_CHECK_INTERVAL) {
-      console.log(`⏸️ Skipping player check - ${Math.floor(timeSinceLastCheck/1000)}s since last check`);
+      console.log(`Skipping player check - ${Math.floor(timeSinceLastCheck/1000)}s since last check`);
       return hasCardRef.current;
     }
 
     try {
       isCheckingPlayerStatusRef.current = true;
       lastPlayerCheckRef.current = now;
-      setLastCheckTime(now);
-      setCheckError(null);
       
-      console.log('🔍 Checking player card status...');
+      console.log('Checking player card status...');
       
-      // Set a timeout for the request
-      const timeoutPromise = new Promise((_, reject) => {
-        requestTimeoutRef.current = setTimeout(() => {
-          reject(new Error('Request timeout - server taking too long'));
-        }, REQUEST_TIMEOUT);
-      });
-
-      // Single API call with minimal data - race against timeout
-      const activeGamesPromise = gameAPI.getActiveGames();
-      
-      const response = await Promise.race([activeGamesPromise, timeoutPromise]) as any;
+      // Single API call with minimal data
+      const response = await gameAPI.getActiveGames();
       
       if (response.data.success && response.data.games.length > 0) {
         const game = response.data.games[0];
         
         if (game.status === 'ACTIVE' || game.status === 'WAITING_FOR_PLAYERS') {
-          // Get participants with timeout protection
-          try {
-            const participantsPromise = gameAPI.getGameParticipants(game._id);
-            const participantsResponse = await Promise.race([participantsPromise, timeoutPromise]) as any;
+          const participantsResponse = await gameAPI.getGameParticipants(game._id);
+          
+          if (participantsResponse.data.success) {
+            const participants = participantsResponse.data.participants || [];
+            const playerParticipant = participants.find((p: any) => p.userId === user.id);
             
-            if (participantsResponse.data.success) {
-              const participants = participantsResponse.data.participants || [];
-              const playerParticipant = participants.find((p: any) => p.userId === user.id);
-              
-              if (playerParticipant?.hasCard) {
-                console.log(`✅ Player has card #${playerParticipant.cardNumber} in game status: ${game.status}`);
-                setHasCardInActiveGame(true);
-                setPlayerCardNumber(playerParticipant.cardNumber || 0);
-                setPlayerGameStatus(game.status);
-                return true;
-              }
+            if (playerParticipant?.hasCard) {
+              console.log(`Player has card #${playerParticipant.cardNumber} in game status: ${game.status}`);
+              setHasCardInActiveGame(true);
+              setPlayerCardNumber(playerParticipant.cardNumber || 0);
+              setPlayerGameStatus(game.status);
+              isCheckingPlayerStatusRef.current = false;
+              return true;
             }
-          } catch (error) {
-            console.warn('⚠️ Could not fetch participants:', error);
-            // Continue without participants data
           }
         }
       }
       
-      console.log('ℹ️ No active card found for player');
+      console.log('No active card found for player');
       setHasCardInActiveGame(false);
       setPlayerCardNumber(null);
       setPlayerGameStatus(null);
       return false;
       
-    } catch (error: any) {
-      console.error('❌ Error checking player card:', error.message);
-      setCheckError(`Check failed: ${error.message}`);
-      
-      // Don't reset state on timeout - keep existing state
-      if (!error.message.includes('timeout')) {
-        setHasCardInActiveGame(false);
-        setPlayerCardNumber(null);
-        setPlayerGameStatus(null);
-      }
+    } catch (error) {
+      console.error('Error checking player card:', error);
       return hasCardRef.current;
     } finally {
       isCheckingPlayerStatusRef.current = false;
-      if (requestTimeoutRef.current) {
-        clearTimeout(requestTimeoutRef.current);
-        requestTimeoutRef.current = null;
-      }
     }
   }, [user?.id]);
 
-  // Check for active game and redirect - SIMPLIFIED
+  // Check for active game and redirect - WITH DELAY to prevent rapid redirects
   useEffect(() => {
     if (authLoading || pageLoading || autoRedirected || redirectAttemptedRef.current) return;
     
@@ -194,14 +148,12 @@ const processQueue = async () => {
         clearTimeout(redirectTimerRef.current);
       }
       
-      console.log(`⏳ Will redirect in ${MIN_REDIRECT_DELAY}ms...`);
-      
       // Add delay to prevent rapid redirects
       redirectTimerRef.current = setTimeout(() => {
         setAutoRedirected(true);
         const gameId = gameData?._id || 'active';
         const query = hasCardRef.current ? '' : '?spectator=true';
-        console.log(`🚀 Redirecting to game: ${gameId}${query}`);
+        console.log(`Redirecting to game: ${gameId}${query}`);
         router.push(`/game/${gameId}${query}`);
       }, MIN_REDIRECT_DELAY);
     }
@@ -214,58 +166,68 @@ const processQueue = async () => {
   }, [gameStatus, playerGameStatus, gameData, authLoading, pageLoading, autoRedirected, router]);
 
   // Initialize - ONE TIME ONLY with memory
- useEffect(() => {
-  if (authLoading || isInitializedRef.current) return;
+  useEffect(() => {
+    if (authLoading || isInitializedRef.current) return;
 
-  const init = async () => {
-    isInitializedRef.current = true;
-    console.log('🔧 Initializing page (one-time) with queue...');
-    
-    // Add tasks to queue with delays
-    initializationQueue.current.push(async () => {
-      console.log('🎮 Task 1: Initializing game state...');
-      await initializeGameState();
-    });
-    
-    if (isAuthenticated && user) {
-      initializationQueue.current.push(async () => {
-        console.log('⏳ Waiting 3 seconds before checking player status...');
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      });
+    const init = async () => {
+      isInitializedRef.current = true;
+      console.log('Initializing page (one-time)...');
       
-      initializationQueue.current.push(async () => {
-        console.log('👤 Task 2: Checking player card status...');
-        await checkPlayerCardInActiveGame(true);
-      });
-    }
-    
-    // Start processing queue
-    setTimeout(() => processQueue(), 1000);
-  };
+      // Initialize game state once
+      await initializeGameState();
+      
+      // Set cooldown from initial gameData
+      if (gameData?.hasRestartCooldown) {
+        setHasRestartCooldown(true);
+      }
+      
+      // Check player status only if authenticated
+      if (isAuthenticated && user) {
+        // Wait 3 seconds before first check
+        setTimeout(() => {
+          checkPlayerCardInActiveGame(true);
+        }, 3000);
+        
+       
+      }
+    };
 
-  init();
-}, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData]);
-  // Set up periodic checks - VERY INFREQUENT
+    init();
+  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData]);
+
+  // Set up periodic checks - INFREQUENT
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
-    console.log('⏰ Setting up INFREQUENT periodic checks (5min)...');
+    console.log('Setting up periodic checks...');
     
-    // Player check every 5 minutes
+    // Player check every 3 minutes
     const playerCheckInterval = setInterval(() => {
       checkPlayerCardInActiveGame();
     }, PLAYER_CHECK_INTERVAL);
+    
+
 
     return () => {
       clearInterval(playerCheckInterval);
-      if (requestTimeoutRef.current) {
-        clearTimeout(requestTimeoutRef.current);
-      }
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
+      // clearInterval(balanceCheckInterval);
+      if (balanceCheckTimerRef.current) {
+        clearTimeout(balanceCheckTimerRef.current);
       }
     };
   }, [isAuthenticated, user, checkPlayerCardInActiveGame]);
+
+  // Clean up timers on unmount
+  useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current);
+      }
+      if (balanceCheckTimerRef.current) {
+        clearTimeout(balanceCheckTimerRef.current);
+      }
+    };
+  }, []);
 
   // Show redirect loading
   if ((hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected) ||
@@ -321,10 +283,10 @@ const processQueue = async () => {
     return 'Select your card to play';
   };
 
-  // Get time since last check
-  const getTimeSinceLastCheck = () => {
-    if (lastCheckTime === 0) return 'Never';
-    const seconds = Math.floor((Date.now() - lastCheckTime) / 1000);
+  // Get time since last balance check
+  const getTimeSinceLastBalanceCheck = () => {
+    if (lastBalanceCheck === 0) return 'Never';
+    const seconds = Math.floor((Date.now() - lastBalanceCheck) / 1000);
     if (seconds < 60) return `${seconds}s ago`;
     return `${Math.floor(seconds / 60)}m ago`;
   };
@@ -341,32 +303,18 @@ const processQueue = async () => {
             </p>
           </div>
           
-          <UserInfoDisplay 
-            user={user} 
-            userRole={userRole} 
-          />
+       
           
           {/* Debug info - remove in production */}
           <div className="hidden md:block text-xs opacity-50 text-white">
-            <p>Last check: {getTimeSinceLastCheck()}</p>
-            <p>Balance: {walletBalance} ብር</p>
+            <p>Balance checked: {getTimeSinceLastBalanceCheck()}</p>
+            <p>Player checked: {lastPlayerCheckRef.current ? 
+              `${Math.floor((Date.now() - lastPlayerCheckRef.current) / 1000)}s ago` : 
+              'Never'}
+            </p>
           </div>
         </div>
       </div>
-
-      {/* Check error notification */}
-      {checkError && (
-        <motion.div 
-          className="bg-red-500/20 backdrop-blur-lg rounded-2xl p-3 mb-4 border border-red-500/30"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-300" />
-            <p className="text-red-300 text-sm">Check failed: {checkError}</p>
-          </div>
-        </motion.div>
-      )}
 
       {/* Player status notification */}
       {hasCardInActiveGame && (
@@ -394,7 +342,7 @@ const processQueue = async () => {
                   : 'Waiting for game to start'}
               </p>
               <p className="text-xs opacity-75">
-                Card #{playerCardNumber} • Last updated: {getTimeSinceLastCheck()}
+                Card #{playerCardNumber} • Next check in {Math.floor((PLAYER_CHECK_INTERVAL - (Date.now() - lastPlayerCheckRef.current)) / 1000)}s
               </p>
             </div>
           </div>
@@ -427,8 +375,10 @@ const processQueue = async () => {
             <div className="flex-1">
               <p className="text-red-300 font-bold text-sm">Insufficient Balance</p>
               <p className="text-red-200 text-xs">
-                Need 10 ብር to play (Current: {walletBalance} ብር)
+                Need 10 ብር to play (Current: {walletBalance} ብር) • 
+                Last updated: {getTimeSinceLastBalanceCheck()}
               </p>
+           
             </div>
           </div>
         </motion.div>
@@ -444,7 +394,6 @@ const processQueue = async () => {
             walletBalance={walletBalance}
             gameStatus={gameStatus}
             onCardSelect={handleCardSelect}
-            
           />
           
           {/* Selected card preview */}
@@ -485,7 +434,7 @@ const processQueue = async () => {
       )}
 
       {/* Simple footer with minimal info */}
-      {/* {gameStatus !== 'ACTIVE' && (
+      {gameStatus !== 'ACTIVE' && (
         <motion.div 
           className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20"
           initial={{ opacity: 0 }}
@@ -522,13 +471,17 @@ const processQueue = async () => {
                 </p>
               </div>
               <div className="text-center">
-                <p className="text-white font-bold">5m</p>
-                <p className="text-white/60 text-xs">Status Check</p>
+                <p className="text-white font-bold">
+                  {balanceLoading ? '...' : '2m'}
+                </p>
+                <p className="text-white/60 text-xs">
+                  Balance Refresh
+                </p>
               </div>
             </div>
           </div>
         </motion.div>
-      )} */}
+      )}
     </div>
   );
 }
