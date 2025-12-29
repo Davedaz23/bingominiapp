@@ -1,6 +1,6 @@
 // components/bingo/CardSelectionGrid.tsx - FIXED VERSION
 import { motion } from 'framer-motion';
-import { Check, Loader2 } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 
 interface CardSelectionGridProps {
@@ -9,8 +9,6 @@ interface CardSelectionGridProps {
   selectedNumber: number | null;
   walletBalance: number;
   gameStatus: string;
-  isSelectionActive: boolean;
-  isLoading?: boolean;
   onCardSelect: (cardNumber: number) => void;
 }
 
@@ -20,21 +18,13 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   selectedNumber,
   walletBalance,
   gameStatus,
-  isSelectionActive,
-  isLoading = false,
   onCardSelect
 }) => {
-  const [debugInfo, setDebugInfo] = useState<string>('');
-
   // Create a map of taken cards for quick lookup
   const takenCardMap = useMemo(() => {
     const map = new Map<number, {cardNumber: number, userId: string}>();
     takenCards.forEach(card => {
       map.set(card.cardNumber, card);
-    });
-    console.log('📊 Taken card map created:', {
-      size: map.size,
-      takenCardsLength: takenCards.length
     });
     return map;
   }, [takenCards]);
@@ -48,91 +38,38 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
     console.log('📊 Available card map created:', {
       size: map.size,
       availableCardsLength: availableCards.length,
-      firstFewCardNumbers: availableCards.slice(0, 5).map(c => c.cardNumber)
+      firstFew: Array.from(map.keys()).slice(0, 10)
     });
-    
-    // Log specific cards 1-10
-    for (let i = 1; i <= 10; i++) {
-      console.log(`Card ${i}: inAvailableMap = ${map.has(i)}`);
-    }
-    
     return map;
   }, [availableCards]);
 
   // For debugging
   useEffect(() => {
-    const debugData = {
+    console.log('🔍 CardSelectionGrid Debug:', {
       availableCardsCount: availableCards.length,
       takenCardsCount: takenCards.length,
-      selectedNumber,
-      walletBalance,
-      gameStatus,
-      isSelectionActive,
-      firstAvailableCards: availableCards.slice(0, 3),
-      firstTakenCards: takenCards.slice(0, 3),
-      // Check cards 1-5
-      cards1to5: Array.from({ length: 5 }, (_, i) => i + 1).map(num => ({
-        number: num,
-        isTaken: takenCardMap.has(num),
-        isAvailable: availableCardMap.has(num),
-        canSelect: walletBalance >= 10
-      }))
-    };
-    
-    console.log('🔍 CardSelectionGrid Debug:', debugData);
-    
-    // Create a summary for display
-    const summary = `Available: ${availableCards.length} | Taken: ${takenCards.length} | Selected: ${selectedNumber || 'none'} | Balance: ${walletBalance} | Status: ${gameStatus}`;
-    setDebugInfo(summary);
-    
-  }, [availableCards, takenCards, selectedNumber, walletBalance, gameStatus, isSelectionActive, takenCardMap, availableCardMap]);
-
-  // Show loading state
-  if (isLoading) {
-    return (
-      <div className="mb-4 p-8 text-center">
-        <Loader2 className="inline-block animate-spin h-8 w-8 text-telegram-button mb-3" />
-        <p className="text-white/60">Loading available cards...</p>
-        <p className="text-white/40 text-sm mt-2">Checking which cards are available for selection</p>
-      </div>
-    );
-  }
-
-  // Show message if no cards available
-  if (availableCards.length === 0 && isSelectionActive) {
-    return (
-      <div className="mb-4 p-6 text-center bg-white/10 rounded-2xl">
-        <p className="text-white/80 mb-2">No cards available for selection</p>
-        <p className="text-white/50 text-sm">
-          {walletBalance < 10 
-            ? `Insufficient balance. Need 10 tokens (you have ${walletBalance})`
-            : 'All cards may be taken or game is not in selection phase'}
-        </p>
-      </div>
-    );
-  }
+      firstAvailableCard: availableCards[0],
+      firstTakenCard: takenCards[0],
+      selectedNumber
+    });
+  }, [availableCards, takenCards, selectedNumber]);
 
   return (
     <div className="mb-4">
-      {/* Debug info - can be removed in production */}
-      <div className="mb-3 p-2 bg-black/20 rounded text-xs text-white/50 font-mono">
-        {debugInfo}
-      </div>
-
       <motion.div 
-        className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4 p-1"
+        className="grid grid-cols-8 gap-2 max-h-[40vh] overflow-y-auto mb-4"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2 }}
       >
         {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
           const isTaken = takenCardMap.has(number);
-          const isAvailable = availableCardMap.has(number);
+          const isAvailable = availableCardMap.has(number); // ✅ FIXED: Use cardNumber
           const canSelect = walletBalance >= 10;
-          const isSelectable = canSelect && isAvailable && !isTaken && isSelectionActive;
+          const isSelectable = canSelect && isAvailable && !isTaken;
           const isCurrentlySelected = selectedNumber === number;
 
-          // Log first 5 cards for debugging
+          // Debug for first few cards
           if (number <= 5) {
             console.log(`Card ${number}:`, {
               isTaken,
@@ -140,40 +77,16 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               canSelect,
               isSelectable,
               isCurrentlySelected,
-              isSelectionActive
+              inAvailableMap: availableCardMap.has(number),
+              inTakenMap: takenCardMap.has(number)
             });
           }
 
           return (
             <motion.button
               key={number}
-              onClick={() => {
-                if (isSelectable) {
-                  console.log(`Selecting card ${number}`, {
-                    isSelectable,
-                    isAvailable,
-                    isTaken,
-                    canSelect
-                  });
-                  onCardSelect(number);
-                } else {
-                  console.log(`Cannot select card ${number}:`, {
-                    isSelectable,
-                    isAvailable,
-                    isTaken,
-                    canSelect,
-                    isSelectionActive
-                  });
-                }
-              }}
+              onClick={() => isSelectable && onCardSelect(number)}
               disabled={!isSelectable}
-              title={
-                !isSelectionActive ? 'Card selection is not active' :
-                !canSelect ? `Need 10 tokens (you have ${walletBalance})` :
-                isTaken ? 'Card already taken' :
-                !isAvailable ? 'Card not available' :
-                `Select card ${number}`
-              }
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
@@ -231,7 +144,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               )}
 
               {/* Show available indicator */}
-              {isAvailable && !isTaken && walletBalance >= 10 && !isCurrentlySelected && (
+              {isAvailable && !isTaken && canSelect && !isCurrentlySelected && (
                 <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
               )}
             </motion.button>
@@ -239,40 +152,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         })}
       </motion.div>
 
-      {/* Selection status info */}
-      <motion.div 
-        className="bg-telegram-button/10 backdrop-blur-lg rounded-2xl p-3 mb-3 border border-telegram-button/20"
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isSelectionActive ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`} />
-              <p className="text-white font-bold text-sm">
-                {isSelectionActive ? 'Card Selection Active' : 'Card Selection Inactive'}
-              </p>
-            </div>
-            <p className="text-white/60 text-xs">
-              Game: {gameStatus}
-            </p>
-          </div>
-          
-          {!isSelectionActive && (
-            <p className="text-white/50 text-xs">
-              Card selection is only available when game is in WAITING_FOR_PLAYERS or CARD_SELECTION status
-            </p>
-          )}
-          
-          {walletBalance < 10 && (
-            <p className="text-yellow-400 text-xs">
-              Need 10 tokens to select a card (you have {walletBalance})
-            </p>
-          )}
-        </div>
-      </motion.div>
+    
 
-      {/* Selected card info */}
+      {/* Selection Info */}
       {selectedNumber && (
         <motion.div 
           className="bg-telegram-button/20 backdrop-blur-lg rounded-2xl p-3 mb-3 border border-telegram-button/30"
