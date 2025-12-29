@@ -191,132 +191,137 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     }
   }, [gameData?._id, user?.id, walletBalance, gameStatus, fetchTakenCards]);
 
-  const handleCardSelect = async (cardNumber: number) => {
-    if (!gameData?._id || !user?.id) {
-      console.log('❌ Missing gameId or userId');
-      setCardSelectionError('Please log in to select a card');
+const handleCardSelect = async (cardNumber: number) => {
+  if (!gameData?._id || !user?.id) {
+    console.log('❌ Missing gameId or userId');
+    setCardSelectionError('Please log in to select a card');
+    return;
+  }
+
+  try {
+    setCardSelectionError('');
+    
+    // Find the selected card data from availableCards
+    const selectedCardData = availableCards.find(card => card.cardIndex === cardNumber);
+    
+    console.log('🔍 Looking for card:', {
+      cardNumber,
+      availableCardsLength: availableCards.length,
+      availableCardIndices: availableCards.map(c => c.cardIndex).slice(0, 10),
+      selectedCardData
+    });
+    
+    if (!selectedCardData) {
+      const errorMsg = `Card ${cardNumber} not found in available cards. Refresh and try again.`;
+      setCardSelectionError(errorMsg);
+      console.log('❌ Card not in availableCards:', {
+        cardNumber,
+        availableCardIndices: availableCards.map(c => c.cardIndex)
+      });
+      
+      // Refresh available cards
+      await fetchAvailableCards();
       return;
     }
 
-    try {
-      setCardSelectionError('');
-      
- 
+    // Check if card is already taken
+    const isAlreadyTaken = takenCards.some(card => card.cardNumber === cardNumber);
+    if (isAlreadyTaken) {
+      const errorMsg = `Card ${cardNumber} is already taken. Please select another card.`;
+      setCardSelectionError(errorMsg);
+      console.log('❌ Card already taken:', cardNumber);
+      await fetchTakenCards(); // Refresh taken cards
+      return;
+    }
 
-      // Find the selected card data from availableCards
-      const selectedCardData = availableCards.find(card => card.cardNumber === cardNumber);
+    // ✅ Send the EXACT format backend expects
+    const requestData = {
+      userId: user.id,
+      cardNumbers: selectedCardData.numbers, // The 5x5 array
+      cardNumber: selectedCardData.cardIndex // Use cardIndex from the data
+    };
+    
+    console.log('📤 Sending to backend:', {
+      url: `/games/${gameData._id}/select-card-with-number`,
+      data: requestData,
+      cardIndex: selectedCardData.cardIndex
+    });
+    
+    const response = await gameAPI.selectCardWithNumber(gameData._id, requestData);
+    
+    console.log("📡 Backend response:", response.data);
+    
+    if (response.data.success) {
+      console.log(`✅ Card selection successful! Action: ${response.data.action || 'selected'}`);
       
-      if (!selectedCardData) {
-        const errorMsg = `Card ${cardNumber} not found in available cards. Refresh and try again.`;
-        setCardSelectionError(errorMsg);
-        console.log('❌ Card not in availableCards:', {
-          cardNumber,
-          availableCardNumbers: availableCards.map(c => c.cardNumber)
-        });
-        
-        // Refresh available cards
-        await fetchAvailableCards();
-        return;
-      }
-
-      // Check if card is already taken
-      const isAlreadyTaken = takenCards.some(card => card.cardNumber === cardNumber);
-      if (isAlreadyTaken) {
-        const errorMsg = `Card ${cardNumber} is already taken. Please select another card.`;
-        setCardSelectionError(errorMsg);
-        console.log('❌ Card already taken:', cardNumber);
-        await fetchTakenCards(); // Refresh taken cards
-        return;
-      }
-
-      // ✅ CRITICAL: Send the EXACT format backend expects
-      const requestData = {
-        userId: user.id,
-        cardNumbers: selectedCardData.numbers, // The 5x5 array
-        cardNumber: cardNumber // The card number/index
-      };
+      // Update local state
+      setSelectedNumber(cardNumber);
+      setBingoCard(selectedCardData.numbers);
+      setAccountData('selected_number', cardNumber);
       
-      console.log('📤 Sending to backend:', {
-        url: `/games/${gameData._id}/select-card-with-number`,
-        data: requestData
+      // Update taken cards locally for immediate UI feedback
+      setTakenCards(prev => {
+        const filtered = prev.filter(card => card.userId !== user.id);
+        return [...filtered, { cardNumber, userId: user.id }];
       });
       
-      const response = await gameAPI.selectCardWithNumber(gameData._id, requestData);
+      console.log('🎯 Card #' + cardNumber + ' selected successfully!');
       
-      console.log("📡 Backend response:", response.data);
+      // Refresh from backend after short delay
+      setTimeout(() => {
+        fetchTakenCards();
+        fetchAvailableCards();
+      }, 500);
       
-      if (response.data.success) {
-        console.log(`✅ Card selection successful! Action: ${response.data.action || 'selected'}`);
-        
-        // Update local state
-        setSelectedNumber(cardNumber);
-        setBingoCard(selectedCardData.numbers);
-        setAccountData('selected_number', cardNumber);
-        
-        // Update taken cards locally for immediate UI feedback
-        setTakenCards(prev => {
-          const filtered = prev.filter(card => card.userId !== user.id);
-          return [...filtered, { cardNumber, userId: user.id }];
-        });
-        
-        console.log('🎯 Card #' + cardNumber + ' selected successfully!');
-        
-        // Refresh from backend after short delay
-        setTimeout(() => {
-          fetchTakenCards();
-          fetchAvailableCards();
-        }, 500);
-        
-      } else {
-        const errorMsg = response.data.error || 'Failed to select card';
-        setCardSelectionError(errorMsg);
-        console.error('❌ Backend error:', errorMsg);
-        
-        if (errorMsg.includes('already taken') || errorMsg.includes('taken')) {
-          await fetchTakenCards();
-        }
-      }
-    } catch (error: any) {
-      console.error('❌ Card selection API error:', error);
+    } else {
+      const errorMsg = response.data.error || 'Failed to select card';
+      setCardSelectionError(errorMsg);
+      console.error('❌ Backend error:', errorMsg);
       
-      // Enhanced error handling for 400 Bad Request
-      if (error.response?.status === 400) {
-        console.error('🔍 400 Bad Request Full Details:', {
-          status: error.response?.status,
-          data: error.response?.data,
-          message: error.response?.data?.error || error.response?.data?.message,
-          requestSent: {
-            url: error.config?.url,
-            data: error.config?.data ? JSON.parse(error.config.data) : null,
-            method: error.config?.method
-          }
-        });
-        
-        // Try to get specific error message
-        const errorData = error.response?.data;
-        let errorMessage = 'Bad request - server rejected the data';
-        
-        if (errorData?.error) {
-          errorMessage = errorData.error;
-        } else if (errorData?.message) {
-          errorMessage = errorData.message;
-        } else if (errorData?.errors) {
-          // Handle validation errors
-          errorMessage = 'Validation errors: ' + JSON.stringify(errorData.errors);
-        }
-        
-        setCardSelectionError(`Server error: ${errorMessage}`);
-        
-      } else if (error.response?.data?.error) {
-        setCardSelectionError(error.response.data.error);
-      } else if (error.message === 'Network Error') {
-        setCardSelectionError('Network error. Please check your connection.');
-      } else {
-        setCardSelectionError('Failed to select card. Please try again.');
+      if (errorMsg.includes('already taken') || errorMsg.includes('taken')) {
+        await fetchTakenCards();
       }
     }
-  };
-
+  } catch (error: any) {
+    console.error('❌ Card selection API error:', error);
+    
+    // Enhanced error handling for 400 Bad Request
+    if (error.response?.status === 400) {
+      console.error('🔍 400 Bad Request Full Details:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.response?.data?.error || error.response?.data?.message,
+        requestSent: {
+          url: error.config?.url,
+          data: error.config?.data ? JSON.parse(error.config.data) : null,
+          method: error.config?.method
+        }
+      });
+      
+      // Try to get specific error message
+      const errorData = error.response?.data;
+      let errorMessage = 'Bad request - server rejected the data';
+      
+      if (errorData?.error) {
+        errorMessage = errorData.error;
+      } else if (errorData?.message) {
+        errorMessage = errorData.message;
+      } else if (errorData?.errors) {
+        // Handle validation errors
+        errorMessage = 'Validation errors: ' + JSON.stringify(errorData.errors);
+      }
+      
+      setCardSelectionError(`Server error: ${errorMessage}`);
+      
+    } else if (error.response?.data?.error) {
+      setCardSelectionError(error.response.data.error);
+    } else if (error.message === 'Network Error') {
+      setCardSelectionError('Network error. Please check your connection.');
+    } else {
+      setCardSelectionError('Failed to select card. Please try again.');
+    }
+  }
+};
   const handleCardRelease = async () => {
     if (!user?.id || !gameData?._id || !selectedNumber) return;
     
