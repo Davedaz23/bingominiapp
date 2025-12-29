@@ -5,7 +5,7 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useGame } from '../../../hooks/useGame';
-import { walletAPIAuto, gameAPI } from '../../../services/api';
+import { gameAPI } from '../../../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCardSelection } from '@/hooks/useCardSelection';
 import { useGameState } from '@/hooks/useGameState';
@@ -53,8 +53,7 @@ interface Game {
   players?: any[];
   potAmount?: number;
   message?: string;
-  noWinner?:boolean;
-  
+  noWinner?: boolean;
 }
 
 export default function GamePage() {
@@ -65,31 +64,25 @@ export default function GamePage() {
   const {
     game,
     bingoCard: gameBingoCard,
-    gameState,
     isLoading,
     error: gameError,
     walletBalance,
-  refreshWalletBalance, // Add this line
     getWinnerInfo,
   } = useGame(id);
+  
+  const { gameStatus, gameData } = useGameState();
+  
   const {
-    gameStatus,
+    selectedNumber,
+    clearSelectedCard
+  } = useCardSelection(gameData, gameStatus);
 
-    gameData,
-
-  } = useGameState();
- const {
-  selectedNumber,
-  clearSelectedCard // Add this
-} = useCardSelection(gameData, gameStatus);
-
-  // const [walletBalance, setWalletBalance] = useState<number>(0);
-
+  // State declarations
   const [localBingoCard, setLocalBingoCard] = useState<LocalBingoCard | null>(null);
   const [isLoadingCard, setIsLoadingCard] = useState<boolean>(true);
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
-const [initializationAttempted, setInitializationAttempted] = useState(false);
+  const [initializationAttempted, setInitializationAttempted] = useState(false);
 
   const [currentCalledNumber, setCurrentCalledNumber] = useState<{
     number: number;
@@ -99,17 +92,14 @@ const [initializationAttempted, setInitializationAttempted] = useState(false);
 
   const [allCalledNumbers, setAllCalledNumbers] = useState<number[]>([]);
 
-  const [isAnimating, setIsAnimating] = useState(false);
-
   const [showWinnerModal, setShowWinnerModal] = useState(false);
   const [winnerInfo, setWinnerInfo] = useState<WinnerInfo | null>(null);
   const [isWinnerLoading, setIsWinnerLoading] = useState(false);
   const [isUserWinner, setIsUserWinner] = useState(false);
   const [winningAmount, setWinningAmount] = useState(0);
-  const [countdown, setCountdown] = useState<number>(5);
+  const [countdown, setCountdown] = useState<number>(10);
 
-
-  //retry
+  // Retry states
   const [retryCount, setRetryCount] = useState(0);
   const [autoRetryInProgress, setAutoRetryInProgress] = useState(false);
   const MAX_RETRY_ATTEMPTS = 3;
@@ -135,13 +125,11 @@ const [initializationAttempted, setInitializationAttempted] = useState(false);
   const updateInProgressRef = useRef(false);
   const lastUpdateTimeRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const initialLoadRef = useRef(false);
   const cardUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const hasInitializedRef = useRef(false);
 
   // Polling intervals
-const POLL_INTERVAL = 3000; // Reduced from 10000 to 3000ms (3 seconds)
-const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
+  const POLL_INTERVAL = 3000;
+  const MIN_UPDATE_INTERVAL = 1500;
 
   // Helper function to get BINGO letter
   const getNumberLetter = (num: number): string => {
@@ -152,24 +140,10 @@ const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
     return 'O';
   };
 
-  // FIXED: Load wallet balance
-  // const loadWalletBalance = useCallback(async () => {
-  //   try {
-  //     const walletResponse = await walletAPIAuto.getBalance();
-  //     if (walletResponse.data.success) {
-  //       setWalletBalance(walletResponse.data.balance);
-  //     }
-  //   } catch (error) {
-  //     console.warn('⚠️ Could not load wallet balance:', error);
-  //   }
-  // }, []);
-
-  // FIXED: Check if user has a bingo card - simplified
+  // FIXED: Check if user has a bingo card
   const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false): Promise<boolean> => {
-    // If auto-retry in progress, skip additional calls
     if (autoRetryInProgress && !isRetry) return false;
 
-    // Don't check if already checked and not forcing
     if (hasCardCheckedRef.current && !forceCheck && !isRetry) {
       return !!localBingoCard;
     }
@@ -194,18 +168,15 @@ const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
           selected: (apiCard as any).selected
         };
 
-        // Update states
         setLocalBingoCard(newCard);
-        // setSelectedNumber((apiCard as any).cardNumber || (apiCard as any).cardIndex ||oldSaved|| null);
         setIsSpectatorMode(false);
         setSpectatorMessage('');
         setCardError('');
-        setRetryCount(0); // Reset retry count on success
+        setRetryCount(0);
         hasCardCheckedRef.current = true;
         return true;
       }
 
-      // No card found
       setIsSpectatorMode(true);
       setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
       hasCardCheckedRef.current = true;
@@ -214,39 +185,32 @@ const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
     } catch (error: any) {
       console.error('Error checking user card:', error);
 
-      // Handle specific error cases
       if (error.response?.status === 404) {
-        // No card found
         setIsSpectatorMode(true);
         setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
         hasCardCheckedRef.current = true;
         return false;
       } else {
-        // Network or server error - we'll auto-retry this
         if (isRetry) {
-          // This is already a retry attempt, update error state
           setCardError('Failed to load your card. Please check your connection.');
         }
-        // Return false to trigger retry logic
         return false;
       }
     }
   }, [id, localBingoCard, autoRetryInProgress]);
 
-  // FIXED: Initialize user card - simplified with timeout
+  // FIXED: Initialize user card
   const initializeUserCard = useCallback(async (forceCheck = false) => {
     if (updateInProgressRef.current && !forceCheck) return;
 
     try {
       updateInProgressRef.current = true;
 
-      // If we're already in spectator mode from a previous attempt, don't retry
       if (isSpectatorMode && !forceCheck) {
         setIsLoadingCard(false);
         return;
       }
 
-      // Auto-retry logic for loading errors
       let attempts = 0;
       const maxAttempts = 3;
       let success = false;
@@ -269,9 +233,8 @@ const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
             break;
           }
 
-          // If failed and not the last attempt, wait before retrying
           if (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+            await new Promise(resolve => setTimeout(resolve, 2000));
           }
         } catch (retryError) {
           console.error(`Retry attempt ${attempts} failed:`, retryError);
@@ -281,7 +244,6 @@ const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
         }
       }
 
-      // If all retries failed and we're not in spectator mode, fall back to spectator
       if (!success && !isSpectatorMode) {
         console.log('⚠️ All retry attempts failed, falling back to spectator mode');
         setIsSpectatorMode(true);
@@ -291,23 +253,20 @@ const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
 
     } catch (error: any) {
       console.error('Failed to initialize user card:', error);
-
-      // Fallback to spectator mode
       if (!isSpectatorMode) {
         setIsSpectatorMode(true);
         setSpectatorMessage('Unable to load your card. Watching as spectator.');
         setCardError('');
       }
-
     } finally {
-      // Always set loading to false
       setIsLoadingCard(false);
       setAutoRetryInProgress(false);
       updateInProgressRef.current = false;
     }
   }, [checkUserHasCard, isSpectatorMode]);
+
+  // Auto-retry card loading
   useEffect(() => {
-    // Auto-retry card loading if we have an error
     if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS) {
       const timer = setTimeout(() => {
         console.log('🔄 Auto-retrying card loading...');
@@ -315,154 +274,113 @@ const MIN_UPDATE_INTERVAL = 1500; // Reduced from 3000 to 1500ms (1.5 seconds)
         setCardError('');
         hasCardCheckedRef.current = false;
         initializeUserCard(true);
-      }, 2000); // Wait 2 seconds before auto-retry
+      }, 2000);
 
       return () => clearTimeout(timer);
     }
   }, [cardError, localBingoCard, isLoadingCard, retryCount, initializeUserCard]);
+
   // FIXED: Check for winner
+  const checkForWinner = useCallback(async (gameData?: Game) => {
+    if (!gameData || abortControllerRef.current || showWinnerModal) return;
 
-const checkForWinner = useCallback(async (gameData?: Game) => {
-  if (!gameData || abortControllerRef.current || showWinnerModal) return;
+    try {
+      setIsWinnerLoading(true);
+      abortControllerRef.current = new AbortController();
+      const winnerData = await getWinnerInfo();
 
-  try {
-    setIsWinnerLoading(true);
-    abortControllerRef.current = new AbortController();
-    const winnerData = await getWinnerInfo();
-
-    if (winnerData) {
-      setWinnerInfo(winnerData);
-      
-      // Check if there's actually a winner or if game ended with no winner
-      const hasWinner = !!winnerData.winner?._id;
-      
-      if (hasWinner) {
-        // Handle winner case
-        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-        if (userId) {
-          const isWinner = winnerData.winner.telegramId === userId ||
-            winnerData.winner._id.toString() === userId;
-          setIsUserWinner(isWinner);
-
-          const totalPot = (gameData.currentPlayers || 0) * 10;
-          const platformFee = totalPot * 0.2;
-          const winnerPrize = totalPot - platformFee;
-          setWinningAmount(winnerPrize);
-        }
-      } else {
-        // Handle no-winner case
-        setIsUserWinner(false);
-        setWinningAmount(0);
+      if (winnerData) {
+        setWinnerInfo(winnerData);
         
-        // Update winnerInfo to show no winner
-        setWinnerInfo({
-          ...winnerData,
-          winner: {
-            _id: 'no-winner',
-            username: 'No Winner',
-            firstName: 'Game Ended',
-            telegramId: 'no-winner'
-          },
-          message: 'Game ended without a winner'
-        });
-      }
-
-      // 🆕 CLEAR THE STORED CARD WHEN GAME ENDS
-      clearSelectedCard();
-      console.log('🗑️ Cleared stored card selection because game ended');
-
-      setTimeout(() => {
-        setShowWinnerModal(true);
-        setIsWinnerLoading(false);
-
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
-      }, 1500);
-    } else {
-      // If no winner data but game is finished, check for NO_WINNER state
-      if (gameData.status === 'FINISHED' || gameData.status === 'NO_WINNER') {
-        // Check if the game has no winner (refunded case)
-        const hasNoWinner = gameData.status === 'NO_WINNER' || gameData.noWinner;
+        const hasWinner = !!winnerData.winner?._id;
         
-        if (hasNoWinner) {
+        if (hasWinner) {
+          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+          if (userId) {
+            const isWinner = winnerData.winner.telegramId === userId ||
+              winnerData.winner._id.toString() === userId;
+            setIsUserWinner(isWinner);
+
+            const totalPot = (gameData.currentPlayers || 0) * 10;
+            const platformFee = totalPot * 0.2;
+            const winnerPrize = totalPot - platformFee;
+            setWinningAmount(winnerPrize);
+          }
+        } else {
+          setIsUserWinner(false);
+          setWinningAmount(0);
+          
           setWinnerInfo({
+            ...winnerData,
             winner: {
               _id: 'no-winner',
               username: 'No Winner',
               firstName: 'Game Ended',
               telegramId: 'no-winner'
             },
-            gameCode: gameData.code || 'N/A',
-            endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
-            totalPlayers: gameData.currentPlayers || 0,
-            numbersCalled: gameData.numbersCalled?.length || 0,
+            message: 'Game ended without a winner'
           });
-          
-          setIsUserWinner(false);
-          setWinningAmount(0);
-          
-          // 🆕 CLEAR THE STORED CARD WHEN NO WINNER
-          clearSelectedCard();
-          console.log('🗑️ Cleared stored card selection because game ended with no winner');
+        }
 
-          setTimeout(() => {
-            setShowWinnerModal(true);
-            setIsWinnerLoading(false);
+        clearSelectedCard();
+        console.log('🗑️ Cleared stored card selection because game ended');
 
-            if (pollingRef.current) {
-              clearInterval(pollingRef.current);
-              pollingRef.current = null;
-            }
-          }, 1500);
-        } else if (gameData.status === 'FINISHED') {
-          // Game is finished but we don't have winner data
-          console.log('Game finished but no winner data, fetching...');
-          // The getWinnerInfo should handle this case
+        setTimeout(() => {
+          setShowWinnerModal(true);
+          setIsWinnerLoading(false);
+
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+        }, 1500);
+      } else {
+        if (gameData.status === 'FINISHED' || gameData.status === 'NO_WINNER') {
+          const hasNoWinner = gameData.status === 'NO_WINNER' || gameData.noWinner;
+          
+          if (hasNoWinner) {
+            setWinnerInfo({
+              winner: {
+                _id: 'no-winner',
+                username: 'No Winner',
+                firstName: 'Game Ended',
+                telegramId: 'no-winner'
+              },
+              gameCode: gameData.code || 'N/A',
+              endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
+              totalPlayers: gameData.currentPlayers || 0,
+              numbersCalled: gameData.numbersCalled?.length || 0,
+            });
+            
+            setIsUserWinner(false);
+            setWinningAmount(0);
+            
+            clearSelectedCard();
+            console.log('🗑️ Cleared stored card selection because game ended with no winner');
+
+            setTimeout(() => {
+              setShowWinnerModal(true);
+              setIsWinnerLoading(false);
+
+              if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+                pollingRef.current = null;
+              }
+            }, 1500);
+          } else if (gameData.status === 'FINISHED') {
+            console.log('Game finished but no winner data, fetching...');
+          }
         }
       }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error('Failed to fetch winner info:', error);
+        setIsWinnerLoading(false);
+      }
+    } finally {
+      abortControllerRef.current = null;
     }
-  } catch (error: any) {
-    if (error.name !== 'AbortError') {
-      console.error('Failed to fetch winner info:', error);
-      setIsWinnerLoading(false);
-    }
-  } finally {
-    abortControllerRef.current = null;
-  }
-}, [getWinnerInfo, showWinnerModal, clearSelectedCard]); // Add clearSelectedCard to dependencies
-
-// Also update the effect that handles game status changes
-useEffect(() => {
-  if (!game) return;
-
-  // Update polling based on game status
-  if (game.status === 'ACTIVE' && !pollingRef.current) {
-    startPolling();
-  } else if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'CANCELLED' || game.status === 'COOLDOWN') && pollingRef.current) {
-    clearInterval(pollingRef.current);
-    pollingRef.current = null;
-  }
-
-  // Check for winner or no-winner
-  if ((game.status === 'FINISHED' || game.status === 'NO_WINNER') && !showWinnerModal && !gameEndedCheckRef.current) {
-    gameEndedCheckRef.current = true;
-    checkForWinner(game as Game);
-  }
-  
-  // Handle COOLDOWN state (same as FINISHED for display purposes)
-  if (game.status === 'COOLDOWN' && !showWinnerModal && !gameEndedCheckRef.current) {
-    gameEndedCheckRef.current = true;
-    checkForWinner(game as Game);
-  }
-
-  // 🆕 Clear card if game is CANCELLED
-  if (game.status === 'CANCELLED') {
-    clearSelectedCard();
-    console.log('🗑️ Cleared stored card selection because game was cancelled');
-  }
-}, [game,  showWinnerModal, checkForWinner, clearSelectedCard]);
+  }, [getWinnerInfo, showWinnerModal, clearSelectedCard]);
 
   // FIXED: Update game state
   const updateGameState = useCallback(async (force = false) => {
@@ -484,7 +402,6 @@ useEffect(() => {
       if (updatedGame) {
         const currentState = lastGameStateRef.current;
 
-        // Check for changes
         const numbersChanged = !currentState ||
           JSON.stringify(currentState.numbersCalled) !== JSON.stringify(updatedGame.numbersCalled);
 
@@ -492,7 +409,6 @@ useEffect(() => {
         const winnerChanged = currentState?.winnerId !== updatedGame.winnerId;
 
         if (numbersChanged || statusChanged || winnerChanged || force) {
-          // Update called numbers
           if (updatedGame.numbersCalled && updatedGame.numbersCalled.length > 0) {
             setAllCalledNumbers(updatedGame.numbersCalled);
 
@@ -504,12 +420,10 @@ useEffect(() => {
                 isNew: numbersChanged
               });
 
-              // Clear animation timeout
               if (animationTimeoutRef.current) {
                 clearTimeout(animationTimeoutRef.current);
               }
 
-              // Set animation timeout
               animationTimeoutRef.current = setTimeout(() => {
                 setCurrentCalledNumber(prev =>
                   prev ? { ...prev, isNew: false } : null
@@ -518,7 +432,6 @@ useEffect(() => {
             }
           }
 
-          // Check for winner
           if (updatedGame.status === 'FINISHED' && updatedGame.winnerId && !gameEndedCheckRef.current) {
             gameEndedCheckRef.current = true;
             await checkForWinner(updatedGame);
@@ -532,98 +445,89 @@ useEffect(() => {
     } finally {
       updateInProgressRef.current = false;
     }
-  }, [
-    id, showWinnerModal, checkForWinner, MIN_UPDATE_INTERVAL
-  ]);
+  }, [id, showWinnerModal, checkForWinner, MIN_UPDATE_INTERVAL]);
 
   // FIXED: Start polling
-const startPolling = useCallback(() => {
-  if (pollingRef.current) return; // Don't start multiple polls
-  
-  console.log('📡 Starting efficient polling...');
-  
-  // Initial immediate update
-  updateGameState(true);
-  
-  // Then poll at reasonable intervals
-  pollingRef.current = setInterval(() => {
-    // Only update if game is still active
-    if (game?.status === 'ACTIVE' && !showWinnerModal) {
-      updateGameState(false);
-    } else {
-      // Clean up if game is no longer active
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    }
-  }, POLL_INTERVAL);
-}, [updateGameState, game?.status, showWinnerModal, POLL_INTERVAL]);
-  // Real-time wallet balance polling during active games
-
-useEffect(() => {
-  if (initializationAttempted) return;
-  
-  const initializeGame = async () => {
-    try {
-      setInitializationAttempted(true);
-      console.log('🎮 Initializing game page...');
-      
-      // SIMPLIFIED: Only initialize what's absolutely necessary
-      if (!game) {
-        setCardError('Game not found. Redirecting to lobby...');
-        setTimeout(() => router.push('/'), 1000);
-        return;
-      }
-      
-      // Quick card check - with timeout
-      const cardCheckTimeout = setTimeout(() => {
-        if (isLoadingCard) {
-          console.log('⏱️ Card check timeout, proceeding...');
-          setIsLoadingCard(false);
+  const startPolling = useCallback(() => {
+    if (pollingRef.current) return;
+    
+    console.log('📡 Starting efficient polling...');
+    
+    updateGameState(true);
+    
+    pollingRef.current = setInterval(() => {
+      if (game?.status === 'ACTIVE' && !showWinnerModal) {
+        updateGameState(false);
+      } else {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
         }
-      }, 3000);
-      
-      await initializeUserCard();
-      clearTimeout(cardCheckTimeout);
-      
-    } catch (error) {
-      console.error('Failed to initialize game:', error);
-      // Don't block the UI - let user see the game
-      setIsLoadingCard(false);
+      }
+    }, POLL_INTERVAL);
+  }, [updateGameState, game?.status, showWinnerModal, POLL_INTERVAL]);
+
+  // Initialize game
+  useEffect(() => {
+    if (initializationAttempted) return;
+    
+    const initializeGame = async () => {
+      try {
+        setInitializationAttempted(true);
+        console.log('🎮 Initializing game page...');
+        
+        if (!game) {
+          console.log('Game not loaded yet, waiting...');
+          return;
+        }
+        
+        const cardCheckTimeout = setTimeout(() => {
+          if (isLoadingCard) {
+            console.log('⏱️ Card check timeout, proceeding...');
+            setIsLoadingCard(false);
+          }
+        }, 3000);
+        
+        await initializeUserCard();
+        clearTimeout(cardCheckTimeout);
+        
+      } catch (error) {
+        console.error('Failed to initialize game:', error);
+        setIsLoadingCard(false);
+      }
+    };
+    
+    if (!isLoading && game && !initializationAttempted) {
+      initializeGame();
     }
-  };
-  
-  if (!isLoading && game && !initializationAttempted) {
-    initializeGame();
-  }
-}, [game, isLoading, router, initializeUserCard, initializationAttempted]);
+  }, [game, isLoading, initializeUserCard, initializationAttempted]);
 
-  // FIXED: Effect to handle game status changes
-// Replace the useEffect that handles game status changes with this:
-useEffect(() => {
-  if (!game) return;
+  // Handle game status changes
+  useEffect(() => {
+    if (!game) return;
 
-  // Update polling based on game status
-  if (game.status === 'ACTIVE' && !pollingRef.current) {
-    startPolling();
-  } else if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'CANCELLED' || game.status === 'COOLDOWN') && pollingRef.current) {
-    clearInterval(pollingRef.current);
-    pollingRef.current = null;
-  }
+    if (game.status === 'ACTIVE' && !pollingRef.current) {
+      startPolling();
+    } else if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'CANCELLED' || game.status === 'COOLDOWN') && pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
 
-  // Check for winner or no-winner
-  if ((game.status === 'FINISHED' || game.status === 'NO_WINNER') && !showWinnerModal && !gameEndedCheckRef.current) {
-    gameEndedCheckRef.current = true;
-    checkForWinner(game as Game);
-  }
-  
-  // Handle COOLDOWN state (same as FINISHED for display purposes)
-  if (game.status === 'COOLDOWN' && !showWinnerModal && !gameEndedCheckRef.current) {
-    gameEndedCheckRef.current = true;
-    checkForWinner(game as Game);
-  }
-}, [game, startPolling, showWinnerModal, checkForWinner]);
+    if ((game.status === 'FINISHED' || game.status === 'NO_WINNER') && !showWinnerModal && !gameEndedCheckRef.current) {
+      gameEndedCheckRef.current = true;
+      checkForWinner(game as Game);
+    }
+    
+    if (game.status === 'COOLDOWN' && !showWinnerModal && !gameEndedCheckRef.current) {
+      gameEndedCheckRef.current = true;
+      checkForWinner(game as Game);
+    }
+
+    if (game.status === 'CANCELLED') {
+      clearSelectedCard();
+      console.log('🗑️ Cleared stored card selection because game was cancelled');
+    }
+  }, [game, startPolling, showWinnerModal, checkForWinner, clearSelectedCard]);
 
   // FIXED: Countdown for winner modal
   useEffect(() => {
@@ -649,7 +553,7 @@ useEffect(() => {
     };
   }, [showWinnerModal, winnerInfo]);
 
-  // FIXED: Safety timeout to exit loading state
+  // Safety timeout to exit loading state
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
       if (isLoadingCard) {
@@ -657,47 +561,59 @@ useEffect(() => {
         setIsLoadingCard(false);
         setCardError('Loading timed out. Please refresh or check your connection.');
       }
-    }, 20000); // 15 second timeout
+    }, 20000);
 
     return () => clearTimeout(safetyTimeout);
   }, [isLoadingCard]);
 
-  // FIXED: Handle manual number marking
+  // FIXED: Handle manual number marking with immediate UI feedback
+  const handleMarkNumber = async (number: number) => {
+    if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
 
-const handleMarkNumber = async (number: number) => {
-  if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
+    try {
+      setIsMarking(true);
+      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+      if (!userId) throw new Error('User ID not found');
 
-  try {
-    setIsMarking(true);
-    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-    if (!userId) throw new Error('User ID not found');
+      // IMMEDIATE UI UPDATE: Mark the number locally first
+      if (localBingoCard) {
+        const numbers = localBingoCard.numbers.flat();
+        const position = numbers.indexOf(number);
 
-    // 🔥 IMMEDIATE UI UPDATE: Mark the number locally first
-    if (localBingoCard) {
-      const numbers = localBingoCard.numbers.flat();
-      const position = numbers.indexOf(number);
-
-      if (position !== -1 && !localBingoCard.markedPositions?.includes(position)) {
-        const updatedMarkedPositions = [...(localBingoCard.markedPositions || []), position];
-        setLocalBingoCard({
-          ...localBingoCard,
-          markedPositions: updatedMarkedPositions
-        });
-
-        // Visual feedback
-        setIsAnimating(true);
-        setTimeout(() => setIsAnimating(false), 500);
+        if (position !== -1 && !localBingoCard.markedPositions?.includes(position)) {
+          const updatedMarkedPositions = [...(localBingoCard.markedPositions || []), position];
+          setLocalBingoCard({
+            ...localBingoCard,
+            markedPositions: updatedMarkedPositions
+          });
+        }
       }
-    }
 
-    // Then send to backend (fire-and-forget)
-    gameAPI.markNumber(id, userId, number)
-      .then(response => {
-        if (response.data.success) {
-          console.log(`✅ Successfully marked number: ${number}`);
-        } else {
-          // If backend fails, revert the UI change
-          console.warn('Backend marking failed, reverting UI...');
+      // Then send to backend (fire-and-forget)
+      gameAPI.markNumber(id, userId, number)
+        .then(response => {
+          if (response.data.success) {
+            console.log(`✅ Successfully marked number: ${number}`);
+          } else {
+            // If backend fails, revert the UI change
+            console.warn('Backend marking failed, reverting UI...');
+            if (localBingoCard) {
+              const numbers = localBingoCard.numbers.flat();
+              const position = numbers.indexOf(number);
+              
+              if (position !== -1) {
+                const updatedMarkedPositions = localBingoCard.markedPositions?.filter(pos => pos !== position) || [];
+                setLocalBingoCard({
+                  ...localBingoCard,
+                  markedPositions: updatedMarkedPositions
+                });
+              }
+            }
+          }
+        })
+        .catch(error => {
+          console.error('Failed to mark number on backend:', error);
+          // Revert UI change on error
           if (localBingoCard) {
             const numbers = localBingoCard.numbers.flat();
             const position = numbers.indexOf(number);
@@ -710,44 +626,26 @@ const handleMarkNumber = async (number: number) => {
               });
             }
           }
-        }
-      })
-      .catch(error => {
-        console.error('Failed to mark number on backend:', error);
-        // Revert UI change on error
-        if (localBingoCard) {
-          const numbers = localBingoCard.numbers.flat();
-          const position = numbers.indexOf(number);
           
-          if (position !== -1) {
-            const updatedMarkedPositions = localBingoCard.markedPositions?.filter(pos => pos !== position) || [];
-            setLocalBingoCard({
-              ...localBingoCard,
-              markedPositions: updatedMarkedPositions
-            });
-          }
-        }
-        
-        setClaimResult({
-          success: false,
-          message: error.response?.data?.message || 'Failed to save mark'
+          setClaimResult({
+            success: false,
+            message: error.response?.data?.message || 'Failed to save mark'
+          });
+          setTimeout(() => setClaimResult(null), 3000);
         });
-        setTimeout(() => setClaimResult(null), 3000);
-      });
 
-    // Optional: Update game state after marking
-    setTimeout(() => updateGameState(true), 1000);
-  } catch (error: any) {
-    console.error('Failed to mark number:', error);
-    setClaimResult({
-      success: false,
-      message: error.response?.data?.message || 'Failed to mark number'
-    });
-    setTimeout(() => setClaimResult(null), 3000);
-  } finally {
-    setIsMarking(false);
-  }
-};
+      setTimeout(() => updateGameState(true), 1000);
+    } catch (error: any) {
+      console.error('Failed to mark number:', error);
+      setClaimResult({
+        success: false,
+        message: error.response?.data?.message || 'Failed to mark number'
+      });
+      setTimeout(() => setClaimResult(null), 3000);
+    } finally {
+      setIsMarking(false);
+    }
+  };
 
   // FIXED: Handle manual Bingo claim
   const handleClaimBingo = async () => {
@@ -770,13 +668,11 @@ const handleMarkNumber = async (number: number) => {
           prizeAmount: response.data.prizeAmount
         });
 
-        // Stop polling
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
         }
 
-        // Force update
         setTimeout(() => updateGameState(true), 2000);
       } else {
         setClaimResult({
@@ -801,7 +697,6 @@ const handleMarkNumber = async (number: number) => {
 
   // Handle returning to lobby
   const handleReturnToLobby = () => {
-    // Cleanup
     if (countdownRef.current) clearInterval(countdownRef.current);
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -810,7 +705,6 @@ const handleMarkNumber = async (number: number) => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
     if (cardUpdateTimeoutRef.current) clearTimeout(cardUpdateTimeoutRef.current);
 
-    // Reset states
     setShowWinnerModal(false);
     setWinnerInfo(null);
     setIsUserWinner(false);
@@ -820,8 +714,6 @@ const handleMarkNumber = async (number: number) => {
     setClaimResult(null);
     setCountdown(10);
 
-    // Reset refs
-    hasInitializedRef.current = false;
     gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
     updateInProgressRef.current = false;
@@ -877,15 +769,28 @@ const handleMarkNumber = async (number: number) => {
     return patternMap[patternType] || patternType.replace('_', ' ').toLowerCase();
   }, []);
 
-  // FIXED: Loading state with better timeout handling
+  // ==================== RENDER LOGIC ====================
   
+  // 1. Show loading while useGame is fetching
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white font-medium">Loading game data...</p>
+          <p className="text-white/60 text-sm mt-2">Game #{id}</p>
+        </div>
+      </div>
+    );
+  }
 
-  if (!game) {
+  // 2. Show game not found only after loading is complete
+  if (!game && !isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
           <h1 className="text-2xl font-bold mb-4">Game Not Found</h1>
-          <p className="text-white/70 mb-6">{cardError || 'The game you are looking for does not exist.'}</p>
+          <p className="text-white/70 mb-6">{gameError || 'The game you are looking for does not exist.'}</p>
           <button
             onClick={() => router.push('/')}
             className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold hover:bg-purple-50 transition-all"
@@ -897,198 +802,219 @@ const handleMarkNumber = async (number: number) => {
     );
   }
 
+  // 3. Show loading while fetching user card
+  if (isLoadingCard && !cardError && !isSpectatorMode) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white font-medium">Loading your bingo card...</p>
+          {retryCount > 0 && (
+            <p className="text-white/60 text-sm mt-2">
+              {retryCount < MAX_RETRY_ATTEMPTS 
+                ? `Attempt ${retryCount} of ${MAX_RETRY_ATTEMPTS}`
+                : 'Final attempt...'
+              }
+            </p>
+          )}
+          {autoRetryInProgress && (
+            <p className="text-white/60 text-sm mt-2">Auto-retrying...</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
-  // Main game render
+  // Main game render - game exists and loading is complete
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
       {/* Winner Modal */}
-    {/* Winner Modal - Updated to handle no-winner case */}
-<AnimatePresence>
-  {showWinnerModal && winnerInfo && (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
-    >
-      <motion.div
-        initial={{ scale: 0.8, y: 50 }}
-        animate={{ scale: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 100 }}
-        className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-2xl p-4 max-w-md w-full border-2 border-yellow-500 shadow-2xl relative overflow-hidden"
-      >
-        {/* Header */}
-        <div className="text-center mb-4">
-          <h1 className="text-2xl font-bold text-white mb-1">
-            {winnerInfo.winner._id === 'no-winner' ? '🏁 GAME ENDED' : '🎉 BINGO WINNER!'}
-          </h1>
-          <p className="text-white/70 text-sm">
-            Game #{winnerInfo.gameCode || id}
-          </p>
-        </div>
-
-        {/* Winner Profile - Compact */}
-        {winnerInfo.winner._id === 'no-winner' ? (
-          <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-xl p-4 mb-4 border border-white/20">
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-r from-gray-600 to-gray-800 flex items-center justify-center text-2xl font-bold mb-3">
-                🏁
-              </div>
-              <h3 className="text-lg font-bold text-white text-center">
-                No Winner
-              </h3>
-              <p className="text-white/70 text-sm text-center mt-1">
-                All 75 numbers called
-              </p>
-              <div className="mt-3 text-center px-3 py-2 bg-gradient-to-r from-gray-700/50 to-gray-900/50 rounded-lg w-full">
-                <p className="text-green-300 text-sm font-medium">
-                  10 ብር refunded to all players
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-xl p-4 mb-4 border border-white/20">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-14 h-14 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-xl font-bold">
-                {isUserWinner ? 'YOU' : winnerInfo.winner.firstName.charAt(0)}
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">
-                  {isUserWinner ? '🎊 YOU WON!' : winnerInfo.winner.firstName}
-                </h3>
+      <AnimatePresence>
+        {showWinnerModal && winnerInfo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 50 }}
+              animate={{ scale: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 100 }}
+              className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-2xl p-4 max-w-md w-full border-2 border-yellow-500 shadow-2xl relative overflow-hidden"
+            >
+              {/* Header */}
+              <div className="text-center mb-4">
+                <h1 className="text-2xl font-bold text-white mb-1">
+                  {winnerInfo.winner._id === 'no-winner' ? '🏁 GAME ENDED' : '🎉 BINGO WINNER!'}
+                </h1>
                 <p className="text-white/70 text-sm">
-                  @{winnerInfo.winner.username}
+                  Game #{winnerInfo.gameCode || id}
                 </p>
               </div>
-            </div>
 
-            {/* Prize Amount - Compact */}
-            <div className="text-center py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg">
-              <p className="text-white/80 text-xs mb-1">Prize Amount</p>
-              <p className="text-2xl font-bold text-yellow-300">
-                {winningAmount} ብር
-              </p>
-              {isUserWinner && (
-                <p className="text-green-300 text-xs mt-1">
-                  💰 Added to your wallet
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Game Stats - Compact */}
-        <div className="bg-gradient-to-r from-gray-900 to-black rounded-xl p-3 mb-4 border border-white/10">
-          <div className="grid grid-cols-2 gap-3 text-center">
-            <div>
-              <p className="text-white/70 text-xs">Players</p>
-              <p className="text-white text-lg font-bold">{winnerInfo.totalPlayers}</p>
-            </div>
-            <div>
-              <p className="text-white/70 text-xs">Numbers</p>
-              <p className="text-white text-lg font-bold">{winnerInfo.numbersCalled}/75</p>
-            </div>
-          </div>
-          {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningPattern && (
-            <div className="mt-3 pt-3 border-t border-white/20 text-center">
-              <p className="text-white/70 text-xs mb-1">Winning Pattern</p>
-              <p className="text-green-300 text-sm font-medium">
-                {getPatternName(winnerInfo.winningPattern)}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Winning Card - Compact (if exists) */}
-        {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-white font-bold text-sm">
-                Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
-              </h3>
-              <div className="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-1 rounded-full">
-                Winner
-              </div>
-            </div>
-
-            {/* Mini Bingo Card */}
-            <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
-              {/* Mini BINGO Header */}
-              <div className="grid grid-cols-5 gap-1 mb-2">
-                {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                  <div
-                    key={letter}
-                    className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
-                  >
-                    {letter}
+              {/* Winner Profile - Compact */}
+              {winnerInfo.winner._id === 'no-winner' ? (
+                <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-xl p-4 mb-4 border border-white/20">
+                  <div className="flex flex-col items-center">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-gray-600 to-gray-800 flex items-center justify-center text-2xl font-bold mb-3">
+                      🏁
+                    </div>
+                    <h3 className="text-lg font-bold text-white text-center">
+                      No Winner
+                    </h3>
+                    <p className="text-white/70 text-sm text-center mt-1">
+                      All 75 numbers called
+                    </p>
+                    <div className="mt-3 text-center px-3 py-2 bg-gradient-to-r from-gray-700/50 to-gray-900/50 rounded-lg w-full">
+                      <p className="text-green-300 text-sm font-medium">
+                        10 ብር refunded to all players
+                      </p>
+                    </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-xl p-4 mb-4 border border-white/20">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-xl font-bold">
+                      {isUserWinner ? 'YOU' : winnerInfo.winner.firstName.charAt(0)}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white">
+                        {isUserWinner ? '🎊 YOU WON!' : winnerInfo.winner.firstName}
+                      </h3>
+                      <p className="text-white/70 text-sm">
+                        @{winnerInfo.winner.username}
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Mini Card Numbers */}
-              <div className="grid grid-cols-5 gap-1">
-                {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                  row.map((number: number | string, colIndex: number) => {
-                    const flatIndex = rowIndex * 5 + colIndex;
-                    const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
-                    const isWinningPos = isWinningPosition(rowIndex, colIndex);
-                    const isFreeSpace = rowIndex === 2 && colIndex === 2;
+                  {/* Prize Amount - Compact */}
+                  <div className="text-center py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg">
+                    <p className="text-white/80 text-xs mb-1">Prize Amount</p>
+                    <p className="text-2xl font-bold text-yellow-300">
+                      {winningAmount} ብር
+                    </p>
+                    {isUserWinner && (
+                      <p className="text-green-300 text-xs mt-1">
+                        💰 Added to your wallet
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
-                    return (
-                      <div
-                        key={`${rowIndex}-${colIndex}`}
-                        className={`
-                          h-8 rounded flex items-center justify-center 
-                          font-bold text-xs relative
-                          ${isWinningPos
-                            ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white'
-                            : isMarked
-                              ? 'bg-green-600 text-white'
-                              : isFreeSpace
-                                ? 'bg-purple-700 text-white'
-                                : 'bg-gray-800 text-white/70'
-                          }
-                        `}
-                      >
-                        {isFreeSpace ? (
-                          <span className="text-[10px] font-bold">FREE</span>
-                        ) : (
-                          <span className={`${isMarked ? 'line-through' : ''}`}>
-                            {number}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })
+              {/* Game Stats - Compact */}
+              <div className="bg-gradient-to-r from-gray-900 to-black rounded-xl p-3 mb-4 border border-white/10">
+                <div className="grid grid-cols-2 gap-3 text-center">
+                  <div>
+                    <p className="text-white/70 text-xs">Players</p>
+                    <p className="text-white text-lg font-bold">{winnerInfo.totalPlayers}</p>
+                  </div>
+                  <div>
+                    <p className="text-white/70 text-xs">Numbers</p>
+                    <p className="text-white text-lg font-bold">{winnerInfo.numbersCalled}/75</p>
+                  </div>
+                </div>
+                {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningPattern && (
+                  <div className="mt-3 pt-3 border-t border-white/20 text-center">
+                    <p className="text-white/70 text-xs mb-1">Winning Pattern</p>
+                    <p className="text-green-300 text-sm font-medium">
+                      {getPatternName(winnerInfo.winningPattern)}
+                    </p>
+                  </div>
                 )}
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Countdown Only */}
-        <div className="mt-4 pt-4 border-t border-white/20">
-          <div className="text-center">
-            <p className="text-white/70 text-sm mb-1">
-              {winnerInfo.winner._id === 'no-winner' 
-                ? 'Next game starts in:' 
-                : 'Returning to lobby in:'}
-            </p>
-            <div className="text-2xl font-bold text-yellow-300 mb-2">
-              {countdown}s
-            </div>
-            <p className="text-white/60 text-xs">
-              {winnerInfo.winner._id === 'no-winner' 
-                ? 'Refunds processed automatically'
-                : 'Get ready for the next game'}
-            </p>
-          </div>
-        </div>
-      </motion.div>
-    </motion.div>
-  )}
-</AnimatePresence>
+              {/* Winning Card - Compact (if exists) */}
+              {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-white font-bold text-sm">
+                      Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
+                    </h3>
+                    <div className="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-1 rounded-full">
+                      Winner
+                    </div>
+                  </div>
+
+                  {/* Mini Bingo Card */}
+                  <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
+                    {/* Mini BINGO Header */}
+                    <div className="grid grid-cols-5 gap-1 mb-2">
+                      {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                        <div
+                          key={letter}
+                          className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
+                        >
+                          {letter}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Mini Card Numbers */}
+                    <div className="grid grid-cols-5 gap-1">
+                      {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+                        row.map((number: number | string, colIndex: number) => {
+                          const flatIndex = rowIndex * 5 + colIndex;
+                          const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
+                          const isWinningPos = isWinningPosition(rowIndex, colIndex);
+                          const isFreeSpace = rowIndex === 2 && colIndex === 2;
+
+                          return (
+                            <div
+                              key={`${rowIndex}-${colIndex}`}
+                              className={`
+                                h-8 rounded flex items-center justify-center 
+                                font-bold text-xs relative
+                                ${isWinningPos
+                                  ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white'
+                                  : isMarked
+                                    ? 'bg-green-600 text-white'
+                                    : isFreeSpace
+                                      ? 'bg-purple-700 text-white'
+                                      : 'bg-gray-800 text-white/70'
+                                }
+                              `}
+                            >
+                              {isFreeSpace ? (
+                                <span className="text-[10px] font-bold">FREE</span>
+                              ) : (
+                                <span className={`${isMarked ? 'line-through' : ''}`}>
+                                  {number}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Countdown Only */}
+              <div className="mt-4 pt-4 border-t border-white/20">
+                <div className="text-center">
+                  <p className="text-white/70 text-sm mb-1">
+                    {winnerInfo.winner._id === 'no-winner' 
+                      ? 'Next game starts in:' 
+                      : 'Returning to lobby in:'}
+                  </p>
+                  <div className="text-2xl font-bold text-yellow-300 mb-2">
+                    {countdown}s
+                  </div>
+                  <p className="text-white/60 text-xs">
+                    {winnerInfo.winner._id === 'no-winner' 
+                      ? 'Refunds processed automatically'
+                      : 'Get ready for the next game'}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Loading overlay for winner info */}
       {isWinnerLoading && (
@@ -1100,111 +1026,6 @@ const handleMarkNumber = async (number: number) => {
         </div>
       )}
 
-      {/* Header */}
-     <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
-  <div className="grid grid-cols-6 gap-4 text-center">
-    <div>
-      <p className="text-white text-xs font-semibold text-xs">{walletBalance} ብር</p>
-      <p className="text-white/60 text-xs">Balance</p>
-    </div>
-    <div>
-      <p className="text-white font-semibold text-xs">{(game.currentPlayers||0)*10*0.8} ብር</p>
-      <p className="text-white/60 text-xs">Pot</p>
-    </div>
-    <div>
-      <p className="text-white font-semibold text-xs">{game.currentPlayers || 0}</p>
-      <p className="text-white/60 text-xs">Players</p>
-    </div>
-    <div>
-      <p className="text-white font-semibold text-xs">10 ብር</p>
-      <p className="text-white/60 text-xs">Bet</p>
-    </div>
-    <div>
-      <p className="text-white font-semibold text-xs">
-        {selectedNumber ? `#${selectedNumber}` : 'N/A'}
-      </p>
-      <p className="text-white/60 text-xs">Your Card</p>
-    </div>
-    <div>
-      <p className="text-white font-semibold text-xs">{allCalledNumbers.length}/75</p>
-      <p className="text-white/60 text-xs">Called</p>
-    </div>
-  </div>
-
-  {/* Game Status Badge */}
-  <div className={`px-4 py-1 rounded-full text-xs font-medium ${
-    game.status === 'WAITING_FOR_PLAYERS' ? 'bg-yellow-500/20 text-yellow-300' :
-    game.status === 'CARD_SELECTION' ? 'bg-blue-500/20 text-blue-300' :
-    game.status === 'ACTIVE' ? 'bg-green-500/20 text-green-300' :
-    game.status === 'NO_WINNER' ? 'bg-red-500/20 text-red-300' :
-    'bg-gray-500/20 text-gray-300'
-  }`}>
-    {game.status === 'WAITING_FOR_PLAYERS' ? '⏳ Waiting for players' :
-     game.status === 'CARD_SELECTION' ? '🎲 Card Selection' :
-     game.status === 'ACTIVE' ? '🎮 Game Active' :
-     game.status === 'NO_WINNER' ? '🏁 No Winner (Refunded)' :
-     '🏁 Game Ended'}
-  </div>
-
-  {/* Spectator Mode Message */}
-  {isSpectatorMode && spectatorMessage && (
-    <div className="mt-3 p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
-      <p className="text-blue-300 text-xs text-center">{spectatorMessage}</p>
-      {game.status === 'WAITING_FOR_PLAYERS' && (
-        <button
-          onClick={() => router.push('/')}
-          className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-lg text-xs mx-auto block hover:bg-blue-600 transition-all"
-        >
-          Join Game
-        </button>
-      )}
-    </div>
-  )}
-
-  {/* Card Error Display */}
-  {cardError && !isSpectatorMode && (
-    <div className="mt-3 p-3 bg-red-500/20 rounded-lg border border-red-500/30">
-      <p className="text-red-300 text-xs text-center">{cardError}</p>
-      <div className="flex gap-2 justify-center mt-2">
-        <button
-          onClick={() => {
-            setIsLoadingCard(true);
-            setCardError('');
-            hasCardCheckedRef.current = false;
-            initializeUserCard(true);
-          }}
-          className="bg-red-500 text-white px-4 py-2 rounded-lg text-xs hover:bg-red-600 transition-all"
-        >
-          Retry
-        </button>
-        <button
-          onClick={() => {
-            setIsSpectatorMode(true);
-            setCardError('');
-          }}
-          className="bg-white/20 text-white px-4 py-2 rounded-lg text-xs hover:bg-white/30 transition-all"
-        >
-          Watch Spectator
-        </button>
-      </div>
-    </div>
-  )}
-</div>
-
-      {/* Remove this section - it's no longer needed here */}
-      {/* 
-      {currentCalledNumber?.isNew && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50"
-        >
-          <div className="bg-yellow-500/80 text-white px-6 py-3 rounded-lg shadow-lg font-bold text-lg backdrop-blur-sm">
-            🔔 {currentCalledNumber?.letter}{currentCalledNumber?.number}
-          </div>
-        </motion.div>
-      )}
-      */}
 
       <div className="grid grid-cols-4 gap-4">
         {/* Left: Called Numbers */}
@@ -1287,45 +1108,6 @@ const handleMarkNumber = async (number: number) => {
               })}
             </div>
           </div>
-
-          {/* Current Number Display */}
-          {/* <div className="mt-4 bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-            <h3 className="text-white font-bold mb-3">Current Number</h3>
-            <div className={`text-center transition-all duration-300 ${isAnimating ? 'scale-110' : 'scale-100'}`}>
-              {currentCalledNumber ? (
-                <div>
-                  <motion.div
-                    animate={currentCalledNumber.isNew ? {
-                      scale: [1, 1.2, 1],
-                      rotate: [0, 5, -5, 0]
-                    } : {}}
-                    transition={currentCalledNumber.isNew ? {
-                      duration: 0.5,
-                      repeat: 1
-                    } : {}}
-                    className={`text-5xl font-bold mb-2`}
-                  >
-                    <span className="text-white mr-2">{currentCalledNumber.letter}</span>
-                    <span className="text-yellow-300">{currentCalledNumber.number}</span>
-                  </motion.div>
-                  <p className="text-white/70 text-sm">
-                    Click {currentCalledNumber.letter}{currentCalledNumber.number} on your card to mark it!
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-2xl font-bold text-white/50 mb-2">
-                    No numbers called yet
-                  </p>
-                  <p className="text-white/60 text-sm">
-                    {game.status === 'ACTIVE'
-                      ? 'Waiting for first number...'
-                      : 'Game not active'}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div> */}
         </div>
 
         {/* Right: Bingo Card */}
@@ -1340,7 +1122,6 @@ const handleMarkNumber = async (number: number) => {
                     <div className="text-xl sm:text-2xl">
                       {currentCalledNumber.letter}{currentCalledNumber.number}
                     </div>
-                    
                   </div>
                   <span className="text-2xl">🔔</span>
                 </div>
@@ -1348,7 +1129,7 @@ const handleMarkNumber = async (number: number) => {
             </div>
           )}
           
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl  border border-white/20">
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
             <div className="flex justify-between items-center mb-3 sm:mb-4">
               <div className="flex items-center gap-2 sm:gap-3">
                 <h3 className="text-white font-bold text-sm sm:text-base md:text-md">Your Bingo Card</h3>
@@ -1399,19 +1180,19 @@ const handleMarkNumber = async (number: number) => {
                             backgroundColor: 'rgba(255, 255, 255, 0.25)'
                           } : {}}
                           className={`
-                    aspect-square rounded-sm flex items-center justify-center 
-                    font-bold transition-all duration-200 relative
-                    ${isMarked
+                            aspect-square rounded-sm flex items-center justify-center 
+                            font-bold transition-all duration-200 relative
+                            ${isMarked
                               ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'
                               : isFreeSpace
                                 ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white border-2 border-purple-400'
                                 : 'bg-white/15 text-white'
                             }
-                    ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE'
+                            ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE'
                               ? 'cursor-pointer'
                               : 'cursor-default'
                             }
-                  `}
+                          `}
                           onClick={() => {
                             if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
                               handleMarkNumber(number as number);
@@ -1432,9 +1213,9 @@ const handleMarkNumber = async (number: number) => {
                           ) : (
                             <div className="flex flex-col items-center justify-center w-full h-full p-0.5 sm:p-1 relative">
                               <span className={`
-                        text-xs xs:text-sm sm:text-base md:text-lg lg:text-xl
-                        ${isMarked ? 'line-through' : ''}
-                      `}>
+                                text-xs xs:text-sm sm:text-base md:text-lg lg:text-xl
+                                ${isMarked ? 'line-through' : ''}
+                              `}>
                                 {number}
                               </span>
                               {isMarked && (
@@ -1458,7 +1239,7 @@ const handleMarkNumber = async (number: number) => {
               <div className="text-center text-white/70 py-6 sm:py-8">
                 <p className="text-base sm:text-lg mb-1.5 sm:mb-2">No bingo card found</p>
                 <p className="text-xs sm:text-sm mb-4 sm:mb-6">{spectatorMessage || 'Join the game to get a card'}</p>
-                {game.status === 'WAITING_FOR_PLAYERS' || game.status === 'CARD_SELECTION' ? (
+                {game?.status === 'WAITING_FOR_PLAYERS' || game?.status === 'CARD_SELECTION' ? (
                   <button
                     onClick={() => router.push('/')}
                     className="bg-gradient-to-r from-purple-500/30 to-blue-500/30 text-white px-4 sm:px-6 py-1.5 sm:py-2.5 rounded-lg hover:from-purple-500/40 hover:to-blue-500/40 transition-all text-sm sm:text-base"
@@ -1473,118 +1254,63 @@ const handleMarkNumber = async (number: number) => {
               </div>
             )}
           </div>
-
-          {/* Game Controls - Responsive layout */}
-          {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 mt-2 sm:mt-3">
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-2 sm:p-3 border border-white/20">
-              <h4 className="text-white font-bold mb-1.5 sm:mb-2 text-sm sm:text-base">How to Win</h4>
-              <div className="space-y-1 sm:space-y-2 text-[10px] xs:text-xs sm:text-xs text-white/80">
-                <div className="flex items-start gap-1 sm:gap-2">
-                  <span className="text-green-400 text-xs">1.</span>
-                  <span>Listen for called numbers</span>
-                </div>
-                <div className="flex items-start gap-1 sm:gap-2">
-                  <span className="text-yellow-400 text-xs">2.</span>
-                  <span><span className="font-bold">Click</span> called numbers on your card</span>
-                </div>
-                <div className="flex items-start gap-1 sm:gap-2">
-                  <span className="text-red-400 text-xs">3.</span>
-                  <span>Complete a line (row, column, diagonal)</span>
-                </div>
-                <div className="flex items-start gap-1 sm:gap-2">
-                  <span className="text-purple-400 text-xs">4.</span>
-                  <span><span className="font-bold">First</span> to claim with valid line wins!</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-2 sm:p-3 border border-white/20">
-              <h4 className="text-white font-bold mb-1.5 sm:mb-2 text-sm sm:text-base">Quick Actions</h4>
-              <div className="space-y-1 sm:space-y-1.5">
-                <button
-                  onClick={() => {
-                    alert(`🎮 MANUAL BINGO GAME RULES:
-
-• Numbers are called automatically every 5-8 seconds
-• YOU must click each called number on YOUR card
-• Mark a complete line (5 in a row, column, or diagonal)
-• Click "CLAIM BINGO" immediately when you complete a line
-• First player with valid claim wins the prize!
-
-⚡ TIP: Be quick! Other players are marking manually too!`);
-                  }}
-                  className="w-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-white py-1.5 rounded text-[10px] xs:text-xs hover:from-blue-500/30 hover:to-purple-500/30 transition-all border border-blue-400/30"
-                >
-                  📖 Game Rules
-                </button>
-                <button
-                  onClick={handleManualRefresh}
-                  className="w-full bg-white/15 text-white py-1.5 rounded text-[10px] xs:text-xs hover:bg-white/25 transition-all flex items-center justify-center gap-0.5 sm:gap-1"
-                >
-                  ↻ Refresh Game Data
-                </button>
-              </div>
-            </div>
-          </div> */}
         </div>
       </div>
 
       {/* Claim Bingo Button - Fixed Position */}
- {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && allCalledNumbers.length > 0 && (
-  <div className="fixed bottom-4 right-2 sm:right-4 md:right-6 z-10">
-    <div className="flex flex-col items-end">
-      <button
-        onClick={handleClaimBingo}
-        disabled={isClaimingBingo}
-        className={`
-          bg-gradient-to-r from-yellow-600 to-orange-600 
-          text-white px-4 py-3 sm:px-6 sm:py-3 md:px-8 md:py-4 
-          rounded-xl sm:rounded-2xl font-bold 
-          text-sm sm:text-base md:text-lg
-          shadow-lg shadow-orange-800
-          hover:from-yellow-600 hover:to-orange-600
-          active:scale-95 transition-all duration-200
-          flex items-center gap-1 sm:gap-2 md:gap-3 justify-center
-          ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
-          whitespace-nowrap
-          max-w-[200px] sm:max-w-none
-        `}
-      >
-        {isClaimingBingo ? (
-          <>
-            <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
-            <span className="text-xs sm:text-sm">Verifying...</span>
-          </>
-        ) : (
-          <>
-            <span className="text-lg sm:text-xl md:text-2xl">🏆</span>
-            <span className="text-xs sm:text-sm md:text-base">CLAIM BINGO</span>
-            <span className="text-lg sm:text-xl md:text-2xl">🏆</span>
-          </>
-        )}
-      </button>
+      {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && allCalledNumbers.length > 0 && (
+        <div className="fixed bottom-4 right-2 sm:right-4 md:right-6 z-10">
+          <div className="flex flex-col items-end">
+            <button
+              onClick={handleClaimBingo}
+              disabled={isClaimingBingo}
+              className={`
+                bg-gradient-to-r from-yellow-600 to-orange-600 
+                text-white px-4 py-3 sm:px-6 sm:py-3 md:px-8 md:py-4 
+                rounded-xl sm:rounded-2xl font-bold 
+                text-sm sm:text-base md:text-lg
+                shadow-lg shadow-orange-800
+                hover:from-yellow-600 hover:to-orange-600
+                active:scale-95 transition-all duration-200
+                flex items-center gap-1 sm:gap-2 md:gap-3 justify-center
+                ${isClaimingBingo ? 'opacity-70 cursor-not-allowed' : ''}
+                whitespace-nowrap
+                max-w-[200px] sm:max-w-none
+              `}
+            >
+              {isClaimingBingo ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white"></div>
+                  <span className="text-xs sm:text-sm">Verifying...</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-lg sm:text-xl md:text-2xl">🏆</span>
+                  <span className="text-xs sm:text-sm md:text-base">CLAIM BINGO</span>
+                  <span className="text-lg sm:text-xl md:text-2xl">🏆</span>
+                </>
+              )}
+            </button>
 
-      {/* Optional: Compact result message for mobile */}
-      {claimResult && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`
-            mt-2 p-2 rounded-lg text-center text-xs font-medium max-w-[200px]
-            ${claimResult.success
-              ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-              : 'bg-red-500/20 text-red-300 border border-red-500/30'
-            }
-          `}
-        >
-          {claimResult.message}
-        </motion.div>
+            {/* Optional: Compact result message for mobile */}
+            {claimResult && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`
+                  mt-2 p-2 rounded-lg text-center text-xs font-medium max-w-[200px]
+                  ${claimResult.success
+                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                    : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                  }
+                `}
+              >
+                {claimResult.message}
+              </motion.div>
+            )}
+          </div>
+        </div>
       )}
-    </div>
-  </div>
-)}
-
- 
     </div>
   );
 }
