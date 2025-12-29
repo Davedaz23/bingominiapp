@@ -4,16 +4,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { gameAPI } from '../services/api';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
-import { Clock, Check, AlertCircle } from 'lucide-react';
+import { Clock, Check, AlertCircle, Eye } from 'lucide-react';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
-import { UserInfoDisplay } from '../components/user/UserInfoDisplay';
 
 // Constants for throttling
-const BALANCE_CHECK_INTERVAL = 120000; // 2 minutes in milliseconds
 const PLAYER_CHECK_INTERVAL = 180000; // 3 minutes for player status
 
 export default function Home() {
@@ -21,16 +19,13 @@ export default function Home() {
     user, 
     isAuthenticated, 
     isLoading: authLoading, 
-    isAdmin, 
-    isModerator, 
-    userRole, 
     walletBalance,
-    // refreshBalance // Add this to your AuthContext if not exists
   } = useAuth();
 
   const router = useRouter();
+  const pathname = usePathname();
   
-  // Game state - MINIMAL usage
+  // Game state
   const {
     gameStatus,
     gameData,
@@ -53,17 +48,17 @@ export default function Home() {
   const [playerGameStatus, setPlayerGameStatus] = useState<string | null>(null);
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
   const [lastBalanceCheck, setLastBalanceCheck] = useState<number>(0);
-  const [balanceLoading, setBalanceLoading] = useState<boolean>(false);
+  const [isRedirecting, setIsRedirecting] = useState<boolean>(false);
+  const [showActiveGameNotification, setShowActiveGameNotification] = useState<boolean>(false);
 
-  // Refs for tracking - prevent reloads
+  // Refs for tracking
   const isCheckingPlayerStatusRef = useRef<boolean>(false);
   const lastPlayerCheckRef = useRef<number>(0);
-  const lastBalanceCheckRef = useRef<number>(0);
   const isInitializedRef = useRef<boolean>(false);
   const redirectAttemptedRef = useRef<boolean>(false);
   const gameStatusRef = useRef<string>('');
   const hasCardRef = useRef<boolean>(false);
-  const balanceCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const activeGameNotificationShownRef = useRef<boolean>(false);
 
   // Sync refs with state
   useEffect(() => {
@@ -71,16 +66,15 @@ export default function Home() {
     hasCardRef.current = hasCardInActiveGame;
   }, [gameStatus, hasCardInActiveGame]);
 
-  // Check player card status - ULTRA OPTIMIZED with better throttling
+  // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
     if (!user?.id || isCheckingPlayerStatusRef.current) return false;
     
     const now = Date.now();
     const timeSinceLastCheck = now - lastPlayerCheckRef.current;
     
-    // Throttle checks - min 3 minutes between checks
+    // Throttle checks
     if (!force && timeSinceLastCheck < PLAYER_CHECK_INTERVAL) {
-      console.log(`Skipping player check - ${Math.floor(timeSinceLastCheck/1000)}s since last check`);
       return hasCardRef.current;
     }
 
@@ -88,9 +82,6 @@ export default function Home() {
       isCheckingPlayerStatusRef.current = true;
       lastPlayerCheckRef.current = now;
       
-      console.log('Checking player card status...');
-      
-      // Single API call with minimal data
       const response = await gameAPI.getActiveGames();
       
       if (response.data.success && response.data.games.length > 0) {
@@ -104,7 +95,6 @@ export default function Home() {
             const playerParticipant = participants.find((p: any) => p.userId === user.id);
             
             if (playerParticipant?.hasCard) {
-              console.log(`Player has card #${playerParticipant.cardNumber} in game status: ${game.status}`);
               setHasCardInActiveGame(true);
               setPlayerCardNumber(playerParticipant.cardNumber || 0);
               setPlayerGameStatus(game.status);
@@ -115,7 +105,6 @@ export default function Home() {
         }
       }
       
-      console.log('No active card found for player');
       setHasCardInActiveGame(false);
       setPlayerCardNumber(null);
       setPlayerGameStatus(null);
@@ -129,94 +118,82 @@ export default function Home() {
     }
   }, [user?.id]);
 
-  // Immediate redirect effect - NO DELAY, NO UI
+  // Handle manual redirect to active game
+  const handleRedirectToActiveGame = useCallback(() => {
+    if (redirectAttemptedRef.current || isRedirecting) return;
+    
+    setIsRedirecting(true);
+    redirectAttemptedRef.current = true;
+    
+    const gameId = gameData?._id || 'active';
+    const query = hasCardRef.current ? '' : '?spectator=true';
+    
+    console.log(`Manual redirect to game: ${gameId}${query}`);
+    
+    // Small delay for better UX
+    setTimeout(() => {
+      router.push(`/game/${gameId}${query}`);
+    }, 300);
+  }, [gameData, router, isRedirecting]);
+
+  // Check for active game and show notification instead of auto-redirect
   useEffect(() => {
     if (authLoading || pageLoading || redirectAttemptedRef.current) return;
     
-    const shouldRedirect = gameStatusRef.current === 'ACTIVE' || 
-                          (hasCardRef.current && playerGameStatus === 'ACTIVE');
+    const hasActiveCard = hasCardRef.current && playerGameStatus === 'ACTIVE';
+    const isGameActive = gameStatusRef.current === 'ACTIVE';
     
-    if (shouldRedirect) {
-      redirectAttemptedRef.current = true;
-      
-      // Immediate redirect with minimal delay for stability
-      const timer = setTimeout(() => {
-        const gameId = gameData?._id || 'active';
-        const query = hasCardRef.current ? '' : '?spectator=true';
-        console.log(`Immediate redirect to game: ${gameId}${query}`);
-        router.push(`/game/${gameId}${query}`);
-      }, 100); // Minimal delay to ensure React state is stable
-      
-      return () => clearTimeout(timer);
+    // Only show notification for active game, don't auto-redirect
+    if (isGameActive && !activeGameNotificationShownRef.current) {
+      setShowActiveGameNotification(true);
+      activeGameNotificationShownRef.current = true;
     }
-  }, [gameStatus, playerGameStatus, gameData, authLoading, pageLoading, router]);
+    
+    // Auto-redirect ONLY if user has a card in active game
+    if (hasActiveCard && !redirectAttemptedRef.current) {
+      handleRedirectToActiveGame();
+    }
+  }, [gameStatus, playerGameStatus, authLoading, pageLoading, handleRedirectToActiveGame]);
 
-  // Initialize - ONE TIME ONLY with memory
+  // Initialize
   useEffect(() => {
     if (authLoading || isInitializedRef.current) return;
 
     const init = async () => {
       isInitializedRef.current = true;
-      console.log('Initializing page (one-time)...');
+      console.log('Initializing page...');
       
-      // Initialize game state once
       await initializeGameState();
       
-      // Set cooldown from initial gameData
       if (gameData?.hasRestartCooldown) {
         setHasRestartCooldown(true);
       }
       
-      // Check player status only if authenticated
       if (isAuthenticated && user) {
-        // Check immediately if game might be active
-        if (gameStatus === 'ACTIVE') {
-          // If game is active, redirect immediately without additional checks
-          redirectAttemptedRef.current = true;
-          const gameId = gameData?._id || 'active';
-          router.push(`/game/${gameId}?spectator=true`);
-        } else {
-          // Otherwise, check for player card
-          setTimeout(() => {
-            checkPlayerCardInActiveGame(true);
-          }, 1000);
-        }
+        // Small delay before checking player status
+        setTimeout(() => {
+          checkPlayerCardInActiveGame(true);
+        }, 1500);
       }
     };
 
     init();
-  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData, gameStatus, router]);
+  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData]);
 
-  // Set up periodic checks - INFREQUENT
+  // Set up periodic checks
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
-    console.log('Setting up periodic checks...');
-    
-    // Player check every 3 minutes (only if not in active game)
     const playerCheckInterval = setInterval(() => {
       if (!redirectAttemptedRef.current) {
         checkPlayerCardInActiveGame();
       }
     }, PLAYER_CHECK_INTERVAL);
-    
 
     return () => {
       clearInterval(playerCheckInterval);
-      if (balanceCheckTimerRef.current) {
-        clearTimeout(balanceCheckTimerRef.current);
-      }
     };
   }, [isAuthenticated, user, checkPlayerCardInActiveGame]);
-
-  // Clean up timers on unmount
-  useEffect(() => {
-    return () => {
-      if (balanceCheckTimerRef.current) {
-        clearTimeout(balanceCheckTimerRef.current);
-      }
-    };
-  }, []);
 
   // Show loading during auth or page loading
   if (authLoading || pageLoading) {
@@ -230,13 +207,18 @@ export default function Home() {
     );
   }
 
-  // Don't render anything if we're redirecting
-  if (redirectAttemptedRef.current) {
+  // Show redirecting state
+  if (isRedirecting) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-          <p className="mt-4">Redirecting to game...</p>
+          <p className="mt-4">
+            {hasCardInActiveGame 
+              ? `Redirecting to your game (Card #${playerCardNumber})...`
+              : 'Redirecting to watch game...'
+            }
+          </p>
         </div>
       </div>
     );
@@ -261,14 +243,6 @@ export default function Home() {
     return 'Select your card to play';
   };
 
-  // Get time since last balance check
-  const getTimeSinceLastBalanceCheck = () => {
-    if (lastBalanceCheck === 0) return 'Never';
-    const seconds = Math.floor((Date.now() - lastBalanceCheck) / 1000);
-    if (seconds < 60) return `${seconds}s ago`;
-    return `${Math.floor(seconds / 60)}m ago`;
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
       {/* Navbar */}
@@ -280,17 +254,42 @@ export default function Home() {
               {getStatusMessage()}
             </p>
           </div>
-          
-          {/* Debug info - remove in production */}
-          <div className="hidden md:block text-xs opacity-50 text-white">
-            <p>Balance checked: {getTimeSinceLastBalanceCheck()}</p>
-            <p>Player checked: {lastPlayerCheckRef.current ? 
-              `${Math.floor((Date.now() - lastPlayerCheckRef.current) / 1000)}s ago` : 
-              'Never'}
-            </p>
-          </div>
         </div>
       </div>
+
+      {/* Active Game Notification - Manual redirect option */}
+      {showActiveGameNotification && !hasCardInActiveGame && (
+        <motion.div 
+          className="bg-gradient-to-r from-blue-500/20 to-teal-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="flex items-start gap-3">
+            <Eye className="w-5 h-5 text-blue-300 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-blue-300 font-bold text-sm">Game in Progress!</p>
+              <p className="text-blue-200 text-xs mb-3">
+                There's currently an active bingo game. You can watch as a spectator.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRedirectToActiveGame}
+                  className="bg-gradient-to-r from-blue-500 to-teal-500 text-white px-4 py-2 rounded-lg text-xs hover:from-blue-600 hover:to-teal-600 transition-all flex items-center gap-1"
+                >
+                  <Eye className="w-3 h-3" />
+                  Watch Game
+                </button>
+                <button
+                  onClick={() => setShowActiveGameNotification(false)}
+                  className="bg-white/10 text-white px-3 py-2 rounded-lg text-xs hover:bg-white/20 transition-all"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Player status notification */}
       {hasCardInActiveGame && (
@@ -303,24 +302,34 @@ export default function Home() {
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <div className="flex items-center gap-3">
-            {playerGameStatus === 'ACTIVE' ? (
-              <Check className="w-5 h-5 text-green-300" />
-            ) : (
-              <Clock className="w-5 h-5 text-yellow-300" />
-            )}
-            <div className="flex-1">
-              <p className={`font-bold text-sm ${
-                playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
-              }`}>
-                {playerGameStatus === 'ACTIVE' 
-                  ? 'Active Game - Redirecting...' 
-                  : 'Waiting for game to start'}
-              </p>
-              <p className="text-xs opacity-75">
-                Card #{playerCardNumber} • Next check in {Math.floor((PLAYER_CHECK_INTERVAL - (Date.now() - lastPlayerCheckRef.current)) / 1000)}s
-              </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {playerGameStatus === 'ACTIVE' ? (
+                <Check className="w-5 h-5 text-green-300" />
+              ) : (
+                <Clock className="w-5 h-5 text-yellow-300" />
+              )}
+              <div>
+                <p className={`font-bold text-sm ${
+                  playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
+                }`}>
+                  {playerGameStatus === 'ACTIVE' 
+                    ? 'Active Game - Ready to Play!' 
+                    : 'Waiting for game to start'}
+                </p>
+                <p className="text-xs opacity-75">
+                  Card #{playerCardNumber}
+                </p>
+              </div>
             </div>
+            {playerGameStatus === 'ACTIVE' && (
+              <button
+                onClick={handleRedirectToActiveGame}
+                className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-lg text-xs hover:from-green-600 hover:to-emerald-700 transition-all"
+              >
+                Join Game
+              </button>
+            )}
           </div>
         </motion.div>
       )}
@@ -337,15 +346,14 @@ export default function Home() {
             <div className="flex-1">
               <p className="text-red-300 font-bold text-sm">Insufficient Balance</p>
               <p className="text-red-200 text-xs">
-                Need 10 ብር to play (Current: {walletBalance} ብር) • 
-                Last updated: {getTimeSinceLastBalanceCheck()}
+                Need 10 ብር to play (Current: {walletBalance} ብር)
               </p>
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* Card selection grid - Only for non-active states */}
+      {/* Card selection grid - Only when game is in selectable state */}
       {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') && 
        (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
         <>
@@ -396,7 +404,7 @@ export default function Home() {
       )}
 
       {/* Show message if no game is active */}
-      {!gameData && !authLoading && !pageLoading && (
+      {!gameData && !authLoading && !pageLoading && !showActiveGameNotification && (
         <div className="text-center py-12">
           <p className="text-white/60">No active game found. Check back soon!</p>
         </div>

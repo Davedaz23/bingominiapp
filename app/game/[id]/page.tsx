@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - FIXED LOADING VERSION
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useGame } from '../../../hooks/useGame';
-import { walletAPIAuto, gameAPI } from '../../../services/api';
+import { gameAPI } from '../../../services/api';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCardSelection } from '@/hooks/useCardSelection';
 import { useGameState } from '@/hooks/useGameState';
@@ -59,7 +58,9 @@ interface Game {
 export default function GamePage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params.id as string;
+  const isSpectatorParam = searchParams.get('spectator') === 'true';
 
   const {
     game,
@@ -113,7 +114,7 @@ export default function GamePage() {
     prizeAmount?: number;
   } | null>(null);
 
-  const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(false);
+  const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(isSpectatorParam);
   const [spectatorMessage, setSpectatorMessage] = useState<string>('');
 
   // Refs
@@ -127,11 +128,12 @@ export default function GamePage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const initializationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializedRef = useRef(false);
+  const isUnmountedRef = useRef(false);
 
   // Polling intervals
   const POLL_INTERVAL = 3000;
   const MIN_UPDATE_INTERVAL = 1500;
-  const INITIALIZATION_TIMEOUT = 8000; // 8 seconds max for initialization
+  const INITIALIZATION_TIMEOUT = 8000;
 
   // Helper function to get BINGO letter
   const getNumberLetter = (num: number): string => {
@@ -142,7 +144,7 @@ export default function GamePage() {
     return 'O';
   };
 
-  // SIMPLIFIED: Check if user has a bingo card
+  // Check if user has a bingo card
   const checkUserHasCard = useCallback(async (): Promise<boolean> => {
     try {
       const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
@@ -188,7 +190,7 @@ export default function GamePage() {
     }
   }, [id]);
 
-  // SIMPLIFIED: Initialize user card with timeout protection
+  // Initialize user card
   const initializeUserCard = useCallback(async () => {
     if (isInitializedRef.current) return;
 
@@ -208,10 +210,10 @@ export default function GamePage() {
     }
   }, [checkUserHasCard]);
 
-  // SIMPLIFIED: Update game state
+  // Update game state
   const updateGameState = useCallback(async (force = false) => {
     if (updateInProgressRef.current && !force) return;
-    if (!id || showWinnerModal) return;
+    if (!id || showWinnerModal || isUnmountedRef.current) return;
 
     const now = Date.now();
     if (!force && now - lastUpdateTimeRef.current < MIN_UPDATE_INTERVAL) {
@@ -279,7 +281,7 @@ export default function GamePage() {
 
   // Start polling
   const startPolling = useCallback(() => {
-    if (pollingRef.current) return;
+    if (pollingRef.current || isUnmountedRef.current) return;
     
     console.log('📡 Starting polling...');
     
@@ -288,7 +290,7 @@ export default function GamePage() {
     
     // Set up polling interval
     pollingRef.current = setInterval(() => {
-      if (game?.status === 'ACTIVE' && !showWinnerModal) {
+      if (game?.status === 'ACTIVE' && !showWinnerModal && !isUnmountedRef.current) {
         updateGameState(false);
       } else {
         if (pollingRef.current) {
@@ -301,7 +303,7 @@ export default function GamePage() {
 
   // Check for winner
   const checkForWinner = useCallback(async (gameData?: Game) => {
-    if (!gameData || abortControllerRef.current || showWinnerModal) return;
+    if (!gameData || abortControllerRef.current || showWinnerModal || isUnmountedRef.current) return;
 
     try {
       setIsWinnerLoading(true);
@@ -345,17 +347,19 @@ export default function GamePage() {
         console.log('🗑️ Cleared stored card selection because game ended');
 
         setTimeout(() => {
-          setShowWinnerModal(true);
-          setIsWinnerLoading(false);
+          if (!isUnmountedRef.current) {
+            setShowWinnerModal(true);
+            setIsWinnerLoading(false);
 
-          if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
+            if (pollingRef.current) {
+              clearInterval(pollingRef.current);
+              pollingRef.current = null;
+            }
           }
         }, 1500);
       }
     } catch (error: any) {
-      if (error.name !== 'AbortError') {
+      if (error.name !== 'AbortError' && !isUnmountedRef.current) {
         console.error('Failed to fetch winner info:', error);
         setIsWinnerLoading(false);
       }
@@ -374,7 +378,7 @@ export default function GamePage() {
 
       // Set a timeout to prevent infinite loading
       initializationTimeoutRef.current = setTimeout(() => {
-        if (isLoading) {
+        if (isLoading && !isUnmountedRef.current) {
           console.warn('⚠️ Initialization timeout - forcing ready state');
           setIsLoading(false);
           setLoadingPhase('ready');
@@ -390,8 +394,7 @@ export default function GamePage() {
         }
 
         if (!game) {
-          setCardError('Game not found. Redirecting to lobby...');
-          setTimeout(() => router.push('/'), 2000);
+          setCardError('Game not found.');
           return;
         }
 
@@ -423,8 +426,13 @@ export default function GamePage() {
 
     initializeGame();
 
+    // Set unmounted flag
+    isUnmountedRef.current = false;
+
     // Cleanup
     return () => {
+      isUnmountedRef.current = true;
+      
       if (initializationTimeoutRef.current) {
         clearTimeout(initializationTimeoutRef.current);
       }
@@ -438,12 +446,15 @@ export default function GamePage() {
       if (animationTimeoutRef.current) {
         clearTimeout(animationTimeoutRef.current);
       }
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+      }
     };
-  }, [game, gameLoading, router, initializeUserCard, startPolling, checkForWinner, isLoading]);
+  }, [game, gameLoading, initializeUserCard, startPolling, checkForWinner, isLoading]);
 
   // Handle game status changes
   useEffect(() => {
-    if (!game) return;
+    if (!game || isUnmountedRef.current) return;
 
     // Update polling based on game status
     if (game.status === 'ACTIVE' && !pollingRef.current) {
@@ -657,11 +668,6 @@ export default function GamePage() {
           <p className="text-white/50 text-sm">
             Game #{id}
           </p>
-          {loadingPhase === 'checking_card' && (
-            <p className="text-white/60 text-xs mt-4">
-              This may take a moment...
-            </p>
-          )}
         </div>
       </div>
     );
@@ -864,6 +870,22 @@ export default function GamePage() {
            '🏁 Game Ended'}
         </div>
 
+        {/* Back to Lobby Button */}
+        <div className="mt-3 flex justify-between items-center">
+          <button
+            onClick={() => router.push('/')}
+            className="bg-white/10 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-white/20 transition-all flex items-center gap-1"
+          >
+            ← Back to Lobby
+          </button>
+          
+          {isSpectatorMode && (
+            <div className="bg-blue-500/20 px-3 py-1.5 rounded-lg text-xs text-blue-300">
+              👁️ Spectator Mode
+            </div>
+          )}
+        </div>
+
         {/* Spectator Mode Message */}
         {isSpectatorMode && spectatorMessage && (
           <div className="mt-3 p-3 bg-blue-500/20 rounded-lg border border-blue-500/30">
@@ -1010,7 +1032,7 @@ export default function GamePage() {
             </div>
           )}
           
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl  border border-white/20">
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
             <div className="flex justify-between items-center mb-3 sm:mb-4">
               <div className="flex items-center gap-2 sm:gap-3">
                 <h3 className="text-white font-bold text-sm sm:text-base md:text-md">Your Bingo Card</h3>
