@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Added useState and useEffect
 
 interface CardSelectionGridProps {
   availableCards: Array<{cardIndex: number, numbers: (number | string)[][], preview?: any}>;
@@ -21,47 +21,59 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   gameStatus,
   onCardSelect
 }) => {
-  // State to track locally taken cards (for immediate visual feedback)
-  const [locallyTakenCards, setLocallyTakenCards] = useState<number[]>([]);
-  
-  // Create a map of taken cards for quick lookup
-  const takenCardMap = new Map();
-  
-  // First, add server-side taken cards
-  takenCards.forEach(card => {
-    takenCardMap.set(card.cardNumber, card);
-  });
-  
-  // Then, add locally taken cards (these will override for visual purposes)
-  locallyTakenCards.forEach(cardNumber => {
-    if (!takenCardMap.has(cardNumber)) {
-      // Mark as taken locally with a temporary flag
-      takenCardMap.set(cardNumber, { cardNumber, userId: 'local', isLocal: true });
-    }
-  });
+  // State to track locally taken cards for immediate visual feedback
+  const [localTakenCards, setLocalTakenCards] = useState<Map<number, {cardNumber: number, userId: string}>>(new Map());
+  const [lastSelectedCard, setLastSelectedCard] = useState<number | null>(null);
 
-  const handleCardSelect = (cardNumber: number) => {
-    const isTaken = takenCardMap.has(cardNumber) && !takenCardMap.get(cardNumber).isLocal;
+  // Sync with props
+  useEffect(() => {
+    const takenCardMap = new Map();
+    takenCards.forEach(card => {
+      takenCardMap.set(card.cardNumber, card);
+    });
+    setLocalTakenCards(takenCardMap);
+  }, [takenCards]);
+
+  // Handle immediate visual feedback on card selection
+  const handleCardClick = (cardNumber: number) => {
+    const isAvailable = availableCards.some(card => card.cardIndex === cardNumber);
+    const canSelect = walletBalance >= 10;
     
-    if (!isTaken) {
-      // Immediately mark as taken locally for visual feedback
-      setLocallyTakenCards(prev => [...prev, cardNumber]);
-      
-      // Call the original handler (which will make the backend call)
-      onCardSelect(cardNumber);
-      
-      // Note: If the backend call fails, we should remove from locallyTakenCards
-      // This would typically be handled by the parent component via a callback or error handling
+    if (!isAvailable || !canSelect) return;
+
+    // Release previous selection if exists
+    if (lastSelectedCard && lastSelectedCard !== cardNumber) {
+      const newTakenCards = new Map(localTakenCards);
+      newTakenCards.delete(lastSelectedCard);
+      setLocalTakenCards(newTakenCards);
     }
+
+    // Immediately mark new card as taken locally
+    const newTakenCards = new Map(localTakenCards);
+    newTakenCards.set(cardNumber, {
+      cardNumber,
+      userId: 'current-user' // Placeholder - you can use actual user ID if available
+    });
+    setLocalTakenCards(newTakenCards);
+    setLastSelectedCard(cardNumber);
+
+    // Call the original onCardSelect
+    onCardSelect(cardNumber);
   };
 
-  // Function to reset local state if needed (e.g., when selection is confirmed/canceled)
-  const resetLocalState = () => {
-    setLocallyTakenCards([]);
+  // Combine local taken cards with backend taken cards for display
+  const displayTakenCards = () => {
+    const combined = new Map(localTakenCards);
+    
+    // Add backend taken cards (these override local if there's a conflict)
+    takenCards.forEach(card => {
+      combined.set(card.cardNumber, card);
+    });
+    
+    return combined;
   };
 
-  // Optional: Listen for changes in selectedNumber to reset local state when selection changes
-  // This can be added as an effect if needed
+  const takenCardMap = displayTakenCards();
 
   return (
     <div className="mb-4">
@@ -73,34 +85,31 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
       >
         {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
           const isTaken = takenCardMap.has(number);
-          const isLocalTaken = isTaken && takenCardMap.get(number).isLocal;
-          const isServerTaken = isTaken && !takenCardMap.get(number).isLocal;
           const isAvailable = availableCards.some(card => card.cardIndex === number);
           const canSelect = walletBalance >= 10;
-          
-          // Card is selectable if:
-          // 1. User has enough balance
-          // 2. Card is available
-          // 3. Card is NOT taken on server (local taken is okay since user is taking it)
-          const isSelectable = canSelect && isAvailable && !isServerTaken;
-          
+          const isSelectable = canSelect && isAvailable && !isTaken;
           const isCurrentlySelected = selectedNumber === number;
           const takenBy = isTaken ? takenCardMap.get(number) : null;
+          
+          // Check if this is a locally taken card (for immediate visual feedback)
+          const isLocallyTaken = localTakenCards.has(number) && 
+            localTakenCards.get(number)?.userId === 'current-user';
+          const isBackendTaken = takenCards.some(card => card.cardNumber === number);
 
           return (
             <motion.button
               key={number}
-              onClick={() => isSelectable && handleCardSelect(number)}
-              disabled={!isSelectable}
+              onClick={() => handleCardClick(number)}
+              disabled={!isSelectable && !isLocallyTaken}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
                 ${isCurrentlySelected
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
-                  : isServerTaken
-                  ? 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
-                  : isLocalTaken
-                  ? 'bg-amber-500/70 text-white border-amber-500/70 cursor-pointer shadow-lg' // Different color for local taken
+                  : isTaken
+                  ? isLocallyTaken && !isBackendTaken
+                    ? 'bg-purple-500/80 text-white border-purple-500 shadow-md cursor-pointer'
+                    : 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
                   : isSelectable
                   ? gameStatus === 'ACTIVE' 
                     ? 'bg-green-500/60 text-white hover:bg-green-600/70 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/60'
@@ -108,10 +117,10 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                   : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
                 }
                 ${isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
-                ${isLocalTaken ? 'animate-pulse' : ''}
+                ${isLocallyTaken && !isBackendTaken ? 'animate-pulse' : ''}
               `}
-              whileHover={isSelectable && !isLocalTaken ? { scale: 1.05 } : {}}
-              whileTap={isSelectable && !isLocalTaken ? { scale: 0.95 } : {}}
+              whileHover={isSelectable || isLocallyTaken ? { scale: 1.05 } : {}}
+              whileTap={isSelectable || isLocallyTaken ? { scale: 0.95 } : {}}
               layout
             >
               {number}
@@ -123,8 +132,19 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
-              {/* Server taken indicator */}
-              {isServerTaken && (
+              {/* Locally taken indicator (immediate feedback) */}
+              {isLocallyTaken && !isBackendTaken && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-4 h-4 text-purple-200 animate-pulse">
+                    <svg fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
+              )}
+              
+              {/* Backend taken indicator */}
+              {isBackendTaken && !isLocallyTaken && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-4 h-4 text-red-300">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -132,20 +152,6 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                     </svg>
                   </div>
                 </div>
-              )}
-              
-              {/* Local taken indicator (processing) */}
-              {isLocalTaken && !isCurrentlySelected && (
-                <>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-4 h-4 text-amber-300 animate-spin">
-                      <svg fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-400 rounded-full border border-white animate-ping"></div>
-                </>
               )}
               
               {/* Available for selection indicator */}
@@ -168,32 +174,33 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               {isAvailable && !isTaken && canSelect && !isCurrentlySelected && (
                 <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
               )}
+              
+              {/* Pending selection indicator */}
+              {isLocallyTaken && !isBackendTaken && (
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-purple-400 rounded-full border-2 border-white animate-ping"></div>
+              )}
             </motion.button>
           );
         })}
       </motion.div>
 
-      {/* Real-time status - include local taken cards */}
+      {/* Real-time status */}
       <div className="text-center text-white/60 text-sm mb-3">
         <div className="flex justify-center gap-4">
           <span>✅ {availableCards.length} available</span>
-          <span className="relative">
-            ❌ {takenCards.length + locallyTakenCards.length} taken
-            {locallyTakenCards.length > 0 && (
-              <span className="absolute -top-2 -right-3 text-xs bg-amber-500 text-white px-1 rounded-full">
-                +{locallyTakenCards.length}
-              </span>
-            )}
-          </span>
-          <span>⏳ {400 - availableCards.length - takenCards.length - locallyTakenCards.length} inactive</span>
+          <span>❌ {takenCardMap.size} taken</span>
+          <span>⏳ {400 - availableCards.length - takenCardMap.size} inactive</span>
         </div>
-        <div className="text-xs text-white/40 mt-1">
-          Updates in real-time • Refresh automatically
-          {locallyTakenCards.length > 0 && (
-            <span className="text-amber-400 ml-2">
-              • Processing {locallyTakenCards.length} selection{locallyTakenCards.length > 1 ? 's' : ''}
-            </span>
-          )}
+        <div className="text-xs text-white/40 mt-1 flex items-center justify-center gap-2">
+          <span className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            <span>Your selection</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+            <span>Taken by others</span>
+          </span>
+          <span>• Updates in real-time</span>
         </div>
       </div>
 
@@ -210,7 +217,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               <p className="text-telegram-button font-bold text-sm">Card #{selectedNumber} Selected</p>
             </div>
             <p className="text-telegram-button/80 text-xs">
-              Click another card to change selection
+              {localTakenCards.has(selectedNumber) && !takenCards.some(card => card.cardNumber === selectedNumber)
+                ? "Processing your selection..."
+                : "Click another card to change selection"}
             </p>
           </div>
         </motion.div>
