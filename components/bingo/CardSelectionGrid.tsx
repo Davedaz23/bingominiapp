@@ -3,7 +3,6 @@
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 
-// In CardSelectionGridProps interface, add:
 interface CardSelectionGridProps {
   availableCards: Array<{cardIndex: number, numbers: (number | string)[][], preview?: any}>;
   takenCards: {cardNumber: number, userId: string}[];
@@ -11,12 +10,10 @@ interface CardSelectionGridProps {
   walletBalance: number;
   gameStatus: string;
   onCardSelect: (cardNumber: number) => void;
-  // Add these new props:
-  pendingSelection?: number | null; // Card being processed
-  userId?: string; // To differentiate user's own selections
+  pendingSelection?: number | null;
+  userId?: string;
 }
 
-// Update the component to use the new props:
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   availableCards,
   takenCards,
@@ -24,12 +21,26 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   walletBalance,
   gameStatus,
   onCardSelect,
-  pendingSelection, // New: card currently being processed
-  userId // New: current user ID
+  pendingSelection,
+  userId
 }) => {
-  // Create a map of taken cards for quick lookup
+  // ⭐ FIX: Create a map of taken cards EXCLUDING current user's old selections
   const takenCardMap = new Map();
+  
+  // Only show cards as "taken" if:
+  // 1. They're taken by OTHER users, OR
+  // 2. They're the user's CURRENTLY SELECTED card
   takenCards.forEach(card => {
+    const isCurrentUsersCard = userId && card.userId === userId;
+    const isCurrentlySelected = card.cardNumber === selectedNumber;
+    
+    // If it's the current user's card but NOT the currently selected one, skip it
+    // (This happens when user switches cards - old one should no longer show as "taken")
+    if (isCurrentUsersCard && !isCurrentlySelected) {
+      return; // Skip adding to map
+    }
+    
+    // Otherwise, add to map
     takenCardMap.set(card.cardNumber, card);
   });
 
@@ -49,13 +60,16 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           const canSelect = walletBalance >= 10;
           const isSelectable = canSelect && isAvailable && !isTaken;
           const isCurrentlySelected = selectedNumber === number;
-          const isProcessing = pendingSelection === number; // New: check if this card is being processed
+          const isProcessing = pendingSelection === number;
+          
+          // ⭐ FIX: A card should NOT show as "taken by current user" unless it's the currently selected one
+          const shouldShowAsTakenByUser = isTakenByCurrentUser && isCurrentlySelected;
           
           return (
             <motion.button
               key={number}
               onClick={() => isSelectable && onCardSelect(number)}
-              disabled={!isSelectable || isProcessing} // Disable while processing
+              disabled={!isSelectable || isProcessing}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
@@ -63,7 +77,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                   ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white border-yellow-400 shadow-lg scale-105 animate-pulse'
                   : isCurrentlySelected
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
-                  : isTakenByCurrentUser
+                  : shouldShowAsTakenByUser // ⭐ CHANGED: Only show as user's card if currently selected
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-md'
                   : isTaken
                   ? 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
@@ -95,8 +109,8 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
-              {/* Taken by other player indicator */}
-              {!isProcessing && isTaken && !isTakenByCurrentUser && !isCurrentlySelected && (
+              {/* Taken by other player indicator - ONLY if not current user's card */}
+              {!isProcessing && isTaken && !shouldShowAsTakenByUser && !isCurrentlySelected && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-4 h-4 text-red-300">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -106,8 +120,8 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
-              {/* Taken by current user indicator */}
-              {!isProcessing && isTakenByCurrentUser && !isCurrentlySelected && (
+              {/* Taken by current user indicator - ONLY if currently selected */}
+              {!isProcessing && shouldShowAsTakenByUser && !isCurrentlySelected && (
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-telegram-button rounded-full border-2 border-white flex items-center justify-center">
                   <Check className="w-2 h-2 text-white" />
                 </div>
@@ -177,6 +191,13 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           </div>
         </motion.div>
       )}
+      
+      {/* Debug info - Remove in production */}
+      <div className="text-xs text-white/50 mt-2">
+        <p>User ID: {userId}</p>
+        <p>Selected: {selectedNumber}</p>
+        <p>User's taken cards: {takenCards.filter(c => c.userId === userId).map(c => c.cardNumber).join(', ')}</p>
+      </div>
     </div>
   );
 };
