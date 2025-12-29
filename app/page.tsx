@@ -15,7 +15,6 @@ import { UserInfoDisplay } from '../components/user/UserInfoDisplay';
 // Constants for throttling
 const BALANCE_CHECK_INTERVAL = 120000; // 2 minutes in milliseconds
 const PLAYER_CHECK_INTERVAL = 180000; // 3 minutes for player status
-const MIN_REDIRECT_DELAY = 5000; // 5 seconds minimum before redirect
 
 export default function Home() {
   const { 
@@ -49,7 +48,6 @@ export default function Home() {
   } = useCardSelection(gameData, gameStatus);
 
   // Local states
-  const [autoRedirected, setAutoRedirected] = useState<boolean>(false);
   const [hasCardInActiveGame, setHasCardInActiveGame] = useState<boolean>(false);
   const [playerCardNumber, setPlayerCardNumber] = useState<number | null>(null);
   const [playerGameStatus, setPlayerGameStatus] = useState<string | null>(null);
@@ -65,7 +63,6 @@ export default function Home() {
   const redirectAttemptedRef = useRef<boolean>(false);
   const gameStatusRef = useRef<string>('');
   const hasCardRef = useRef<boolean>(false);
-  const redirectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const balanceCheckTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync refs with state
@@ -73,7 +70,6 @@ export default function Home() {
     gameStatusRef.current = gameStatus;
     hasCardRef.current = hasCardInActiveGame;
   }, [gameStatus, hasCardInActiveGame]);
-
 
   // Check player card status - ULTRA OPTIMIZED with better throttling
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
@@ -133,9 +129,9 @@ export default function Home() {
     }
   }, [user?.id]);
 
-  // Check for active game and redirect - WITH DELAY to prevent rapid redirects
+  // Immediate redirect effect - NO DELAY, NO UI
   useEffect(() => {
-    if (authLoading || pageLoading || autoRedirected || redirectAttemptedRef.current) return;
+    if (authLoading || pageLoading || redirectAttemptedRef.current) return;
     
     const shouldRedirect = gameStatusRef.current === 'ACTIVE' || 
                           (hasCardRef.current && playerGameStatus === 'ACTIVE');
@@ -143,27 +139,17 @@ export default function Home() {
     if (shouldRedirect) {
       redirectAttemptedRef.current = true;
       
-      // Clear any existing timer
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
-      }
-      
-      // Add delay to prevent rapid redirects
-      redirectTimerRef.current = setTimeout(() => {
-        setAutoRedirected(true);
+      // Immediate redirect with minimal delay for stability
+      const timer = setTimeout(() => {
         const gameId = gameData?._id || 'active';
         const query = hasCardRef.current ? '' : '?spectator=true';
-        console.log(`Redirecting to game: ${gameId}${query}`);
+        console.log(`Immediate redirect to game: ${gameId}${query}`);
         router.push(`/game/${gameId}${query}`);
-      }, MIN_REDIRECT_DELAY);
+      }, 100); // Minimal delay to ensure React state is stable
+      
+      return () => clearTimeout(timer);
     }
-    
-    return () => {
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
-      }
-    };
-  }, [gameStatus, playerGameStatus, gameData, authLoading, pageLoading, autoRedirected, router]);
+  }, [gameStatus, playerGameStatus, gameData, authLoading, pageLoading, router]);
 
   // Initialize - ONE TIME ONLY with memory
   useEffect(() => {
@@ -183,17 +169,23 @@ export default function Home() {
       
       // Check player status only if authenticated
       if (isAuthenticated && user) {
-        // Wait 3 seconds before first check
-        setTimeout(() => {
-          checkPlayerCardInActiveGame(true);
-        }, 3000);
-        
-       
+        // Check immediately if game might be active
+        if (gameStatus === 'ACTIVE') {
+          // If game is active, redirect immediately without additional checks
+          redirectAttemptedRef.current = true;
+          const gameId = gameData?._id || 'active';
+          router.push(`/game/${gameId}?spectator=true`);
+        } else {
+          // Otherwise, check for player card
+          setTimeout(() => {
+            checkPlayerCardInActiveGame(true);
+          }, 1000);
+        }
       }
     };
 
     init();
-  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData]);
+  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData, gameStatus, router]);
 
   // Set up periodic checks - INFREQUENT
   useEffect(() => {
@@ -201,16 +193,16 @@ export default function Home() {
 
     console.log('Setting up periodic checks...');
     
-    // Player check every 3 minutes
+    // Player check every 3 minutes (only if not in active game)
     const playerCheckInterval = setInterval(() => {
-      checkPlayerCardInActiveGame();
+      if (!redirectAttemptedRef.current) {
+        checkPlayerCardInActiveGame();
+      }
     }, PLAYER_CHECK_INTERVAL);
     
 
-
     return () => {
       clearInterval(playerCheckInterval);
-      // clearInterval(balanceCheckInterval);
       if (balanceCheckTimerRef.current) {
         clearTimeout(balanceCheckTimerRef.current);
       }
@@ -220,35 +212,13 @@ export default function Home() {
   // Clean up timers on unmount
   useEffect(() => {
     return () => {
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
-      }
       if (balanceCheckTimerRef.current) {
         clearTimeout(balanceCheckTimerRef.current);
       }
     };
   }, []);
 
-  // Show redirect loading
-  if ((hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !autoRedirected) ||
-      (gameStatus === 'ACTIVE' && !hasCardInActiveGame && !autoRedirected)) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-          <p className="mt-4">
-            {hasCardInActiveGame 
-              ? `Redirecting to your game (Card #${playerCardNumber})...`
-              : 'Game in progress. Redirecting to watch...'
-            }
-          </p>
-          <p className="text-sm opacity-75 mt-2">Please wait...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show loading
+  // Show loading during auth or page loading
   if (authLoading || pageLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
@@ -260,16 +230,24 @@ export default function Home() {
     );
   }
 
+  // Don't render anything if we're redirecting
+  if (redirectAttemptedRef.current) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
+          <p className="mt-4">Redirecting to game...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Simple status message
   const getStatusMessage = () => {
     if (hasCardInActiveGame) {
       return playerGameStatus === 'ACTIVE' 
         ? `You have card #${playerCardNumber} in active game`
         : `You have card #${playerCardNumber} - Waiting for game`;
-    }
-    
-    if (gameStatus === 'ACTIVE') {
-      return 'Game in progress';
     }
     
     if (gameStatus === 'WAITING_FOR_PLAYERS') {
@@ -302,8 +280,6 @@ export default function Home() {
               {getStatusMessage()}
             </p>
           </div>
-          
-       
           
           {/* Debug info - remove in production */}
           <div className="hidden md:block text-xs opacity-50 text-white">
@@ -349,20 +325,6 @@ export default function Home() {
         </motion.div>
       )}
 
-      {/* Game active notification */}
-      {gameStatus === 'ACTIVE' && !hasCardInActiveGame && (
-        <motion.div 
-          className="bg-blue-500/10 backdrop-blur-lg rounded-xl p-3 mb-4 border border-blue-500/20"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-blue-300 text-sm">Game in progress...</p>
-            <p className="text-blue-200 text-xs">Redirecting to watch...</p>
-          </div>
-        </motion.div>
-      )}
-
       {/* Balance warning */}
       {!hasCardInActiveGame && walletBalance < 10 && gameStatus !== 'ACTIVE' && (
         <motion.div 
@@ -378,14 +340,14 @@ export default function Home() {
                 Need 10 ብር to play (Current: {walletBalance} ብር) • 
                 Last updated: {getTimeSinceLastBalanceCheck()}
               </p>
-           
             </div>
           </div>
         </motion.div>
       )}
 
       {/* Card selection grid - Only for non-active states */}
-      {gameStatus !== 'ACTIVE' && (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
+      {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') && 
+       (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
         <>
           <CardSelectionGrid
             availableCards={availableCards}
@@ -433,54 +395,11 @@ export default function Home() {
         </>
       )}
 
-      {/* Simple footer with minimal info */}
-      {gameStatus !== 'ACTIVE' && (
-        <motion.div 
-          className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <div className="text-center">
-            <p className="text-white font-bold mb-2">How to Play</p>
-            <div className="grid grid-cols-3 gap-4 mb-3">
-              <div>
-                <p className="text-white text-sm">1. Select Card</p>
-                <p className="text-white/60 text-xs">Pick a number 1-75</p>
-              </div>
-              <div>
-                <p className="text-white text-sm">2. Wait for Game</p>
-                <p className="text-white/60 text-xs">Minimum 2 players</p>
-              </div>
-              <div>
-                <p className="text-white text-sm">3. Play Bingo</p>
-                <p className="text-white/60 text-xs">Match numbers to win</p>
-              </div>
-            </div>
-            
-            <div className="flex justify-center gap-6 mt-3">
-              <div className="text-center">
-                <p className="text-white font-bold">10 ብር</p>
-                <p className="text-white/60 text-xs">Entry Fee</p>
-              </div>
-              <div className="text-center">
-                <p className="text-white font-bold">
-                  {hasRestartCooldown ? '60s' : 'Auto'}
-                </p>
-                <p className="text-white/60 text-xs">
-                  {hasRestartCooldown ? 'Cooldown' : 'Start'}
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-white font-bold">
-                  {balanceLoading ? '...' : '2m'}
-                </p>
-                <p className="text-white/60 text-xs">
-                  Balance Refresh
-                </p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
+      {/* Show message if no game is active */}
+      {!gameData && !authLoading && !pageLoading && (
+        <div className="text-center py-12">
+          <p className="text-white/60">No active game found. Check back soon!</p>
+        </div>
       )}
     </div>
   );
