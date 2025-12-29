@@ -136,21 +136,23 @@ export default function Home() {
     }, 300);
   }, [gameData, router, isRedirecting]);
 
-  // Check for active game and show notification instead of auto-redirect
+  // Check for active game and auto-redirect IMMEDIATELY
   useEffect(() => {
     if (authLoading || pageLoading || redirectAttemptedRef.current) return;
 
     const hasActiveCard = hasCardRef.current && playerGameStatus === 'ACTIVE';
     const isGameActive = gameStatusRef.current === 'ACTIVE';
 
-    // Only show notification for active game, don't auto-redirect
-    if (isGameActive && !activeGameNotificationShownRef.current) {
-      setShowActiveGameNotification(true);
-      activeGameNotificationShownRef.current = true;
+    // IMMEDIATE REDIRECT: If game is active, redirect immediately
+    if (isGameActive && !redirectAttemptedRef.current) {
+      console.log('Game is ACTIVE - Immediate redirect to game page');
+      handleRedirectToActiveGame();
+      return;
     }
 
-    // Auto-redirect ONLY if user has a card in active game
+    // Also redirect if user has a card in active game
     if (hasActiveCard && !redirectAttemptedRef.current) {
+      console.log('User has card in active game - Immediate redirect');
       handleRedirectToActiveGame();
     }
   }, [gameStatus, playerGameStatus, authLoading, pageLoading, handleRedirectToActiveGame]);
@@ -207,8 +209,8 @@ export default function Home() {
     );
   }
 
-  // Show redirecting state
-  if (isRedirecting) {
+  // Show redirecting state - This will be shown briefly before redirect
+  if (isRedirecting || gameStatus === 'ACTIVE') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
@@ -216,7 +218,7 @@ export default function Home() {
           <p className="mt-4">
             {hasCardInActiveGame
               ? `Redirecting to your game (Card #${playerCardNumber})...`
-              : 'Redirecting to watch game...'
+              : 'Game is active - Redirecting...'
             }
           </p>
         </div>
@@ -243,6 +245,11 @@ export default function Home() {
     return 'Select your card to play';
   };
 
+  // Don't render anything if game is active - we're redirecting
+  // if (gameStatus === 'ACTIVE') {
+  //   return null;
+  // }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
       {/* Navbar */}
@@ -256,8 +263,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-
-     
 
       {/* Player status notification */}
       {hasCardInActiveGame && (
@@ -301,7 +306,7 @@ export default function Home() {
       )}
 
       {/* Balance warning */}
-      {!hasCardInActiveGame && walletBalance < 10 && gameStatus !== 'ACTIVE' && (
+      {/* {!hasCardInActiveGame && walletBalance < 10 && gameStatus !== 'ACTIVE' && (
         <motion.div
           className="bg-red-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-red-500/30"
           initial={{ opacity: 0, y: -10 }}
@@ -317,7 +322,7 @@ export default function Home() {
             </div>
           </div>
         </motion.div>
-      )}
+      )} */}
 
       {/* Card selection grid - Only when game is in selectable state */}
       {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
@@ -333,47 +338,42 @@ export default function Home() {
             />
 
             {/* Selected card preview */}
-
-
-          {selectedNumber && bingoCard && (
-  <motion.div
-    className="mb-6 mt-4"
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-  >
-    <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-      <h3 className="text-white font-bold text-sm mb-3 text-center">Card #{selectedNumber}</h3>
-      
-      {/* Display card exactly as shown in your expected format */}
-      <div className="space-y-2">
-        {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
-          <div key={letter} className="flex items-center">
-            <div className="w-8 text-telegram-button font-bold text-sm">{letter}</div>
-            <div className="flex-1 grid grid-cols-5 gap-1">
-              {bingoCard[colIndex]?.map((number, rowIndex) => (
-                <div
-                  key={`${colIndex}-${rowIndex}`}
-                  className={`text-center py-2 rounded text-sm ${
-                    number === 'FREE' 
-                      ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
-                      : 'bg-white/20 text-white'
-                  }`}
-                >
-                  {number}
+            {selectedNumber && bingoCard && (
+              <motion.div
+                className="mb-6 mt-4"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+                  <h3 className="text-white font-bold text-sm mb-3 text-center">Card #{selectedNumber}</h3>
+                  
+                  {/* Display card exactly as shown in your expected format */}
+                  <div className="space-y-2">
+                    {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
+                      <div key={letter} className="flex items-center">
+                        <div className="w-8 text-telegram-button font-bold text-sm">{letter}</div>
+                        <div className="flex-1 grid grid-cols-5 gap-1">
+                          {bingoCard[colIndex]?.map((number, rowIndex) => (
+                            <div
+                              key={`${colIndex}-${rowIndex}`}
+                              className={`text-center py-2 rounded text-sm ${
+                                number === 'FREE' 
+                                  ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
+                                  : 'bg-white/20 text-white'
+                              }`}
+                            >
+                              {number}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  </motion.div>
-)}
+              </motion.div>
+            )}
           </>
         )}
-
-
-
     </div>
   );
 }
