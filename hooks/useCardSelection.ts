@@ -169,6 +169,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       
       if (response.data.success) {
         setAvailableCards(response.data.cards || []);
+        console.log('✅ Available cards all:', response.data.cards);
         console.log('✅ Available cards fetched:', response.data.cards?.length || 0, 'cards');
         
         // Also fetch taken cards initially
