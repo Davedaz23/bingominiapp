@@ -367,48 +367,67 @@ export default function Home() {
           />
           
           {/* Selected card preview */}
-          {selectedNumber && bingoCard && (
-            <motion.div
-              className="mb-6 mt-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-                <h3 className="text-white font-bold text-sm mb-3 text-center">Card #{selectedNumber}</h3>
-                
-                <div className="grid grid-cols-5 gap-1">
-                  {bingoCard.map((column, colIndex) => (
-                    <div key={colIndex} className="space-y-1">
-                      <div className="text-telegram-button font-bold text-center text-sm">
-                        {['B', 'I', 'N', 'G', 'O'][colIndex]}
-                      </div>
-                      {column.map((number, rowIndex) => (
-                        <div
-                          key={`${colIndex}-${rowIndex}`}
-                          className={`text-center py-2 rounded text-sm ${
-                            number === 'FREE' 
-                              ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
-                              : 'bg-white/20 text-white'
-                          }`}
-                        >
-                          {number}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
+       
+
+{selectedNumber && bingoCard && (
+  <motion.div
+    className="mb-6 mt-4"
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+  >
+    <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+      <h3 className="text-white font-bold text-sm mb-3 text-center">Card #{selectedNumber}</h3>
+      
+      {/* Correct grid display - Transpose the data for proper display */}
+      <div className="grid grid-cols-5 gap-1">
+        {/* Column headers */}
+        {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+          <div 
+            key={letter}
+            className="text-telegram-button font-bold text-center text-sm py-2"
+          >
+            {letter}
+          </div>
+        ))}
+        
+        {/* Card numbers - Display as rows */}
+        {/* We need to display 5 rows, each with 5 numbers (one from each column) */}
+        {Array.from({ length: 5 }).map((_, rowIndex) => (
+          Array.from({ length: 5 }).map((_, colIndex) => {
+            // For row 2, col 2 (middle cell), it's always FREE
+            if (rowIndex === 2 && colIndex === 2) {
+              return (
+                <div
+                  key={`${rowIndex}-${colIndex}`}
+                  className="text-center py-2 rounded text-sm bg-gradient-to-br from-green-400 to-teal-400 text-white"
+                >
+                  FREE
                 </div>
+              );
+            }
+            
+            // Get number from bingoCard[column][row]
+            const number = bingoCard[colIndex]?.[rowIndex];
+            
+            return (
+              <div
+                key={`${rowIndex}-${colIndex}`}
+                className="text-center py-2 rounded text-sm bg-white/20 text-white"
+              >
+                {number || ''}
               </div>
-            </motion.div>
-          )}
+            );
+          })
+        ))}
+      </div>
+    </div>
+  </motion.div>
+)}
         </>
       )}
 
-      {/* Show message if no game is active */}
-      {!gameData && !authLoading && !pageLoading && !showActiveGameNotification && (
-        <div className="text-center py-12">
-          <p className="text-white/60">No active game found. Check back soon!</p>
-        </div>
-      )}
+    
+      
     </div>
   );
 }
