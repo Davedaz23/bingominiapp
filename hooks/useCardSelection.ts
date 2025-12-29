@@ -200,12 +200,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     try {
       setCardSelectionError('');
       
-      console.log('🔄 Selecting card:', {
-        gameId: gameData._id,
-        userId: user.id,
-        cardNumber: cardNumber,
-        walletBalance
-      });
+ 
 
       // Find the selected card data from availableCards
       const selectedCardData = availableCards.find(card => card.cardNumber === cardNumber);
