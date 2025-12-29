@@ -187,29 +187,37 @@ const handleCardSelect = async (cardNumber: number) => {
       return;
     }
 
-    // ✅ CRITICAL FIX: Use cardIndex instead of cardNumber in the request
-    // The backend expects "cardIndex" field, not "cardNumber"
-    const response = await gameAPI.selectCardWithNumber(gameData._id, {
+    // ✅ CRITICAL: Send the EXACT format backend expects
+    const requestData = {
       userId: user.id,
-      cardNumbers: selectedCardData.numbers,
-      cardIndex: cardNumber  // ← Changed from cardNumber to cardIndex
+      cardNumbers: selectedCardData.numbers, // The 5x5 array
+      cardNumber: cardNumber // The card number/index
+    };
+    
+    console.log('📤 Sending to backend:', {
+      url: `/games/${gameData._id}/select-card-with-number`,
+      data: requestData
     });
+    
+    const response = await gameAPI.selectCardWithNumber(gameData._id, requestData);
     
     console.log("📡 Backend response:", response.data);
     
     if (response.data.success) {
-      console.log(`✅ Card selection successful! Action: ${response.data.action}`);
+      console.log(`✅ Card selection successful! Action: ${response.data.action || 'selected'}`);
       
       // Update local state
       setSelectedNumber(cardNumber);
       setBingoCard(selectedCardData.numbers);
       setAccountData('selected_number', cardNumber);
       
-      // Update taken cards locally first for immediate UI feedback
+      // Update taken cards locally for immediate UI feedback
       setTakenCards(prev => {
         const filtered = prev.filter(card => card.userId !== user.id);
         return [...filtered, { cardNumber, userId: user.id }];
       });
+      
+      console.log('🎯 Card #' + cardNumber + ' selected successfully!');
       
       // Refresh from backend after short delay
       setTimeout(() => {
@@ -229,20 +237,34 @@ const handleCardSelect = async (cardNumber: number) => {
   } catch (error: any) {
     console.error('❌ Card selection API error:', error);
     
-    // Enhanced error logging for 400 Bad Request
+    // Enhanced error handling for 400 Bad Request
     if (error.response?.status === 400) {
-      console.error('🔍 400 Bad Request Details:', {
-        requestData: error.config?.data,
-        responseData: error.response?.data
+      console.error('🔍 400 Bad Request Full Details:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.response?.data?.error || error.response?.data?.message,
+        requestSent: {
+          url: error.config?.url,
+          data: error.config?.data ? JSON.parse(error.config.data) : null,
+          method: error.config?.method
+        }
       });
       
-      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Bad request - check your data format';
-      setCardSelectionError(`Server rejected request: ${errorMsg}`);
+      // Try to get specific error message
+      const errorData = error.response?.data;
+      let errorMessage = 'Bad request - server rejected the data';
       
-      // Check for specific validation errors
-      if (error.response?.data?.errors) {
-        console.error('🔍 Validation errors:', error.response.data.errors);
+      if (errorData?.error) {
+        errorMessage = errorData.error;
+      } else if (errorData?.message) {
+        errorMessage = errorData.message;
+      } else if (errorData?.errors) {
+        // Handle validation errors
+        errorMessage = 'Validation errors: ' + JSON.stringify(errorData.errors);
       }
+      
+      setCardSelectionError(`Server error: ${errorMessage}`);
+      
     } else if (error.response?.data?.error) {
       setCardSelectionError(error.response.data.error);
     } else if (error.message === 'Network Error') {
