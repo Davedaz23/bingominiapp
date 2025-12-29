@@ -84,17 +84,14 @@ const [pendingSelection, setPendingSelection] = useState<number | null>(null);
   const STATUS_CHECK_INTERVAL = 120000; // 2 minutes
 
   // Load selected number from account-specific storage
-useEffect(() => {
-  // Only load saved selection once when user changes
-  if (user?.id) {
+  useEffect(() => {
     const savedSelectedNumber = getAccountData('selected_number');
-    if (savedSelectedNumber && !selectedNumber) {
+    if (savedSelectedNumber) {
       setSelectedNumber(savedSelectedNumber);
       setBingoCard(generateBingoCard(savedSelectedNumber));
       console.log('✅ Loaded saved card selection:', savedSelectedNumber);
     }
-  }
-}, [user?.id, getAccountData, selectedNumber]); // Add selectedNumber dependency
+  }, [user, getAccountData]);
 
   const shouldEnableCardSelection = useCallback(() => {
     if (!gameData?._id) {
@@ -195,155 +192,84 @@ useEffect(() => {
     }
   }, [gameData?._id, user?.id, fetchTakenCards]);
 
-const handleCardSelect = async (cardNumber: number) => {
-  if (!gameData?._id || !user?.id || isProcessing) return;
-  
-  try {
-    setIsProcessing(true);
-    setPendingSelection(cardNumber);
-    setCardSelectionError('');
+  const handleCardSelect = async (cardNumber: number) => {
+    if (!gameData?._id || !user?.id || isProcessing) return;
     
-    // ⭐ CRITICAL: Clear previous selection IMMEDIATELY
-    const previousSelectedNumber = selectedNumber;
-    
-    // Update local state immediately - clear previous
-    setSelectedNumber(cardNumber);
-    
-    // Remove previous card from optimistic map and state
-    if (previousSelectedNumber) {
-      optimisticTakenCards.current.delete(previousSelectedNumber);
+    try {
+      setIsProcessing(true);
+      setPendingSelection(cardNumber);
+      setCardSelectionError('');
       
-      // Update taken cards state to remove previous selection
-      setTakenCards(prev => 
-        prev.filter(card => !(card.userId === user.id && card.cardNumber === previousSelectedNumber))
-      );
-    }
-    
-    // Add new card to optimistic map
-    optimisticTakenCards.current.set(cardNumber, user.id);
-    
-    // Update taken cards state with new selection
-    setTakenCards(prev => {
-      // Remove all user's selections first (should only be previous one)
-      const newTakenCards = prev.filter(card => 
-        !(card.userId === user.id && card.cardNumber !== cardNumber)
-      );
-      // Add new selection if not already there
-      const exists = newTakenCards.some(card => 
-        card.cardNumber === cardNumber && card.userId === user.id
-      );
-      if (!exists) {
-        newTakenCards.push({ cardNumber, userId: user.id });
-      }
-      return newTakenCards;
-    });
-    
-    // Find the selected card data
-    const selectedCardData = availableCards.find(card => card.cardIndex === cardNumber);
-    
-    if (!selectedCardData) {
-      throw new Error('Selected card not found');
-    }
-
-    // ⭐ Update bingo card immediately for better UX
-    setBingoCard(selectedCardData.numbers);
-    
-    // ⭐ Save to local storage immediately
-    setAccountData('selected_number', cardNumber);
-    
-    // Make API call
-    const response = await gameAPI.selectCardWithNumber(gameData._id, {
-      userId: user.id,
-      cardNumbers: selectedCardData.numbers,
-      cardNumber: cardNumber
-    });
-    
-    if (response.data.success) {
-      // API succeeded - confirm selection
-      console.log(`✅ Card ${response.data.action === 'UPDATED' ? 'updated' : 'selected'} successfully`);
+      // IMMEDIATE OPTIMISTIC UPDATE
+      // Add to optimistic map
+      optimisticTakenCards.current.set(cardNumber, user.id);
       
-      // If previous card exists in local storage, remove it
-      if (previousSelectedNumber) {
-        // Remove previous from optimistic map (already done above)
-        console.log(`🔄 Released previous card ${previousSelectedNumber}`);
-      }
-    } else {
-      // API failed - rollback to previous state
-      console.log('❌ API failed, rolling back to previous state');
-      
-      // Remove new from optimistic map
-      optimisticTakenCards.current.delete(cardNumber);
-      
-      // Restore previous selection if it existed
-      if (previousSelectedNumber) {
-        setSelectedNumber(previousSelectedNumber);
-        setAccountData('selected_number', previousSelectedNumber);
-        
-        // Restore bingo card for previous selection
-        const previousCardData = availableCards.find(card => 
-          card.cardIndex === previousSelectedNumber
+      // Update local taken cards state immediately
+      setTakenCards(prev => {
+        const newTakenCards = prev.filter(card => 
+          !(card.userId === user.id) // Remove user's previous selections
         );
-        if (previousCardData) {
-          setBingoCard(previousCardData.numbers);
-        }
+        // Add new selection
+        newTakenCards.push({ cardNumber, userId: user.id });
+        return newTakenCards;
+      });
+      
+      // Release previous card if exists
+      if (selectedNumber && selectedNumber !== cardNumber) {
+        optimisticTakenCards.current.delete(selectedNumber);
+      }
+      
+      // Find the selected card data
+      const selectedCardData = availableCards.find(card => card.cardIndex === cardNumber);
+      
+      if (!selectedCardData) {
+        throw new Error('Selected card not found');
+      }
+
+      // Make API call
+      const response = await gameAPI.selectCardWithNumber(gameData._id, {
+        userId: user.id,
+        cardNumbers: selectedCardData.numbers,
+        cardNumber: cardNumber
+      });
+      
+      if (response.data.success) {
+        // API succeeded - confirm optimistic update
+        setSelectedNumber(cardNumber);
+        setBingoCard(selectedCardData.numbers);
+        setAccountData('selected_number', cardNumber);
         
-        // Restore to optimistic map
-        optimisticTakenCards.current.set(previousSelectedNumber, user.id);
+        console.log(`✅ Card ${response.data.action === 'UPDATED' ? 'updated' : 'selected'} successfully`);
+        
+        // If card was taken by someone else in the meantime, refresh
+        if (response.data.error?.includes('already taken')) {
+          fetchTakenCards(true); // Force refresh
+        }
       } else {
-        // If no previous selection, clear everything
-        setSelectedNumber(null);
-        setBingoCard(null);
-        removeAccountData('selected_number');
+        // API failed - rollback optimistic update
+        optimisticTakenCards.current.delete(cardNumber);
+        fetchTakenCards(true); // Refresh to get correct state
+        setCardSelectionError(response.data.error || 'Failed to select card');
       }
       
-      // Refresh to get correct state
-      fetchTakenCards(true);
-      setCardSelectionError(response.data.error || 'Failed to select card');
-    }
-    
-  } catch (error: any) {
-    console.error('❌ Card selection error:', error);
-    
-    // On error, try to restore previous state
-    const previousSelectedNumber = selectedNumber;
-    
-    if (previousSelectedNumber) {
-      setSelectedNumber(previousSelectedNumber);
-      setAccountData('selected_number', previousSelectedNumber);
+    } catch (error: any) {
+      console.error('❌ Card selection error:', error);
       
-      // Restore bingo card
-      const previousCardData = availableCards.find(card => 
-        card.cardIndex === previousSelectedNumber
-      );
-      if (previousCardData) {
-        setBingoCard(previousCardData.numbers);
+      // Rollback optimistic update on error
+      optimisticTakenCards.current.delete(cardNumber);
+      fetchTakenCards(true); // Refresh to get correct state
+      
+      if (error.response?.data?.error) {
+        setCardSelectionError(error.response.data.error);
+      } else {
+        setCardSelectionError('Failed to select card. Please try again.');
       }
-      
-      // Restore optimistic map
-      optimisticTakenCards.current.set(previousSelectedNumber, user.id);
-    } else {
-      // Clear everything if no previous
-      setSelectedNumber(null);
-      setBingoCard(null);
-      removeAccountData('selected_number');
+    } finally {
+      setIsProcessing(false);
+      setPendingSelection(null);
     }
-    
-    // Remove new card from optimistic map
-    optimisticTakenCards.current.delete(cardNumber);
-    
-    // Refresh to get correct state
-    fetchTakenCards(true);
-    
-    if (error.response?.data?.error) {
-      setCardSelectionError(error.response.data.error);
-    } else {
-      setCardSelectionError('Failed to select card. Please try again.');
-    }
-  } finally {
-    setIsProcessing(false);
-    setPendingSelection(null);
-  }
-};
+  };
+
   const handleCardRelease = async () => {
     if (!user?.id || !gameData?._id || !selectedNumber) return;
     
@@ -460,7 +386,13 @@ const handleCardSelect = async (cardNumber: number) => {
 
   // Fetch available cards when game data changes - WITH THROTTLING
   useEffect(() => {
- 
+    console.log('🔄 useCardSelection effect triggered:', {
+      gameId: gameData?._id,
+      gameStatus,
+      walletBalance,
+      userId: user?.id,
+      shouldEnableCardSelection: shouldEnableCardSelection()
+    });
 
     if (gameData?._id && shouldEnableCardSelection() && user?.id) {
       console.log('🚀 Fetching available cards (throttled)...');
@@ -511,8 +443,7 @@ const handleCardSelect = async (cardNumber: number) => {
     checkCardSelectionStatus,
     setCardSelectionError,
     fetchTakenCards,
-    clearSelectedCard,
-      pendingSelection, // Add this
-    isProcessing, // Add this
+    clearSelectedCard
+    
   };
 };
