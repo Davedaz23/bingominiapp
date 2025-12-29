@@ -403,7 +403,7 @@ const processQueue = async () => {
       )}
 
       {/* Game active notification */}
-      {gameStatus === 'ACTIVE' && !hasCardInActiveGame && (
+      {gameStatus === 'ACTIVE' && (
         <motion.div 
           className="bg-blue-500/10 backdrop-blur-lg rounded-xl p-3 mb-4 border border-blue-500/20"
           initial={{ opacity: 0 }}
