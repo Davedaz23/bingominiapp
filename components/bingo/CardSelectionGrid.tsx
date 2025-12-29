@@ -1,10 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// components/bingo/CardSelectionGrid.tsx - CORRECTED VERSION
+// components/bingo/CardSelectionGrid.tsx - FIXED VERSION
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
-// FIXED: Changed cardIndex to cardNumber to match API response
 interface CardSelectionGridProps {
   availableCards: Array<{cardNumber: number, numbers: (number | string)[][], preview?: any}>;
   takenCards: {cardNumber: number, userId: string}[];
@@ -12,8 +10,6 @@ interface CardSelectionGridProps {
   walletBalance: number;
   gameStatus: string;
   onCardSelect: (cardNumber: number) => void;
-  pendingSelection?: number | null;
-  userId?: string;
 }
 
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
@@ -22,83 +18,41 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   selectedNumber,
   walletBalance,
   gameStatus,
-  onCardSelect,
-  pendingSelection,
-  userId
+  onCardSelect
 }) => {
-  // Debug: Log what we're receiving
-  useEffect(() => {
-    console.log('🔄 CardSelectionGrid props:', {
-      availableCardsCount: availableCards.length,
-      takenCardsCount: takenCards.length,
-      selectedNumber,
-      pendingSelection,
-      userId,
-      firstAvailableCard: availableCards[0],
-      firstTakenCard: takenCards[0]
-    });
-  }, [availableCards, takenCards, selectedNumber, pendingSelection, userId]);
-
   // Create a map of taken cards for quick lookup
   const takenCardMap = useMemo(() => {
     const map = new Map<number, {cardNumber: number, userId: string}>();
     takenCards.forEach(card => {
       map.set(card.cardNumber, card);
     });
-    console.log('🗺️ Taken cards map:', Array.from(map.entries()).slice(0, 5));
     return map;
   }, [takenCards]);
 
-  // Create a map of available cards for quick lookup - FIXED: using cardNumber
+  // Create a map of available cards for quick lookup
   const availableCardMap = useMemo(() => {
     const map = new Map<number, any>();
     availableCards.forEach(card => {
-      // ✅ FIXED: Use cardNumber instead of cardIndex
       map.set(card.cardNumber, card);
     });
-    console.log('🗺️ Available cards map:', Array.from(map.keys()).slice(0, 5));
+    console.log('📊 Available card map created:', {
+      size: map.size,
+      availableCardsLength: availableCards.length,
+      firstFew: Array.from(map.keys()).slice(0, 10)
+    });
     return map;
   }, [availableCards]);
 
-  const handleCardClick = (cardNumber: number) => {
-    console.log('🎯 Card clicked:', {
-      cardNumber,
-      isAvailable: availableCardMap.has(cardNumber),
-      isTaken: takenCardMap.has(cardNumber),
-      takenByCurrentUser: takenCardMap.get(cardNumber)?.userId === userId,
-      walletBalance,
-      gameStatus
+  // For debugging
+  useEffect(() => {
+    console.log('🔍 CardSelectionGrid Debug:', {
+      availableCardsCount: availableCards.length,
+      takenCardsCount: takenCards.length,
+      firstAvailableCard: availableCards[0],
+      firstTakenCard: takenCards[0],
+      selectedNumber
     });
-    
-    // Check if card is available
-    if (!availableCardMap.has(cardNumber)) {
-      console.log('❌ Card not available in availableCardMap');
-      return;
-    }
-    
-    // Check if card is taken by someone else
-    const takenInfo = takenCardMap.get(cardNumber);
-    if (takenInfo && takenInfo.userId !== userId) {
-      console.log('❌ Card taken by another user:', takenInfo.userId);
-      return;
-    }
-    
-    // Check if user has enough balance
-    if (walletBalance < 10) {
-      console.log('❌ Insufficient balance');
-      return;
-    }
-    
-    // Check if selection is allowed based on game status
-    const canSelect = gameStatus === 'CARD_SELECTION' || gameStatus === 'WAITING_FOR_PLAYERS';
-    if (!canSelect) {
-      console.log('❌ Card selection not allowed in current game status:', gameStatus);
-      return;
-    }
-    
-    console.log('✅ Card is selectable, calling onCardSelect');
-    onCardSelect(cardNumber);
-  };
+  }, [availableCards, takenCards, selectedNumber]);
 
   return (
     <div className="mb-4">
@@ -110,43 +64,34 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
       >
         {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
           const isTaken = takenCardMap.has(number);
-          const takenInfo = takenCardMap.get(number);
-          const isTakenByCurrentUser = isTaken && userId && takenInfo?.userId === userId;
-          
-          // ✅ FIXED: Use availableCardMap.has(number) instead of cardIndex check
-          const isAvailable = availableCardMap.has(number);
-          
+          const isAvailable = availableCardMap.has(number); // ✅ FIXED: Use cardNumber
           const canSelect = walletBalance >= 10;
           const isSelectable = canSelect && isAvailable && !isTaken;
           const isCurrentlySelected = selectedNumber === number;
-          const isProcessing = pendingSelection === number;
-          
-          // Debug first 5 cards
+
+          // Debug for first few cards
           if (number <= 5) {
             console.log(`Card ${number}:`, {
-              isAvailable,
               isTaken,
-              isTakenByCurrentUser,
+              isAvailable,
+              canSelect,
               isSelectable,
               isCurrentlySelected,
-              isProcessing
+              inAvailableMap: availableCardMap.has(number),
+              inTakenMap: takenCardMap.has(number)
             });
           }
-          
+
           return (
             <motion.button
               key={number}
-              onClick={() => handleCardClick(number)}
-              disabled={!isSelectable || isProcessing}
+              onClick={() => isSelectable && onCardSelect(number)}
+              disabled={!isSelectable}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
-                ${isProcessing
-                  ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white border-yellow-400 shadow-lg scale-105 animate-pulse'
-                  : isCurrentlySelected
+                ${isCurrentlySelected
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
-                  : isTakenByCurrentUser
-                  ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-md'
                   : isTaken
                   ? 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
                   : isSelectable
@@ -155,30 +100,24 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                     : 'bg-white/30 text-white hover:bg-white/40 hover:scale-105 hover:shadow-md cursor-pointer border-white/30'
                   : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
                 }
-                ${isProcessing || isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
+                ${isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
+                ${isTaken ? 'animate-pulse' : ''}
               `}
-              whileHover={isSelectable && !isProcessing ? { scale: 1.05 } : {}}
-              whileTap={isSelectable && !isProcessing ? { scale: 0.95 } : {}}
+              whileHover={isSelectable ? { scale: 1.05 } : {}}
+              whileTap={isSelectable ? { scale: 0.95 } : {}}
               layout
             >
               {number}
               
-              {/* Processing indicator */}
-              {isProcessing && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                </div>
-              )}
-              
               {/* Current selection indicator */}
-              {!isProcessing && isCurrentlySelected && (
+              {isCurrentlySelected && (
                 <div className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-400 rounded-full border-2 border-white flex items-center justify-center">
                   <Check className="w-3 h-3 text-white" />
                 </div>
               )}
               
-              {/* Taken by other player indicator */}
-              {!isProcessing && isTaken && !isTakenByCurrentUser && !isCurrentlySelected && (
+              {/* Taken indicator - shows immediately when card is taken */}
+              {isTaken && !isCurrentlySelected && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-4 h-4 text-red-300">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -188,20 +127,13 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
-              {/* Taken by current user indicator */}
-              {!isProcessing && isTakenByCurrentUser && !isCurrentlySelected && (
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-telegram-button rounded-full border-2 border-white flex items-center justify-center">
-                  <Check className="w-2 h-2 text-white" />
-                </div>
-              )}
-              
               {/* Available for selection indicator */}
-              {!isProcessing && !isTaken && isSelectable && gameStatus === 'ACTIVE' && !isCurrentlySelected && (
+              {!isTaken && isSelectable && gameStatus === 'ACTIVE' && !isCurrentlySelected && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               )}
               
               {/* Insufficient balance indicator */}
-              {!isProcessing && !isTaken && !isSelectable && walletBalance < 10 && (
+              {!isTaken && !isSelectable && walletBalance < 10 && (
                 <div className="absolute inset-0 flex items-center justify-center opacity-60">
                   <div className="w-3 h-3 text-yellow-400">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -212,7 +144,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               )}
 
               {/* Show available indicator */}
-              {!isProcessing && isAvailable && !isTaken && canSelect && !isCurrentlySelected && (
+              {isAvailable && !isTaken && canSelect && !isCurrentlySelected && (
                 <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
               )}
             </motion.button>
@@ -220,29 +152,10 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         })}
       </motion.div>
 
-      {/* Processing status */}
-      {pendingSelection && (
-        <motion.div 
-          className="bg-yellow-500/20 backdrop-blur-lg rounded-2xl p-3 mb-3 border border-yellow-500/30"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-yellow-300 font-bold text-sm">
-                Processing Card #{pendingSelection}...
-              </p>
-            </div>
-            <p className="text-yellow-300/80 text-xs">
-              Please wait while we confirm your selection
-            </p>
-          </div>
-        </motion.div>
-      )}
+    
 
       {/* Selection Info */}
-      {selectedNumber && !pendingSelection && (
+      {selectedNumber && (
         <motion.div 
           className="bg-telegram-button/20 backdrop-blur-lg rounded-2xl p-3 mb-3 border border-telegram-button/30"
           initial={{ opacity: 0, y: -10 }}
