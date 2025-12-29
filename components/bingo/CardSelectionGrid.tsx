@@ -1,10 +1,10 @@
-// components/bingo/CardSelectionGrid.tsx - FIXED VERSION
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// components/bingo/CardSelectionGrid.tsx - UPDATED
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
 
 interface CardSelectionGridProps {
-  availableCards: Array<{cardNumber: number, numbers: (number | string)[][], preview?: any}>;
+  availableCards: Array<{cardIndex: number, numbers: (number | string)[][], preview?: any}>;
   takenCards: {cardNumber: number, userId: string}[];
   selectedNumber: number | null;
   walletBalance: number;
@@ -14,45 +14,17 @@ interface CardSelectionGridProps {
 
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   availableCards,
-  takenCards,
+  takenCards, // This now updates in real-time
   selectedNumber,
   walletBalance,
   gameStatus,
   onCardSelect
 }) => {
   // Create a map of taken cards for quick lookup
-  const takenCardMap = useMemo(() => {
-    const map = new Map<number, {cardNumber: number, userId: string}>();
-    takenCards.forEach(card => {
-      map.set(card.cardNumber, card);
-    });
-    return map;
-  }, [takenCards]);
-
-  // Create a map of available cards for quick lookup
-  const availableCardMap = useMemo(() => {
-    const map = new Map<number, any>();
-    availableCards.forEach(card => {
-      map.set(card.cardNumber, card);
-    });
-    console.log('📊 Available card map created:', {
-      size: map.size,
-      availableCardsLength: availableCards.length,
-      firstFew: Array.from(map.keys()).slice(0, 10)
-    });
-    return map;
-  }, [availableCards]);
-
-  // For debugging
-  useEffect(() => {
-    console.log('🔍 CardSelectionGrid Debug:', {
-      availableCardsCount: availableCards.length,
-      takenCardsCount: takenCards.length,
-      firstAvailableCard: availableCards[0],
-      firstTakenCard: takenCards[0],
-      selectedNumber
-    });
-  }, [availableCards, takenCards, selectedNumber]);
+  const takenCardMap = new Map();
+  takenCards.forEach(card => {
+    takenCardMap.set(card.cardNumber, card);
+  });
 
   return (
     <div className="mb-4">
@@ -64,23 +36,11 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
       >
         {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
           const isTaken = takenCardMap.has(number);
-          const isAvailable = availableCardMap.has(number); // ✅ FIXED: Use cardNumber
+          const isAvailable = availableCards.some(card => card.cardIndex === number);
           const canSelect = walletBalance >= 10;
           const isSelectable = canSelect && isAvailable && !isTaken;
           const isCurrentlySelected = selectedNumber === number;
-
-          // Debug for first few cards
-          if (number <= 5) {
-            console.log(`Card ${number}:`, {
-              isTaken,
-              isAvailable,
-              canSelect,
-              isSelectable,
-              isCurrentlySelected,
-              inAvailableMap: availableCardMap.has(number),
-              inTakenMap: takenCardMap.has(number)
-            });
-          }
+          const takenBy = isTaken ? takenCardMap.get(number) : null;
 
           return (
             <motion.button
@@ -152,7 +112,17 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         })}
       </motion.div>
 
-    
+      {/* Real-time status */}
+      <div className="text-center text-white/60 text-sm mb-3">
+        <div className="flex justify-center gap-4">
+          <span>✅ {availableCards.length} available</span>
+          <span>❌ {takenCards.length} taken</span>
+          <span>⏳ {400 - availableCards.length - takenCards.length} inactive</span>
+        </div>
+        <div className="text-xs text-white/40 mt-1">
+          Updates in real-time • Refresh automatically
+        </div>
+      </div>
 
       {/* Selection Info */}
       {selectedNumber && (
