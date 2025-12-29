@@ -15,16 +15,16 @@ import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
 const PLAYER_CHECK_INTERVAL = 180000; // 3 minutes for player status
 
 export default function Home() {
-  const { 
-    user, 
-    isAuthenticated, 
-    isLoading: authLoading, 
+  const {
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
     walletBalance,
   } = useAuth();
 
   const router = useRouter();
   const pathname = usePathname();
-  
+
   // Game state
   const {
     gameStatus,
@@ -69,10 +69,10 @@ export default function Home() {
   // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
     if (!user?.id || isCheckingPlayerStatusRef.current) return false;
-    
+
     const now = Date.now();
     const timeSinceLastCheck = now - lastPlayerCheckRef.current;
-    
+
     // Throttle checks
     if (!force && timeSinceLastCheck < PLAYER_CHECK_INTERVAL) {
       return hasCardRef.current;
@@ -81,19 +81,19 @@ export default function Home() {
     try {
       isCheckingPlayerStatusRef.current = true;
       lastPlayerCheckRef.current = now;
-      
+
       const response = await gameAPI.getActiveGames();
-      
+
       if (response.data.success && response.data.games.length > 0) {
         const game = response.data.games[0];
-        
+
         if (game.status === 'ACTIVE' || game.status === 'WAITING_FOR_PLAYERS') {
           const participantsResponse = await gameAPI.getGameParticipants(game._id);
-          
+
           if (participantsResponse.data.success) {
             const participants = participantsResponse.data.participants || [];
             const playerParticipant = participants.find((p: any) => p.userId === user.id);
-            
+
             if (playerParticipant?.hasCard) {
               setHasCardInActiveGame(true);
               setPlayerCardNumber(playerParticipant.cardNumber || 0);
@@ -104,12 +104,12 @@ export default function Home() {
           }
         }
       }
-      
+
       setHasCardInActiveGame(false);
       setPlayerCardNumber(null);
       setPlayerGameStatus(null);
       return false;
-      
+
     } catch (error) {
       console.error('Error checking player card:', error);
       return hasCardRef.current;
@@ -121,15 +121,15 @@ export default function Home() {
   // Handle manual redirect to active game
   const handleRedirectToActiveGame = useCallback(() => {
     if (redirectAttemptedRef.current || isRedirecting) return;
-    
+
     setIsRedirecting(true);
     redirectAttemptedRef.current = true;
-    
+
     const gameId = gameData?._id || 'active';
     const query = hasCardRef.current ? '' : '?spectator=true';
-    
+
     console.log(`Manual redirect to game: ${gameId}${query}`);
-    
+
     // Small delay for better UX
     setTimeout(() => {
       router.push(`/game/${gameId}${query}`);
@@ -139,16 +139,16 @@ export default function Home() {
   // Check for active game and show notification instead of auto-redirect
   useEffect(() => {
     if (authLoading || pageLoading || redirectAttemptedRef.current) return;
-    
+
     const hasActiveCard = hasCardRef.current && playerGameStatus === 'ACTIVE';
     const isGameActive = gameStatusRef.current === 'ACTIVE';
-    
+
     // Only show notification for active game, don't auto-redirect
     if (isGameActive && !activeGameNotificationShownRef.current) {
       setShowActiveGameNotification(true);
       activeGameNotificationShownRef.current = true;
     }
-    
+
     // Auto-redirect ONLY if user has a card in active game
     if (hasActiveCard && !redirectAttemptedRef.current) {
       handleRedirectToActiveGame();
@@ -162,13 +162,13 @@ export default function Home() {
     const init = async () => {
       isInitializedRef.current = true;
       console.log('Initializing page...');
-      
+
       await initializeGameState();
-      
+
       if (gameData?.hasRestartCooldown) {
         setHasRestartCooldown(true);
       }
-      
+
       if (isAuthenticated && user) {
         // Small delay before checking player status
         setTimeout(() => {
@@ -214,7 +214,7 @@ export default function Home() {
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
           <p className="mt-4">
-            {hasCardInActiveGame 
+            {hasCardInActiveGame
               ? `Redirecting to your game (Card #${playerCardNumber})...`
               : 'Redirecting to watch game...'
             }
@@ -227,19 +227,19 @@ export default function Home() {
   // Simple status message
   const getStatusMessage = () => {
     if (hasCardInActiveGame) {
-      return playerGameStatus === 'ACTIVE' 
+      return playerGameStatus === 'ACTIVE'
         ? `You have card #${playerCardNumber} in active game`
         : `You have card #${playerCardNumber} - Waiting for game`;
     }
-    
+
     if (gameStatus === 'WAITING_FOR_PLAYERS') {
       return 'Waiting for players';
     }
-    
+
     if (gameStatus === 'FINISHED') {
       return 'Game finished - Next game soon';
     }
-    
+
     return 'Select your card to play';
   };
 
@@ -259,7 +259,7 @@ export default function Home() {
 
       {/* Active Game Notification - Manual redirect option */}
       {showActiveGameNotification && !hasCardInActiveGame && (
-        <motion.div 
+        <motion.div
           className="bg-gradient-to-r from-blue-500/20 to-teal-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -293,12 +293,11 @@ export default function Home() {
 
       {/* Player status notification */}
       {hasCardInActiveGame && (
-        <motion.div 
-          className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
-            playerGameStatus === 'ACTIVE' 
-              ? 'bg-green-500/20 border-green-500/30' 
+        <motion.div
+          className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${playerGameStatus === 'ACTIVE'
+              ? 'bg-green-500/20 border-green-500/30'
               : 'bg-yellow-500/20 border-yellow-500/30'
-          }`}
+            }`}
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
         >
@@ -310,11 +309,10 @@ export default function Home() {
                 <Clock className="w-5 h-5 text-yellow-300" />
               )}
               <div>
-                <p className={`font-bold text-sm ${
-                  playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
-                }`}>
-                  {playerGameStatus === 'ACTIVE' 
-                    ? 'Active Game - Ready to Play!' 
+                <p className={`font-bold text-sm ${playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
+                  }`}>
+                  {playerGameStatus === 'ACTIVE'
+                    ? 'Active Game - Ready to Play!'
                     : 'Waiting for game to start'}
                 </p>
                 <p className="text-xs opacity-75">
@@ -336,7 +334,7 @@ export default function Home() {
 
       {/* Balance warning */}
       {!hasCardInActiveGame && walletBalance < 10 && gameStatus !== 'ACTIVE' && (
-        <motion.div 
+        <motion.div
           className="bg-red-500/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-red-500/30"
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -354,22 +352,22 @@ export default function Home() {
       )}
 
       {/* Card selection grid - Only when game is in selectable state */}
-      {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') && 
-       (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
-        <>
-          <CardSelectionGrid
-            availableCards={availableCards}
-            takenCards={takenCards}
-            selectedNumber={selectedNumber}
-            walletBalance={walletBalance}
-            gameStatus={gameStatus}
-            onCardSelect={handleCardSelect}
-          />
-          
-          {/* Selected card preview */}
-       
+      {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
+        (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
+          <>
+            <CardSelectionGrid
+              availableCards={availableCards}
+              takenCards={takenCards}
+              selectedNumber={selectedNumber}
+              walletBalance={walletBalance}
+              gameStatus={gameStatus}
+              onCardSelect={handleCardSelect}
+            />
 
-{selectedNumber && bingoCard && (
+            {/* Selected card preview */}
+
+
+          {selectedNumber && bingoCard && (
   <motion.div
     className="mb-6 mt-4"
     initial={{ opacity: 0, y: 20 }}
@@ -378,56 +376,36 @@ export default function Home() {
     <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
       <h3 className="text-white font-bold text-sm mb-3 text-center">Card #{selectedNumber}</h3>
       
-      {/* Correct grid display - Transpose the data for proper display */}
-      <div className="grid grid-cols-5 gap-1">
-        {/* Column headers */}
-        {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-          <div 
-            key={letter}
-            className="text-telegram-button font-bold text-center text-sm py-2"
-          >
-            {letter}
-          </div>
-        ))}
-        
-        {/* Card numbers - Display as rows */}
-        {/* We need to display 5 rows, each with 5 numbers (one from each column) */}
-        {Array.from({ length: 5 }).map((_, rowIndex) => (
-          Array.from({ length: 5 }).map((_, colIndex) => {
-            // For row 2, col 2 (middle cell), it's always FREE
-            if (rowIndex === 2 && colIndex === 2) {
-              return (
+      {/* Display card exactly as shown in your expected format */}
+      <div className="space-y-2">
+        {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
+          <div key={letter} className="flex items-center">
+            <div className="w-8 text-telegram-button font-bold text-sm">{letter}</div>
+            <div className="flex-1 grid grid-cols-5 gap-1">
+              {bingoCard[colIndex]?.map((number, rowIndex) => (
                 <div
-                  key={`${rowIndex}-${colIndex}`}
-                  className="text-center py-2 rounded text-sm bg-gradient-to-br from-green-400 to-teal-400 text-white"
+                  key={`${colIndex}-${rowIndex}`}
+                  className={`text-center py-2 rounded text-sm ${
+                    number === 'FREE' 
+                      ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
+                      : 'bg-white/20 text-white'
+                  }`}
                 >
-                  FREE
+                  {number}
                 </div>
-              );
-            }
-            
-            // Get number from bingoCard[column][row]
-            const number = bingoCard[colIndex]?.[rowIndex];
-            
-            return (
-              <div
-                key={`${rowIndex}-${colIndex}`}
-                className="text-center py-2 rounded text-sm bg-white/20 text-white"
-              >
-                {number || ''}
-              </div>
-            );
-          })
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </div>
   </motion.div>
 )}
-        </>
-      )}
+          </>
+        )}
 
-    
-      
+
+
     </div>
   );
 }
