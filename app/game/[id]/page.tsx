@@ -1060,7 +1060,7 @@ export default function GamePage() {
 
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-1">
         {/* Left: Called Numbers */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
