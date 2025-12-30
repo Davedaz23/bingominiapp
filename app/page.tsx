@@ -81,21 +81,9 @@ export default function Home() {
   }, [gameStatus, hasCardInActiveGame, gameData, selectedNumber]);
 
   // NEW: Get combined taken cards (server + local)
-  const getCombinedTakenCards = useCallback(() => {
-    const serverTakenCards = [...takenCards];
-    
-    // Add locally taken cards that aren't already in server list
-    locallyTakenCards.forEach(cardNumber => {
-      if (!takenCards.some(card => card.cardNumber === cardNumber)) {
-        serverTakenCards.push({
-          cardNumber,
-          userId: 'local', // Temporary marker
-        });
-      }
-    });
-    
-    return serverTakenCards;
-  }, [takenCards, locallyTakenCards]);
+ const getCombinedTakenCards = useCallback(() => {
+  return [...takenCards]; // Just return server cards
+}, [takenCards]);
 
   // NEW: Check if game has minimum players (at least 2)
   const hasMinimumPlayers = useCallback(() => {
