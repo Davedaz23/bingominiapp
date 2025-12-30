@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// components/bingo/CardSelectionGrid.tsx - UPDATED with immediate UI feedback
+// components/bingo/CardSelectionGrid.tsx - UPDATED with immediate UI feedback (no modal)
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { useState } from 'react';
@@ -53,8 +53,8 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         // If successful, mark as locally taken
         setLocallyTakenCards(prev => new Set(prev).add(cardNumber));
       } else {
-        // If failed, remove from processing
-        setProcessingCards(prev => {
+        // If failed, remove from locally taken and processing
+        setLocallyTakenCards(prev => {
           const newSet = new Set(prev);
           newSet.delete(cardNumber);
           return newSet;
@@ -62,8 +62,8 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
       }
     } catch (error) {
       console.error('Card selection failed:', error);
-      // Remove from processing on error
-      setProcessingCards(prev => {
+      // Remove from locally taken and processing on error
+      setLocallyTakenCards(prev => {
         const newSet = new Set(prev);
         newSet.delete(cardNumber);
         return newSet;
@@ -106,15 +106,13 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
                 ${isProcessing
-                  ? 'bg-gradient-to-br from-yellow-500 to-amber-500 text-white border-yellow-500 shadow-lg animate-pulse cursor-wait'
+                  ? 'bg-gradient-to-br from-yellow-500 to-amber-500 text-white border-yellow-500 shadow-lg cursor-wait'
                   : isCurrentlySelected
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
                   : isTaken
                   ? 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
                   : isSelectable
-                  ? gameStatus === 'ACTIVE' 
-                    ? 'bg-green-500/60 text-white hover:bg-green-600/70 hover:scale-105 hover:shadow-md cursor-pointer border-green-400/60'
-                    : 'bg-white/30 text-white hover:bg-white/40 hover:scale-105 hover:shadow-md cursor-pointer border-white/30'
+                  ? 'bg-white/30 text-white hover:bg-white/40 hover:scale-105 hover:shadow-md cursor-pointer border-white/30'
                   : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
                 }
                 ${isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
@@ -125,7 +123,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
             >
               {number}
               
-              {/* Processing indicator */}
+              {/* Processing indicator - just spinner on card */}
               {isProcessing && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -150,11 +148,6 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </div>
               )}
               
-              {/* Available for selection indicator */}
-              {!isTaken && isSelectable && gameStatus === 'ACTIVE' && !isCurrentlySelected && !isProcessing && (
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
-              )}
-              
               {/* Insufficient balance indicator */}
               {!isTaken && !isSelectable && walletBalance < 10 && !isProcessing && (
                 <div className="absolute inset-0 flex items-center justify-center opacity-60">
@@ -175,57 +168,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         })}
       </motion.div>
 
-      {/* Real-time status */}
-      <div className="text-center text-white/60 text-sm mb-3">
-        <div className="flex justify-center gap-4">
-          <span>✅ {availableCards.length} available</span>
-          <span>❌ {takenCards.length + locallyTakenCards.size} taken</span>
-          <span>🔄 {processingCards.size} processing</span>
-          <span>⏳ {400 - availableCards.length - takenCards.length - locallyTakenCards.size} inactive</span>
-        </div>
-        <div className="text-xs text-white/40 mt-1">
-          Select a card • Immediate feedback • Updates in real-time
-        </div>
-      </div>
-
-      {/* Selection Info */}
-      {selectedNumber && (
-        <motion.div 
-          className="bg-telegram-button/20 backdrop-blur-lg rounded-2xl p-3 mb-3 border border-telegram-button/30"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-telegram-button" />
-              <p className="text-telegram-button font-bold text-sm">Card #{selectedNumber} Selected</p>
-            </div>
-            <p className="text-telegram-button/80 text-xs">
-              {processingCards.has(selectedNumber) 
-                ? 'Processing your selection...' 
-                : 'Click another card to change selection'}
-            </p>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Processing overlay */}
-      {processingCards.size > 0 && (
-        <motion.div 
-          className="fixed top-0 left-0 right-0 bottom-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <div className="bg-gradient-to-br from-purple-700 to-blue-800 rounded-2xl p-6 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-white font-medium">Processing card selection...</p>
-            <p className="text-white/60 text-sm mt-2">
-              Selecting {Array.from(processingCards).join(', ')}
-            </p>
-          </div>
-        </motion.div>
-      )}
+      
     </div>
   );
 };
