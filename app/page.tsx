@@ -103,64 +103,81 @@ export default function Home() {
   }, [totalPlayers]);
 
   // NEW: Wrapper function for card selection with immediate UI feedback
-  const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
-    // Clear any previous timeout
-    if (processingTimeoutRef.current) {
-      clearTimeout(processingTimeoutRef.current);
+const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
+  // Clear any previous timeout
+  if (processingTimeoutRef.current) {
+    clearTimeout(processingTimeoutRef.current);
+  }
+
+  // REMOVE PREVIOUS SELECTED CARD: Clear the previously selected card
+  if (selectedNumber && selectedNumber !== cardNumber) {
+    // Clear from local storage via the hook's clear function
+    if (clearSelectedCard) {
+      clearSelectedCard();
     }
-
-    // IMMEDIATE UI UPDATE: Add to processing set
-    setProcessingCards(prev => new Set(prev).add(cardNumber));
-
-    try {
-      // Call the hook's handleCardSelect function
-      await handleCardSelect(cardNumber);
-      
-      // SUCCESS: Mark as locally taken (permanent until server sync)
+    // Also remove from locallyTakenCards if it's not actually taken on server
+    if (!takenCards.some(card => card.cardNumber === selectedNumber)) {
       setLocallyTakenCards(prev => {
         const newSet = new Set(prev);
-        newSet.add(cardNumber);
+        newSet.delete(selectedNumber);
         return newSet;
       });
+    }
+    console.log(`🗑️ Cleared previous card #${selectedNumber} selection`);
+  }
 
-      console.log(`✅ Card ${cardNumber} selected successfully`);
+  // IMMEDIATE UI UPDATE: Add to processing set
+  setProcessingCards(prev => new Set(prev).add(cardNumber));
 
-      // Check if we should redirect - ONLY if game has minimum players AND is active
-      if (gameStatus === 'ACTIVE' && hasMinimumPlayers()) {
-        // Small delay before redirect for better UX
-        setTimeout(() => {
-          handleRedirectToActiveGame();
-        }, 1000);
-      }
+  try {
+    // Call the hook's handleCardSelect function
+    await handleCardSelect(cardNumber);
+    
+    // SUCCESS: Mark as locally taken (permanent until server sync)
+    setLocallyTakenCards(prev => {
+      const newSet = new Set(prev);
+      newSet.add(cardNumber);
+      return newSet;
+    });
 
-      return true;
-      
-    } catch (error: any) {
-      console.error('❌ Card selection failed:', error);
-      
-      // REVERT UI: Remove from locally taken cards
-      setLocallyTakenCards(prev => {
+    console.log(`✅ Card ${cardNumber} selected successfully`);
+
+    // Check if we should redirect - ONLY if game has minimum players AND is active
+    if (gameStatus === 'ACTIVE' && hasMinimumPlayers()) {
+      // Small delay before redirect for better UX
+      setTimeout(() => {
+        handleRedirectToActiveGame();
+      }, 1000);
+    }
+
+    return true;
+    
+  } catch (error: any) {
+    console.error('❌ Card selection failed:', error);
+    
+    // REVERT UI: Remove from locally taken cards
+    setLocallyTakenCards(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(cardNumber);
+      return newSet;
+    });
+
+    // Just log the error, don't show modal
+    console.warn('Card selection error:', error.message || 'Failed to select card');
+    
+    return false;
+
+  } finally {
+    // Remove from processing after delay (for visual feedback)
+    processingTimeoutRef.current = setTimeout(() => {
+      setProcessingCards(prev => {
         const newSet = new Set(prev);
         newSet.delete(cardNumber);
         return newSet;
       });
-
-      // Just log the error, don't show modal
-      console.warn('Card selection error:', error.message || 'Failed to select card');
-      
-      return false;
-
-    } finally {
-      // Remove from processing after delay (for visual feedback)
-      processingTimeoutRef.current = setTimeout(() => {
-        setProcessingCards(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(cardNumber);
-          return newSet;
-        });
-      }, 1500);
-    }
-  }, [handleCardSelect, gameStatus, hasMinimumPlayers]);
+    }, 1500);
+  }
+}, [handleCardSelect, gameStatus, hasMinimumPlayers, selectedNumber, clearSelectedCard, takenCards]);
 
   // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {

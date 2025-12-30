@@ -36,49 +36,58 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
     return takenCardMap.has(cardNumber) || locallyTakenCards.has(cardNumber);
   };
 
-  const handleCardSelect = async (cardNumber: number) => {
-    // Check if already taken or processing
-    if (isCardTaken(cardNumber) || processingCards.has(cardNumber)) {
-      return;
-    }
+const handleCardSelect = async (cardNumber: number) => {
+  // Check if already taken or processing
+  if (isCardTaken(cardNumber) || processingCards.has(cardNumber)) {
+    return;
+  }
 
-    // Add to processing set immediately
-    setProcessingCards(prev => new Set(prev).add(cardNumber));
+  // If selecting a different card, clear previous locally taken card
+  if (selectedNumber && selectedNumber !== cardNumber && locallyTakenCards.has(selectedNumber)) {
+    setLocallyTakenCards(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(selectedNumber);
+      return newSet;
+    });
+  }
 
-    try {
-      // Call the async onCardSelect function
-      const success = await onCardSelect(cardNumber);
-      
-      if (success) {
-        // If successful, mark as locally taken
-        setLocallyTakenCards(prev => new Set(prev).add(cardNumber));
-      } else {
-        // If failed, remove from locally taken and processing
-        setLocallyTakenCards(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(cardNumber);
-          return newSet;
-        });
-      }
-    } catch (error) {
-      console.error('Card selection failed:', error);
-      // Remove from locally taken and processing on error
+  // Add to processing set immediately
+  setProcessingCards(prev => new Set(prev).add(cardNumber));
+
+  try {
+    // Call the async onCardSelect function
+    const success = await onCardSelect(cardNumber);
+    
+    if (success) {
+      // If successful, mark as locally taken
+      setLocallyTakenCards(prev => new Set(prev).add(cardNumber));
+    } else {
+      // If failed, remove from locally taken and processing
       setLocallyTakenCards(prev => {
         const newSet = new Set(prev);
         newSet.delete(cardNumber);
         return newSet;
       });
-    } finally {
-      // Remove from processing after a delay (for visual feedback)
-      setTimeout(() => {
-        setProcessingCards(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(cardNumber);
-          return newSet;
-        });
-      }, 1500);
     }
-  };
+  } catch (error) {
+    console.error('Card selection failed:', error);
+    // Remove from locally taken and processing on error
+    setLocallyTakenCards(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(cardNumber);
+      return newSet;
+    });
+  } finally {
+    // Remove from processing after a delay (for visual feedback)
+    setTimeout(() => {
+      setProcessingCards(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(cardNumber);
+        return newSet;
+      });
+    }, 1500);
+  }
+};
 
   // Calculate counts
   const totalTakenCards = takenCards.length + locallyTakenCards.size;
