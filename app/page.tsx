@@ -12,7 +12,7 @@ import { Clock, Check, AlertCircle, Eye, Loader2, X, Info } from 'lucide-react';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
 
 // Constants for throttling
-const PLAYER_CHECK_INTERVAL = 180000; // 3 minutes for player status
+const PLAYER_CHECK_INTERVAL = 10000; // 3 minutes for player status
 
 export default function Home() {
   const {
@@ -33,13 +33,15 @@ export default function Home() {
     initializeGameState,
   } = useGameState();
 
-  // Card selection - We'll implement our own handleCardSelect
+  // Card selection - Use the hook's handleCardSelect
   const {
     selectedNumber,
     bingoCard,
     availableCards,
     takenCards,
-    // Remove handleCardSelect from hook import since we're implementing our own
+    clearSelectedCard,
+    handleCardSelect, // Use the hook's handleCardSelect
+    cardSelectionError,
   } = useCardSelection(gameData, gameStatus);
 
   // Local states
@@ -47,13 +49,11 @@ export default function Home() {
   const [playerCardNumber, setPlayerCardNumber] = useState<number | null>(null);
   const [playerGameStatus, setPlayerGameStatus] = useState<string | null>(null);
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
-  const [lastBalanceCheck, setLastBalanceCheck] = useState<number>(0);
   const [isRedirecting, setIsRedirecting] = useState<boolean>(false);
   
   // NEW: State for immediate UI feedback
   const [locallyTakenCards, setLocallyTakenCards] = useState<Set<number>>(new Set());
   const [processingCards, setProcessingCards] = useState<Set<number>>(new Set());
-  const [lastSelectedCard, setLastSelectedCard] = useState<number | null>(null);
   const [totalPlayers, setTotalPlayers] = useState<number>(0);
 
   // Refs for tracking
@@ -63,21 +63,22 @@ export default function Home() {
   const redirectAttemptedRef = useRef<boolean>(false);
   const gameStatusRef = useRef<string>('');
   const hasCardRef = useRef<boolean>(false);
-  const selectionResultTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameDataRef = useRef<any>(null);
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentSelectedCardRef = useRef<number | null>(null);
 
   // Sync refs with state
   useEffect(() => {
     gameStatusRef.current = gameStatus;
     hasCardRef.current = hasCardInActiveGame;
     gameDataRef.current = gameData;
+    currentSelectedCardRef.current = selectedNumber;
     
     // Update total players from gameData
     if (gameData?.currentPlayers) {
       setTotalPlayers(gameData.currentPlayers);
     }
-  }, [gameStatus, hasCardInActiveGame, gameData]);
+  }, [gameStatus, hasCardInActiveGame, gameData, selectedNumber]);
 
   // NEW: Get combined taken cards (server + local)
   const getCombinedTakenCards = useCallback(() => {
@@ -96,41 +97,13 @@ export default function Home() {
     return serverTakenCards;
   }, [takenCards, locallyTakenCards]);
 
-  // NEW: Check if a card is selectable
-  const isCardSelectable = useCallback((cardNumber: number): boolean => {
-    // Check if card is available
-    const isAvailable = availableCards.some(card => card.cardIndex === cardNumber);
-    
-    // Check if card is taken (server or local)
-    const isTaken = takenCards.some(card => card.cardNumber === cardNumber) || 
-                    locallyTakenCards.has(cardNumber);
-    
-    // Check if card is currently processing
-    const isProcessing = processingCards.has(cardNumber);
-    
-    // Check if user has enough balance
-    const hasBalance = walletBalance >= 10;
-    
-    // Check game status - only allow selection in specific states
-    const isGameSelectable = gameStatus === 'WAITING_FOR_PLAYERS' || 
-                             gameStatus === 'CARD_SELECTION';
-    
-    return isAvailable && !isTaken && !isProcessing && hasBalance && isGameSelectable;
-  }, [availableCards, takenCards, locallyTakenCards, processingCards, walletBalance, gameStatus]);
-
   // NEW: Check if game has minimum players (at least 2)
   const hasMinimumPlayers = useCallback(() => {
     return totalPlayers >= 2;
   }, [totalPlayers]);
 
-  // NEW: Handle card selection with immediate UI feedback (NO MODALS)
-  const handleCardSelect = async (cardNumber: number): Promise<boolean> => {
-    // Validate selection
-    if (!isCardSelectable(cardNumber)) {
-      console.warn(`Card ${cardNumber} is not selectable`);
-      return false;
-    }
-
+  // NEW: Wrapper function for card selection with immediate UI feedback
+  const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
     // Clear any previous timeout
     if (processingTimeoutRef.current) {
       clearTimeout(processingTimeoutRef.current);
@@ -138,60 +111,30 @@ export default function Home() {
 
     // IMMEDIATE UI UPDATE: Add to processing set
     setProcessingCards(prev => new Set(prev).add(cardNumber));
-    setLastSelectedCard(cardNumber);
 
     try {
-      // Get user ID
-      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      if (!userId) {
-        throw new Error('User ID not found. Please log in.');
-      }
-
-      // Get game ID
-      const gameId = gameData?._id;
-      if (!gameId) {
-        throw new Error('No active game found.');
-      }
-
-      // Find the selected card data
-      const selectedCardData = availableCards.find(card => card.cardIndex === cardNumber);
-      if (!selectedCardData) {
-        throw new Error('Card data not found.');
-      }
-
-      console.log(`🎯 Selecting card ${cardNumber} for user ${userId} in game ${gameId}`);
-
-      // Call the API to select the card with specific number
-      const response = await gameAPI.selectCardWithNumber(gameId, {
-        userId,
-        cardNumbers: selectedCardData.numbers,
-        cardNumber: cardNumber
+      // Call the hook's handleCardSelect function
+      await handleCardSelect(cardNumber);
+      
+      // SUCCESS: Mark as locally taken (permanent until server sync)
+      setLocallyTakenCards(prev => {
+        const newSet = new Set(prev);
+        newSet.add(cardNumber);
+        return newSet;
       });
 
-      if (response.data.success) {
-        // SUCCESS: Mark as locally taken (permanent until server sync)
-        setLocallyTakenCards(prev => {
-          const newSet = new Set(prev);
-          newSet.add(cardNumber);
-          return newSet;
-        });
+      console.log(`✅ Card ${cardNumber} selected successfully`);
 
-        console.log(`✅ Card ${cardNumber} selected successfully`, response.data);
-
-        // Check if we should redirect - ONLY if game has minimum players AND is active
-        if (gameStatus === 'ACTIVE' && hasMinimumPlayers()) {
-          // Small delay before redirect for better UX
-          setTimeout(() => {
-            handleRedirectToActiveGame();
-          }, 1000);
-        }
-
-        return true;
-      } else {
-        // API returned success: false
-        throw new Error(response.data.message || 'Card selection failed');
+      // Check if we should redirect - ONLY if game has minimum players AND is active
+      if (gameStatus === 'ACTIVE' && hasMinimumPlayers()) {
+        // Small delay before redirect for better UX
+        setTimeout(() => {
+          handleRedirectToActiveGame();
+        }, 1000);
       }
 
+      return true;
+      
     } catch (error: any) {
       console.error('❌ Card selection failed:', error);
       
@@ -202,13 +145,8 @@ export default function Home() {
         return newSet;
       });
 
-      // Show error as simple toast notification (not modal)
-      const errorMessage = error.response?.data?.message || 
-                          error.message || 
-                          'Failed to select card';
-      
       // Just log the error, don't show modal
-      console.warn('Card selection error:', errorMessage);
+      console.warn('Card selection error:', error.message || 'Failed to select card');
       
       return false;
 
@@ -222,7 +160,7 @@ export default function Home() {
         });
       }, 1500);
     }
-  };
+  }, [handleCardSelect, gameStatus, hasMinimumPlayers]);
 
   // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
@@ -367,9 +305,6 @@ export default function Home() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (selectionResultTimeoutRef.current) {
-        clearTimeout(selectionResultTimeoutRef.current);
-      }
       if (processingTimeoutRef.current) {
         clearTimeout(processingTimeoutRef.current);
       }
@@ -553,14 +488,14 @@ export default function Home() {
             <CardSelectionGrid
               availableCards={availableCards}
               takenCards={getCombinedTakenCards()} // Use combined taken cards
-              selectedNumber={selectedNumber}
+              selectedNumber={selectedNumber} // Use the hook's selectedNumber
               walletBalance={walletBalance}
               gameStatus={gameStatus}
-              onCardSelect={handleCardSelect} // Pass our custom handler
+              onCardSelect={handleCardSelectWithFeedback} // Pass our wrapper function
             />
 
             {/* Selected card preview */}
-            {lastSelectedCard && bingoCard && (
+            {selectedNumber && bingoCard && (
               <motion.div
                 className="mb-6 mt-4"
                 initial={{ opacity: 0, y: 20 }}
@@ -570,7 +505,7 @@ export default function Home() {
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-white font-bold text-sm">Your Selected Card</h3>
                     <span className="text-telegram-button text-sm font-bold">
-                      Card #{lastSelectedCard}
+                      Card #{selectedNumber}
                     </span>
                   </div>
                   
@@ -597,7 +532,28 @@ export default function Home() {
                     ))}
                   </div>
                   
-                
+                  {/* Clear button */}
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      onClick={() => {
+                        if (clearSelectedCard) {
+                          clearSelectedCard();
+                          console.log('🗑️ Cleared card selection');
+                        }
+                        // Also clear from locallyTakenCards
+                        if (selectedNumber) {
+                          setLocallyTakenCards(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(selectedNumber);
+                            return newSet;
+                          });
+                        }
+                      }}
+                      className="px-4 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-all"
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )}
