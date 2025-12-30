@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// components/bingo/CardSelectionGrid.tsx - UPDATED
+// components/bingo/CardSelectionGrid.tsx - UPDATED with immediate UI feedback
 import { motion } from 'framer-motion';
 import { Check } from 'lucide-react';
+import { useState } from 'react';
 
 interface CardSelectionGridProps {
   availableCards: Array<{cardIndex: number, numbers: (number | string)[][], preview?: any}>;
@@ -9,22 +10,75 @@ interface CardSelectionGridProps {
   selectedNumber: number | null;
   walletBalance: number;
   gameStatus: string;
-  onCardSelect: (cardNumber: number) => void;
+  onCardSelect: (cardNumber: number) => Promise<boolean>; // Changed to async
 }
 
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   availableCards,
-  takenCards, // This now updates in real-time
+  takenCards,
   selectedNumber,
   walletBalance,
   gameStatus,
   onCardSelect
 }) => {
+  // Local state for immediate UI feedback
+  const [locallyTakenCards, setLocallyTakenCards] = useState<Set<number>>(new Set());
+  const [processingCards, setProcessingCards] = useState<Set<number>>(new Set());
+
   // Create a map of taken cards for quick lookup
   const takenCardMap = new Map();
   takenCards.forEach(card => {
     takenCardMap.set(card.cardNumber, card);
   });
+
+  // Combine server and local taken cards
+  const isCardTaken = (cardNumber: number): boolean => {
+    return takenCardMap.has(cardNumber) || locallyTakenCards.has(cardNumber);
+  };
+
+  const handleCardSelect = async (cardNumber: number) => {
+    // Check if already taken or processing
+    if (isCardTaken(cardNumber) || processingCards.has(cardNumber)) {
+      return;
+    }
+
+    // Add to processing set immediately
+    setProcessingCards(prev => new Set(prev).add(cardNumber));
+
+    try {
+      // Call the async onCardSelect function
+      const success = await onCardSelect(cardNumber);
+      
+      if (success) {
+        // If successful, mark as locally taken
+        setLocallyTakenCards(prev => new Set(prev).add(cardNumber));
+      } else {
+        // If failed, remove from processing
+        setProcessingCards(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(cardNumber);
+          return newSet;
+        });
+      }
+    } catch (error) {
+      console.error('Card selection failed:', error);
+      // Remove from processing on error
+      setProcessingCards(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(cardNumber);
+        return newSet;
+      });
+    } finally {
+      // Remove from processing after a delay (for visual feedback)
+      setTimeout(() => {
+        setProcessingCards(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(cardNumber);
+          return newSet;
+        });
+      }, 1500);
+    }
+  };
 
   return (
     <div className="mb-4">
@@ -35,22 +89,25 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         transition={{ delay: 0.2 }}
       >
         {Array.from({ length: 400 }, (_, i) => i + 1).map((number) => {
-          const isTaken = takenCardMap.has(number);
+          const isTaken = isCardTaken(number);
+          const isProcessing = processingCards.has(number);
           const isAvailable = availableCards.some(card => card.cardIndex === number);
           const canSelect = walletBalance >= 10;
-          const isSelectable = canSelect && isAvailable && !isTaken;
+          const isSelectable = canSelect && isAvailable && !isTaken && !isProcessing;
           const isCurrentlySelected = selectedNumber === number;
-          const takenBy = isTaken ? takenCardMap.get(number) : null;
-// gjklfdkg
+          const takenBy = takenCardMap.get(number);
+
           return (
             <motion.button
               key={number}
-              onClick={() => isSelectable && onCardSelect(number)}
+              onClick={() => isSelectable && handleCardSelect(number)}
               disabled={!isSelectable}
               className={`
                 aspect-square rounded-xl font-bold text-sm transition-all relative
                 border-2
-                ${isCurrentlySelected
+                ${isProcessing
+                  ? 'bg-gradient-to-br from-yellow-500 to-amber-500 text-white border-yellow-500 shadow-lg animate-pulse cursor-wait'
+                  : isCurrentlySelected
                   ? 'bg-gradient-to-br from-telegram-button to-blue-500 text-white border-telegram-button shadow-lg scale-105'
                   : isTaken
                   ? 'bg-red-500/80 text-white cursor-not-allowed border-red-500 shadow-md'
@@ -61,23 +118,29 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                   : 'bg-white/10 text-white/30 cursor-not-allowed border-white/10'
                 }
                 ${isCurrentlySelected ? 'ring-2 ring-yellow-400 ring-offset-2 ring-offset-purple-600' : ''}
-                ${isTaken ? 'animate-pulse' : ''}
               `}
-              whileHover={isSelectable ? { scale: 1.05 } : {}}
-              whileTap={isSelectable ? { scale: 0.95 } : {}}
+              whileHover={isSelectable && !isProcessing ? { scale: 1.05 } : {}}
+              whileTap={isSelectable && !isProcessing ? { scale: 0.95 } : {}}
               layout
             >
               {number}
               
+              {/* Processing indicator */}
+              {isProcessing && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                </div>
+              )}
+              
               {/* Current selection indicator */}
-              {isCurrentlySelected && (
+              {isCurrentlySelected && !isProcessing && (
                 <div className="absolute -top-1 -right-1 w-5 h-5 bg-yellow-400 rounded-full border-2 border-white flex items-center justify-center">
                   <Check className="w-3 h-3 text-white" />
                 </div>
               )}
               
-              {/* Taken indicator - shows immediately when card is taken */}
-              {isTaken && !isCurrentlySelected && (
+              {/* Taken indicator */}
+              {isTaken && !isProcessing && !isCurrentlySelected && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-4 h-4 text-red-300">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -88,12 +151,12 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               )}
               
               {/* Available for selection indicator */}
-              {!isTaken && isSelectable && gameStatus === 'ACTIVE' && !isCurrentlySelected && (
+              {!isTaken && isSelectable && gameStatus === 'ACTIVE' && !isCurrentlySelected && !isProcessing && (
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               )}
               
               {/* Insufficient balance indicator */}
-              {!isTaken && !isSelectable && walletBalance < 10 && (
+              {!isTaken && !isSelectable && walletBalance < 10 && !isProcessing && (
                 <div className="absolute inset-0 flex items-center justify-center opacity-60">
                   <div className="w-3 h-3 text-yellow-400">
                     <svg fill="currentColor" viewBox="0 0 20 20">
@@ -104,7 +167,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               )}
 
               {/* Show available indicator */}
-              {isAvailable && !isTaken && canSelect && !isCurrentlySelected && (
+              {isAvailable && !isTaken && canSelect && !isCurrentlySelected && !isProcessing && (
                 <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
               )}
             </motion.button>
@@ -116,11 +179,12 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
       <div className="text-center text-white/60 text-sm mb-3">
         <div className="flex justify-center gap-4">
           <span>✅ {availableCards.length} available</span>
-          <span>❌ {takenCards.length} taken</span>
-          <span>⏳ {400 - availableCards.length - takenCards.length} inactive</span>
+          <span>❌ {takenCards.length + locallyTakenCards.size} taken</span>
+          <span>🔄 {processingCards.size} processing</span>
+          <span>⏳ {400 - availableCards.length - takenCards.length - locallyTakenCards.size} inactive</span>
         </div>
         <div className="text-xs text-white/40 mt-1">
-          Updates in real-time • Refresh automatically
+          Select a card • Immediate feedback • Updates in real-time
         </div>
       </div>
 
@@ -137,7 +201,27 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
               <p className="text-telegram-button font-bold text-sm">Card #{selectedNumber} Selected</p>
             </div>
             <p className="text-telegram-button/80 text-xs">
-              Click another card to change selection
+              {processingCards.has(selectedNumber) 
+                ? 'Processing your selection...' 
+                : 'Click another card to change selection'}
+            </p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Processing overlay */}
+      {processingCards.size > 0 && (
+        <motion.div 
+          className="fixed top-0 left-0 right-0 bottom-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <div className="bg-gradient-to-br from-purple-700 to-blue-800 rounded-2xl p-6 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-white font-medium">Processing card selection...</p>
+            <p className="text-white/60 text-sm mt-2">
+              Selecting {Array.from(processingCards).join(', ')}
             </p>
           </div>
         </motion.div>
