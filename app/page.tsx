@@ -12,7 +12,7 @@ import { Clock, Check, AlertCircle, Eye, Loader2, X, Info } from 'lucide-react';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
 
 // Constants for throttling
-const PLAYER_CHECK_INTERVAL = 10000; // 3 minutes for player status
+const PLAYER_CHECK_INTERVAL = 5000; // 3 minutes for player status
 
 export default function Home() {
   const {
