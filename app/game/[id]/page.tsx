@@ -1060,7 +1060,7 @@ export default function GamePage() {
 
       </div>
 
-      <div className="grid grid-cols-4 gap-1">
+      <div className="grid grid-cols-5 gap-1">
         {/* Left: Called Numbers */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
@@ -1144,7 +1144,7 @@ export default function GamePage() {
         </div>
 
         {/* Right: Bingo Card */}
-        <div className="col-span-2">
+        <div className="col-span-3">
           {/* Permanent Current Called Number Display - Added here */}
           {currentCalledNumber && (
             <div className="mb-3 sm:mb-4">
