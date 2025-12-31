@@ -58,7 +58,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   }, [availableCards, selectedNumber, removeAccountData]);
 
   const shouldEnableCardSelection = useCallback(() => {
-    if (!gameData?._id||!gameData?.id) {
+    if (!(gameData?._id||gameData?.id)) {
       console.log('❌ No game ID');
       return false;
     }
