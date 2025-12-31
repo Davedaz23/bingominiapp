@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - COMPLETE FIXED VERSION
+// app/game/[id]/page.tsx - COMPLETE FIXED VERSION WITH IMMEDIATE DISQUALIFICATION
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -20,6 +20,7 @@ interface LocalBingoCard {
   _id?: string;
   cardIndex?: number;
   isDisqualified?: boolean;
+  disqualificationReason?: string;
 }
 
 interface WinnerInfo {
@@ -125,7 +126,11 @@ export default function GamePage() {
     patternClaimed?: string;
     markedPositions?: number;
     calledNumbers?: number;
+    timestamp?: Date;
   } | null>(null);
+
+  // NEW: Track if disqualification has been processed
+  const [disqualificationProcessed, setDisqualificationProcessed] = useState<boolean>(false);
 
   // Refs
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -138,6 +143,8 @@ export default function GamePage() {
   const lastUpdateTimeRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const cardUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const disqualificationCheckRef = useRef<boolean>(false);
+  const initializationCompleteRef = useRef<boolean>(false);
 
   // Polling intervals
   const POLL_INTERVAL = 3000;
@@ -152,15 +159,20 @@ export default function GamePage() {
     return 'O';
   };
 
-  // Helper function to handle disqualification
+  // Helper function to handle disqualification - IMMEDIATELY
   const handleDisqualification = useCallback((errorMessage: string, details?: any) => {
+    // Prevent multiple disqualification handling
+    if (disqualificationCheckRef.current) return;
+    
     console.log('🚨 User disqualified:', errorMessage, details);
     
-    // Update disqualification state
+    disqualificationCheckRef.current = true;
+    
+    // IMMEDIATE state updates
     setIsDisqualified(true);
     setDisqualificationMessage(errorMessage);
     
-    // Mark card as disqualified in local state
+    // Update local card with disqualification status
     if (localBingoCard) {
       setLocalBingoCard({
         ...localBingoCard,
@@ -168,19 +180,23 @@ export default function GamePage() {
       });
     }
     
-    // Set spectator mode
+    // Set spectator mode IMMEDIATELY
     setIsSpectatorMode(true);
     setSpectatorMessage('You have been disqualified. Watching as spectator.');
     
-    // Show disqualification modal with details
+    // Set disqualification details
     setDisqualificationDetails({
       message: errorMessage,
       patternClaimed: details?.patternClaimed,
-      markedPositions: localBingoCard?.markedPositions?.length,
-      calledNumbers: allCalledNumbers.length
+      markedPositions: localBingoCard?.markedPositions?.length || details?.markedPositions,
+      calledNumbers: allCalledNumbers.length || details?.calledNumbers,
+      timestamp: new Date()
     });
     
-    setShowDisqualificationModal(true);
+    // Show disqualification modal IMMEDIATELY
+    setTimeout(() => {
+      setShowDisqualificationModal(true);
+    }, 500); // Small delay for better UX
     
     // Stop polling when disqualified
     if (pollingRef.current) {
@@ -188,14 +204,13 @@ export default function GamePage() {
       pollingRef.current = null;
     }
     
-    // Show a more prominent error message
-    setClaimResult({
-      success: false,
-      message: `❌ ${errorMessage}`
-    });
+    // Mark as processed
+    setDisqualificationProcessed(true);
+    
+    console.log('✅ Disqualification processed immediately');
   }, [localBingoCard, allCalledNumbers]);
 
-  // FIXED: Check if user has a bingo card
+  // FIXED: Check if user has a bingo card with IMMEDIATE disqualification detection
   const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false): Promise<boolean> => {
     if (autoRetryInProgress && !isRetry) return false;
 
@@ -217,13 +232,26 @@ export default function GamePage() {
       if (cardResponse.data.success && cardResponse.data.bingoCard) {
         const apiCard = cardResponse.data.bingoCard;
         
-        // Check if card is disqualified
+        // IMMEDIATE DISQUALIFICATION CHECK
         if (apiCard.isDisqualified) {
-          setIsDisqualified(true);
-          setDisqualificationMessage(apiCard.disqualificationReason || 'Your card has been disqualified');
-          setIsSpectatorMode(true);
-          setSpectatorMessage('Your card has been disqualified. Watching as spectator.');
-          setCardError('');
+          console.log('🚨 API returned disqualified card');
+          const disqualificationReason = apiCard.disqualificationReason || 'Your card has been disqualified';
+          
+          // Call disqualification handler immediately
+          handleDisqualification(disqualificationReason, {
+            // patternClaimed: apiCard.patternClaimed,
+            markedPositions: apiCard.markedNumbers?.length || apiCard.markedPositions?.length
+          });
+          
+          // Set empty card state for disqualified users
+          setLocalBingoCard({
+            cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
+            numbers: [],
+            markedPositions: [],
+            isDisqualified: true,
+            disqualificationReason: disqualificationReason
+          });
+          
           hasCardCheckedRef.current = true;
           return false;
         }
@@ -238,6 +266,8 @@ export default function GamePage() {
 
         setLocalBingoCard(newCard);
         setIsDisqualified(false);
+        setDisqualificationProcessed(false);
+        disqualificationCheckRef.current = false;
         setIsSpectatorMode(false);
         setSpectatorMessage('');
         setCardError('');
@@ -266,9 +296,9 @@ export default function GamePage() {
         return false;
       }
     }
-  }, [id, localBingoCard, autoRetryInProgress]);
+  }, [id, localBingoCard, autoRetryInProgress, handleDisqualification]);
 
-  // FIXED: Initialize user card
+  // FIXED: Initialize user card with better state management
   const initializeUserCard = useCallback(async (forceCheck = false) => {
     if (updateInProgressRef.current && !forceCheck) return;
 
@@ -313,7 +343,7 @@ export default function GamePage() {
         }
       }
 
-      if (!success && !isSpectatorMode) {
+      if (!success && !isSpectatorMode && !isDisqualified) {
         console.log('⚠️ All retry attempts failed, falling back to spectator mode');
         setIsSpectatorMode(true);
         setSpectatorMessage('Unable to load your card. Watching as spectator.');
@@ -322,7 +352,7 @@ export default function GamePage() {
 
     } catch (error: any) {
       console.error('Failed to initialize user card:', error);
-      if (!isSpectatorMode) {
+      if (!isSpectatorMode && !isDisqualified) {
         setIsSpectatorMode(true);
         setSpectatorMessage('Unable to load your card. Watching as spectator.');
         setCardError('');
@@ -331,12 +361,13 @@ export default function GamePage() {
       setIsLoadingCard(false);
       setAutoRetryInProgress(false);
       updateInProgressRef.current = false;
+      initializationCompleteRef.current = true;
     }
-  }, [checkUserHasCard, isSpectatorMode]);
+  }, [checkUserHasCard, isSpectatorMode, isDisqualified]);
 
   // Auto-retry card loading
   useEffect(() => {
-    if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS) {
+    if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS && !isDisqualified) {
       const timer = setTimeout(() => {
         console.log('🔄 Auto-retrying card loading...');
         setIsLoadingCard(true);
@@ -347,17 +378,58 @@ export default function GamePage() {
 
       return () => clearTimeout(timer);
     }
-  }, [cardError, localBingoCard, isLoadingCard, retryCount, initializeUserCard]);
+  }, [cardError, localBingoCard, isLoadingCard, retryCount, initializeUserCard, isDisqualified]);
 
-  // Check if user was previously disqualified on page load
+  // Check if user was previously disqualified on page load - FIXED
   useEffect(() => {
-    if (localBingoCard?.isDisqualified) {
-      setIsDisqualified(true);
-      setDisqualificationMessage('Your card has been disqualified');
-      setIsSpectatorMode(true);
-      setSpectatorMessage('You have been disqualified. Watching as spectator.');
+    // Check localStorage for disqualification status on initial load
+    const checkStoredDisqualification = () => {
+      const storedDisqualification = localStorage.getItem(`disqualified_${id}`);
+      if (storedDisqualification) {
+        try {
+          const disqualificationData = JSON.parse(storedDisqualification);
+          console.log('📋 Found stored disqualification:', disqualificationData);
+          
+          // Apply disqualification immediately
+          handleDisqualification(disqualificationData.message, {
+            patternClaimed: disqualificationData.patternClaimed,
+            markedPositions: disqualificationData.markedPositions,
+            calledNumbers: disqualificationData.calledNumbers
+          });
+        } catch (error) {
+          console.error('Error parsing stored disqualification:', error);
+        }
+      }
+    };
+
+    if (!initializationCompleteRef.current && !isLoading && game) {
+      checkStoredDisqualification();
     }
-  }, [localBingoCard]);
+  }, [id, isLoading, game, handleDisqualification]);
+
+  // Store disqualification in localStorage when it happens
+  useEffect(() => {
+    if (isDisqualified && disqualificationDetails) {
+      const disqualificationData = {
+        message: disqualificationMessage,
+        patternClaimed: disqualificationDetails.patternClaimed,
+        markedPositions: disqualificationDetails.markedPositions,
+        calledNumbers: disqualificationDetails.calledNumbers,
+        timestamp: new Date().toISOString(),
+        gameId: id
+      };
+      
+      localStorage.setItem(`disqualified_${id}`, JSON.stringify(disqualificationData));
+      console.log('💾 Saved disqualification to localStorage');
+    }
+  }, [isDisqualified, disqualificationDetails, disqualificationMessage, id]);
+
+  // Clear disqualification from localStorage when returning to lobby
+  useEffect(() => {
+    return () => {
+      // Clean up on component unmount if needed
+    };
+  }, []);
 
   // FIXED: Check for winner
   const checkForWinner = useCallback(async (gameData?: Game) => {
@@ -526,16 +598,16 @@ export default function GamePage() {
     }
   }, [id, showWinnerModal, checkForWinner, MIN_UPDATE_INTERVAL]);
 
-  // FIXED: Start polling
+  // FIXED: Start polling - SKIP if disqualified
   const startPolling = useCallback(() => {
-    if (pollingRef.current) return;
+    if (pollingRef.current || isDisqualified) return;
     
     console.log('📡 Starting efficient polling...');
     
     updateGameState(true);
     
     pollingRef.current = setInterval(() => {
-      if (game?.status === 'ACTIVE' && !showWinnerModal) {
+      if (game?.status === 'ACTIVE' && !showWinnerModal && !isDisqualified) {
         updateGameState(false);
       } else {
         if (pollingRef.current) {
@@ -544,11 +616,11 @@ export default function GamePage() {
         }
       }
     }, POLL_INTERVAL);
-  }, [updateGameState, game?.status, showWinnerModal, POLL_INTERVAL]);
+  }, [updateGameState, game?.status, showWinnerModal, POLL_INTERVAL, isDisqualified]);
 
-  // Initialize game
+  // Initialize game - FIXED for disqualification
   useEffect(() => {
-    if (initializationAttempted) return;
+    if (initializationAttempted || isDisqualified) return;
     
     const initializeGame = async () => {
       try {
@@ -561,7 +633,7 @@ export default function GamePage() {
         }
         
         const cardCheckTimeout = setTimeout(() => {
-          if (isLoadingCard) {
+          if (isLoadingCard && !isDisqualified) {
             console.log('⏱️ Card check timeout, proceeding...');
             setIsLoadingCard(false);
           }
@@ -572,20 +644,22 @@ export default function GamePage() {
         
       } catch (error) {
         console.error('Failed to initialize game:', error);
-        setIsLoadingCard(false);
+        if (!isDisqualified) {
+          setIsLoadingCard(false);
+        }
       }
     };
     
-    if (!isLoading && game && !initializationAttempted) {
+    if (!isLoading && game && !initializationAttempted && !isDisqualified) {
       initializeGame();
     }
-  }, [game, isLoading, initializeUserCard, initializationAttempted]);
+  }, [game, isLoading, initializeUserCard, initializationAttempted, isDisqualified]);
 
-  // Handle game status changes
+  // Handle game status changes - SKIP if disqualified
   useEffect(() => {
-    if (!game) return;
+    if (!game || isDisqualified) return;
 
-    if (game.status === 'ACTIVE' && !pollingRef.current) {
+    if (game.status === 'ACTIVE' && !pollingRef.current && !isDisqualified) {
       startPolling();
     } else if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'CANCELLED' || game.status === 'COOLDOWN') && pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -606,7 +680,7 @@ export default function GamePage() {
       clearSelectedCard();
       console.log('🗑️ Cleared stored card selection because game was cancelled');
     }
-  }, [game, startPolling, showWinnerModal, checkForWinner, clearSelectedCard]);
+  }, [game, startPolling, showWinnerModal, checkForWinner, clearSelectedCard, isDisqualified]);
 
   // FIXED: Countdown for winner modal
   useEffect(() => {
@@ -635,7 +709,7 @@ export default function GamePage() {
   // Safety timeout to exit loading state
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
-      if (isLoadingCard) {
+      if (isLoadingCard && !isDisqualified) {
         console.warn('⚠️ Loading timed out, forcing exit from loading state');
         setIsLoadingCard(false);
         setCardError('Loading timed out. Please refresh or check your connection.');
@@ -643,7 +717,7 @@ export default function GamePage() {
     }, 20000);
 
     return () => clearTimeout(safetyTimeout);
-  }, [isLoadingCard]);
+  }, [isLoadingCard, isDisqualified]);
 
   // Add this to hide disqualification modal when game ends
   useEffect(() => {
@@ -652,7 +726,7 @@ export default function GamePage() {
     }
   }, [game?.status, showDisqualificationModal]);
 
-  // FIXED: Handle manual number marking with immediate UI feedback
+  // FIXED: Handle manual number marking - SKIP if disqualified
   const handleMarkNumber = async (number: number) => {
     if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE' || isDisqualified) return;
 
@@ -733,7 +807,7 @@ export default function GamePage() {
     }
   };
 
-  // FIXED: Handle manual Bingo claim
+  // FIXED: Handle manual Bingo claim - SKIP if disqualified
   const handleClaimBingo = async () => {
     if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard || isDisqualified) return;
 
@@ -823,8 +897,11 @@ export default function GamePage() {
     }
   };
 
-  // Handle returning to lobby
+  // Handle returning to lobby - CLEAR disqualification data
   const handleReturnToLobby = () => {
+    // Clear disqualification from localStorage
+    localStorage.removeItem(`disqualified_${id}`);
+    
     if (countdownRef.current) clearInterval(countdownRef.current);
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -843,12 +920,25 @@ export default function GamePage() {
     setCountdown(10);
     setShowDisqualificationModal(false);
 
+    // Reset disqualification states
+    setIsDisqualified(false);
+    setDisqualificationMessage('');
+    setDisqualificationDetails(null);
+    setDisqualificationProcessed(false);
+    disqualificationCheckRef.current = false;
+
     gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
     updateInProgressRef.current = false;
     lastUpdateTimeRef.current = 0;
+    initializationCompleteRef.current = false;
 
     router.push('/');
+  };
+
+  // Handle continue watching (close modal but stay in game)
+  const handleContinueWatching = () => {
+    setShowDisqualificationModal(false);
   };
 
   // Use local card if available
@@ -921,8 +1011,8 @@ export default function GamePage() {
     );
   }
 
-  // 3. Show loading while fetching user card
-  if (isLoadingCard && !cardError && !isSpectatorMode) {
+  // 3. Show loading while fetching user card - SKIP if already disqualified
+  if (isLoadingCard && !cardError && !isSpectatorMode && !isDisqualified) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
@@ -970,7 +1060,7 @@ export default function GamePage() {
             >
               {/* Close button for the modal */}
               <button
-                onClick={() => setShowDisqualificationModal(false)}
+                onClick={handleContinueWatching}
                 className="absolute top-3 right-3 text-white/70 hover:text-white transition-colors"
               >
                 ✕
@@ -985,13 +1075,18 @@ export default function GamePage() {
                 <p className="text-white/70 text-sm">
                   Game #{game?.code || id}
                 </p>
+                {disqualificationDetails?.timestamp && (
+                  <p className="text-white/50 text-xs mt-1">
+                    Disqualified at: {new Date(disqualificationDetails.timestamp).toLocaleTimeString()}
+                  </p>
+                )}
               </div>
 
               {/* Reason */}
               <div className="bg-gradient-to-r from-red-800/50 to-orange-800/50 rounded-xl p-4 mb-6 border border-white/20">
                 <h3 className="text-lg font-bold text-white mb-3">Reason for Disqualification</h3>
                 <p className="text-white/80 text-sm mb-3">
-                  {disqualificationDetails?.message || 'False bingo claim'}
+                  {disqualificationDetails?.message || disqualificationMessage || 'False bingo claim'}
                 </p>
                 
                 <div className="grid grid-cols-2 gap-3 mt-4">
@@ -1042,7 +1137,7 @@ export default function GamePage() {
                   
                   <div className="flex flex-col gap-3">
                     <button
-                      onClick={() => setShowDisqualificationModal(false)}
+                      onClick={handleContinueWatching}
                       className="bg-gradient-to-r from-gray-700 to-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:from-gray-600 hover:to-gray-800 transition-all"
                     >
                       Continue Watching
@@ -1260,7 +1355,7 @@ export default function GamePage() {
         </div>
       )}
 
-      {/* Disqualification Warning Banner */}
+      {/* Disqualification Warning Banner - SHOW IMMEDIATELY if disqualified */}
       {isDisqualified && !showDisqualificationModal && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -1274,6 +1369,11 @@ export default function GamePage() {
               <div>
                 <h3 className="text-white font-bold text-lg">DISQUALIFIED</h3>
                 <p className="text-white/80 text-sm">Click for details</p>
+                {disqualificationDetails?.timestamp && (
+                  <p className="text-white/60 text-xs mt-1">
+                    Disqualified at {new Date(disqualificationDetails.timestamp).toLocaleTimeString()}
+                  </p>
+                )}
               </div>
             </div>
             <div className="text-white/60">
@@ -1306,7 +1406,7 @@ export default function GamePage() {
           </div>
           <div>
             <p className="text-white font-semibold text-xs">
-              {selectedNumber ? `#${selectedNumber}` : 'N/A'}
+              {selectedNumber && !isDisqualified ? `#${selectedNumber}` : 'N/A'}
             </p>
             <p className="text-white/60 text-xs">Your Card</p>
           </div>
@@ -1318,7 +1418,7 @@ export default function GamePage() {
       </div>
 
       <div className="grid grid-cols-5 gap-1">
-        {/* Left: Called Numbers */}
+        {/* Left: Called Numbers - ALWAYS SHOW EVEN FOR DISQUALIFIED */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
             {/* BINGO Header */}
@@ -1373,7 +1473,7 @@ export default function GamePage() {
                                   : 'bg-white/10'
                             }
                           `}
-                          onClick={() => isCalled && game?.status === 'ACTIVE' && handleMarkNumber(number)}
+                          onClick={() => isCalled && game?.status === 'ACTIVE' && !isDisqualified && handleMarkNumber(number)}
                           title={`${column.letter}${number} ${isCurrent ? '(Current)' : isCalled ? '(Called)' : ''}`}
                         >
                           <span className={`
@@ -1422,16 +1522,20 @@ export default function GamePage() {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
             <div className="flex justify-between items-center mb-3 sm:mb-4">
               <div className="flex items-center gap-2 sm:gap-3">
-                <h3 className="text-white font-bold text-sm sm:text-base md:text-md">Your Bingo Card</h3>
-                {selectedNumber && (
+                <h3 className="text-white font-bold text-sm sm:text-base md:text-md">
+                  {isDisqualified ? 'DISQUALIFIED CARD' : 'Your Bingo Card'}
+                </h3>
+                {selectedNumber && !isDisqualified && (
                   <span className="text-white/90 text-xs sm:text-sm bg-gradient-to-r from-purple-500/30 to-blue-500/30 px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 rounded-full font-medium">
                     Card #{selectedNumber}
                   </span>
                 )}
               </div>
-              <div className="text-white/70 text-xs sm:text-sm bg-white/10 px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 rounded-full">
-                Marked: <span className="text-white font-bold ml-0.5 sm:ml-1">{displayBingoCard?.markedPositions?.length || 0}</span>/24
-              </div>
+              {!isDisqualified && (
+                <div className="text-white/70 text-xs sm:text-sm bg-white/10 px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 rounded-full">
+                  Marked: <span className="text-white font-bold ml-0.5 sm:ml-1">{displayBingoCard?.markedPositions?.length || 0}</span>/24
+                </div>
+              )}
             </div>
 
             {isDisqualified ? (
@@ -1439,7 +1543,7 @@ export default function GamePage() {
                 <div className="text-5xl mb-4">⛔</div>
                 <h3 className="text-xl font-bold text-white mb-2">CARD DISQUALIFIED</h3>
                 <p className="text-white/70 text-sm mb-4">
-                  Your card has been removed from the game
+                  {disqualificationMessage || 'Your card has been removed from the game'}
                 </p>
                 <button
                   onClick={() => setShowDisqualificationModal(true)}
@@ -1561,7 +1665,7 @@ export default function GamePage() {
         </div>
       </div>
 
-      {/* Claim Bingo Button - Fixed Position */}
+      {/* Claim Bingo Button - Fixed Position - HIDDEN FOR DISQUALIFIED */}
       {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && !isDisqualified && allCalledNumbers.length > 0 && (
         <div className="fixed bottom-4 right-2 sm:right-4 md:right-6 z-10">
           <div className="flex flex-col items-end">
