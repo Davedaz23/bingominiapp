@@ -130,6 +130,13 @@ export default function GamePage() {
 //disquaified
 const [isDisqualified, setIsDisqualified] = useState<boolean>(false);
 const [disqualificationMessage, setDisqualificationMessage] = useState<string>('');
+const [showDisqualificationModal, setShowDisqualificationModal] = useState<boolean>(false);
+const [disqualificationDetails, setDisqualificationDetails] = useState<{
+  message: string;
+  patternClaimed?: string;
+  markedPositions?: number;
+  calledNumbers?: number;
+} | null>(null);
   // Polling intervals
   const POLL_INTERVAL = 3000;
   const MIN_UPDATE_INTERVAL = 1500;
@@ -704,7 +711,10 @@ const handleClaimBingo = async () => {
       // Check for disqualification in error message
       if (errorMsg.toLowerCase().includes('disqualified') || 
           errorMsg.toLowerCase().includes('false bingo claim')) {
-        handleDisqualification(errorMsg);
+        handleDisqualification(errorMsg, {
+          patternClaimed: 'BINGO',
+          markedPositions: localBingoCard.markedPositions?.length
+        });
       }
     }
   } catch (error: any) {
@@ -738,7 +748,10 @@ const handleClaimBingo = async () => {
                                 errorMessage.toLowerCase().includes('false bingo claim');
     
     if (isDisqualifiedError) {
-      handleDisqualification(errorMessage);
+      handleDisqualification(errorMessage, {
+        patternClaimed: 'BINGO',
+        markedPositions: localBingoCard?.markedPositions?.length
+      });
     }
   } finally {
     setIsClaimingBingo(false);
@@ -749,10 +762,17 @@ const handleClaimBingo = async () => {
     }, isDisqualified ? 10000 : 5000);
   }
 };
+
+// Add this to hide disqualification modal when game ends
+useEffect(() => {
+  if (showDisqualificationModal && game?.status === 'FINISHED') {
+    setShowDisqualificationModal(false);
+  }
+}, [game?.status, showDisqualificationModal]);
 // Helper function to handle disqualification
 
-const handleDisqualification = (errorMessage: string) => {
-  console.log('🚨 User disqualified:', errorMessage);
+const handleDisqualification = (errorMessage: string, details?: any) => {
+  console.log('🚨 User disqualified:', errorMessage, details);
   
   // Update disqualification state
   setIsDisqualified(true);
@@ -769,6 +789,22 @@ const handleDisqualification = (errorMessage: string) => {
   // Set spectator mode
   setIsSpectatorMode(true);
   setSpectatorMessage('You have been disqualified. Watching as spectator.');
+  
+  // Show disqualification modal with details
+  setDisqualificationDetails({
+    message: errorMessage,
+    patternClaimed: details?.patternClaimed,
+    markedPositions: localBingoCard?.markedPositions?.length,
+    calledNumbers: allCalledNumbers.length
+  });
+  
+  setShowDisqualificationModal(true);
+  
+  // Stop polling when disqualified
+  if (pollingRef.current) {
+    clearInterval(pollingRef.current);
+    pollingRef.current = null;
+  }
   
   // Show a more prominent error message
   setClaimResult({
@@ -905,10 +941,187 @@ const handleDisqualification = (errorMessage: string) => {
       </div>
     );
   }
+  // Add this to check if user was previously disqualified on page load
+useEffect(() => {
+  if (localBingoCard?.isDisqualified) {
+    setIsDisqualified(true);
+    setDisqualificationMessage('Your card has been disqualified');
+    setIsSpectatorMode(true);
+    setSpectatorMessage('You have been disqualified. Watching as spectator.');
+  }
+}, [localBingoCard]);
+
+// Update the condition for showing the bingo card to hide it when disqualified
+{!isDisqualified ? (
+  displayBingoCard ? (
+    <div className="mb-3 sm:mb-4">
+      {/* Your existing bingo card rendering */}
+    </div>
+  ) : (
+    <div className="text-center text-white/70 py-6 sm:py-8">
+      {/* Your existing "no card found" message */}
+    </div>
+  )
+) : (
+  <div className="text-center py-12 bg-gradient-to-br from-red-900/20 to-orange-900/20 rounded-2xl border border-red-500/30">
+    <div className="text-5xl mb-4">⛔</div>
+    <h3 className="text-xl font-bold text-white mb-2">CARD DISQUALIFIED</h3>
+    <p className="text-white/70 text-sm mb-4">
+      Your card has been removed from the game
+    </p>
+    <button
+      onClick={() => setShowDisqualificationModal(true)}
+      className="bg-gradient-to-r from-red-600/30 to-orange-600/30 text-white px-6 py-2 rounded-lg hover:from-red-600/40 hover:to-orange-600/40 transition-all text-sm"
+    >
+      View Disqualification Details
+    </button>
+  </div>
+)}
 
   // Main game render - game exists and loading is complete
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
+      {/* Disqualification Modal */}
+<AnimatePresence>
+  {showDisqualificationModal && (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
+      onClick={(e) => {
+        // Only close if clicking the overlay (not the modal content)
+        if (e.target === e.currentTarget) {
+          setShowDisqualificationModal(false);
+        }
+      }}
+    >
+      <motion.div
+        initial={{ scale: 0.8, y: 50 }}
+        animate={{ scale: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 100 }}
+        className="bg-gradient-to-br from-red-900/90 to-orange-900/90 rounded-2xl p-6 max-w-md w-full border-2 border-red-500 shadow-2xl relative overflow-hidden"
+      >
+        {/* Close button for the modal */}
+        <button
+          onClick={() => setShowDisqualificationModal(false)}
+          className="absolute top-3 right-3 text-white/70 hover:text-white transition-colors"
+        >
+          ✕
+        </button>
+        
+        {/* Header */}
+        <div className="text-center mb-6">
+          <div className="text-5xl mb-4">⛔</div>
+          <h1 className="text-2xl font-bold text-white mb-2">
+            DISQUALIFIED
+          </h1>
+          <p className="text-white/70 text-sm">
+            Game #{game?.code || id}
+          </p>
+        </div>
+
+        {/* Reason */}
+        <div className="bg-gradient-to-r from-red-800/50 to-orange-800/50 rounded-xl p-4 mb-6 border border-white/20">
+          <h3 className="text-lg font-bold text-white mb-3">Reason for Disqualification</h3>
+          <p className="text-white/80 text-sm mb-3">
+            {disqualificationDetails?.message || 'False bingo claim'}
+          </p>
+          
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            <div className="bg-gradient-to-r from-gray-900 to-black rounded-lg p-3">
+              <p className="text-white/70 text-xs mb-1">Marked Positions</p>
+              <p className="text-white text-lg font-bold">
+                {disqualificationDetails?.markedPositions || 0}/24
+              </p>
+            </div>
+            <div className="bg-gradient-to-r from-gray-900 to-black rounded-lg p-3">
+              <p className="text-white/70 text-xs mb-1">Numbers Called</p>
+              <p className="text-white text-lg font-bold">
+                {disqualificationDetails?.calledNumbers || 0}/75
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Consequences */}
+        <div className="bg-gradient-to-r from-gray-900 to-black rounded-xl p-4 mb-6 border border-white/10">
+          <h3 className="text-lg font-bold text-white mb-3">Consequences</h3>
+          <ul className="space-y-2 text-white/80 text-sm">
+            <li className="flex items-start gap-2">
+              <span className="text-red-400 mt-0.5">•</span>
+              <span>Your entry fee of 10 ብር is forfeited</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-red-400 mt-0.5">•</span>
+              <span>You cannot mark numbers or claim bingo</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-red-400 mt-0.5">•</span>
+              <span>You cannot rejoin this specific game</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-green-400 mt-0.5">✓</span>
+              <span>You can still join future games</span>
+            </li>
+          </ul>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-6 pt-6 border-t border-white/20">
+          <div className="text-center">
+            <p className="text-white/70 text-sm mb-4">
+              The game will continue without you. You can watch as a spectator.
+            </p>
+            
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setShowDisqualificationModal(false)}
+                className="bg-gradient-to-r from-gray-700 to-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:from-gray-600 hover:to-gray-800 transition-all"
+              >
+                Continue Watching
+              </button>
+              
+              <button
+                onClick={handleReturnToLobby}
+                className="bg-gradient-to-r from-red-700 to-red-900 text-white px-6 py-3 rounded-xl font-bold hover:from-red-600 hover:to-red-800 transition-all"
+              >
+                Return to Lobby
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
+
+// Add this after the Header in your JSX (before the main grid)
+{/* Disqualification Warning Banner */}
+{isDisqualified && !showDisqualificationModal && (
+  <motion.div
+    initial={{ opacity: 0, y: -20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 rounded-2xl p-4 mb-6 backdrop-blur-lg cursor-pointer"
+    onClick={() => setShowDisqualificationModal(true)}
+  >
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="text-2xl">⛔</div>
+        <div>
+          <h3 className="text-white font-bold text-lg">DISQUALIFIED</h3>
+          <p className="text-white/80 text-sm">Click for details</p>
+        </div>
+      </div>
+      <div className="text-white/60">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
+    </div>
+  </motion.div>
+)}
+
       {/* Winner Modal */}
       <AnimatePresence>
         {showWinnerModal && winnerInfo && (
