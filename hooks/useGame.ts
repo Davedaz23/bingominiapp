@@ -277,14 +277,14 @@ const updateGameState = useCallback((gameData: Game) => {
 
     // DETERMINE POLLING INTERVAL BASED ON GAME STATUS
     let baseInterval = 10000; // Default: 10 seconds
-    
+    //  status: 'WAITING' | 'WAITING_FOR_PLAYERS' | 'ACTIVE' | 'FINISHED' | 'CANCELLED' | 'CARD_SELECTION' | 'COOLDOWN'|'NO_WINNER';
     if (currentGame.status === 'ACTIVE') {
       // MUCH FASTER POLLING FOR ACTIVE GAMES - to see called numbers
       baseInterval = 2000; // 2 seconds for active games
-    } else if (currentGame.status === 'WAITING') {
-      baseInterval = 8000; // 8 seconds for waiting games
+    } else if (currentGame.status === 'WAITING_FOR_PLAYERS') {
+      baseInterval = 3000; // 8 seconds for waiting games
     } else if (currentGame.status === 'FINISHED') {
-      baseInterval = 15000; // 15 seconds for finished games
+      baseInterval = 2000; // 15 seconds for finished games
     }
 
     // Apply error-based backoff

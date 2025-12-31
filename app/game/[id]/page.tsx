@@ -150,6 +150,42 @@ export default function GamePage() {
   const POLL_INTERVAL = 3000;
   const MIN_UPDATE_INTERVAL = 1500;
 
+// Add this at the beginning of your GamePage component, right after the imports
+useEffect(() => {
+  // Only run in production to reduce logs
+  if (process.env.NODE_ENV === 'production') {
+    const originalLog = console.log;
+    const originalError = console.error;
+    
+    console.log = (...args) => {
+      // Filter out specific verbose logs
+      const message = args[0]?.toString() || '';
+      if (
+        message.includes('❌ No game ID') ||
+        message.includes('🔄 useCardSelection main effect triggered') ||
+        message.includes('🔍 Checking card selection status') ||
+        message.includes('⏰ Starting real-time taken cards polling') ||
+        message.includes('🔍 Looking for card:') ||
+        message.includes('📦 Available cards response:') ||
+        message.includes('🔄 Polling for taken cards')
+      ) {
+        return;
+      }
+      originalLog(...args);
+    };
+    
+    console.error = (...args) => {
+      // Don't filter errors, but you could if needed
+      originalError(...args);
+    };
+    
+    return () => {
+      console.log = originalLog;
+      console.error = originalError;
+    };
+  }
+}, []);
+
   // Helper function to get BINGO letter
   const getNumberLetter = (num: number): string => {
     if (num <= 15) return 'B';

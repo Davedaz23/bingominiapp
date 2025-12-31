@@ -31,17 +31,17 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
     const minPlayers = 2;
     
     const canSelectCards = shouldEnableCardSelection;
-    // AUTO-START COUNTDOWN
-    // if (hasAutoStartTimer && autoStartTimeRemaining > 0) {
-    //   const secondsRemaining = Math.ceil(autoStartTimeRemaining / 1000);
-    //   return {
-    //     message: '🚀 Game Starting Soon!',
-    //     description: `Auto-starting in ${secondsRemaining}s (${players}/2 players ready)`,
-    //     color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
-    //     icon: <Clock className="w-5 h-5" />,
-    //     showAutoStartCountdown: true
-    //   };
-    // }
+   // AUTO-START COUNTDOWN
+    if (hasAutoStartTimer && autoStartTimeRemaining > 0) {
+      const secondsRemaining = Math.ceil(autoStartTimeRemaining / 1000);
+      return {
+        message: '🚀 Game Starting Soon!',
+        description: `Auto-starting in ${secondsRemaining}s (${players}/2 players ready)`,
+        color: 'bg-orange-500/20 border-orange-500/30 text-orange-300',
+        icon: <Clock className="w-5 h-5" />,
+        showAutoStartCountdown: true
+      };
+    }
     switch (gameStatus) {
       case 'WAITING_FOR_PLAYERS':
         const playersNeeded = Math.max(0, minPlayers - players);
@@ -118,7 +118,7 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
       <p className="text-sm text-center">{statusInfo.description}</p>
        
       {/* AUTO-START COUNTDOWN */}
-      {/* {statusInfo.showAutoStartCountdown && autoStartTimeRemaining > 0 && (
+      {statusInfo.showAutoStartCountdown && autoStartTimeRemaining > 0 && (
         <div className="mt-3">
           <div className="flex justify-between text-xs text-white/80 mb-1">
             <span>Game starts in:</span>
@@ -133,7 +133,7 @@ export const GameStatusDisplay: React.FC<GameStatusDisplayProps> = ({
             />
           </div>
         </div>
-      )} */}
+      )}
      {gameStatus === 'FINISHED' || gameStatus === 'NO_WINNER' && restartCountdown > 0 && (
         <div className="mt-3">
           <div className="flex justify-between text-xs text-white/80 mb-1">
