@@ -116,6 +116,17 @@ export default function GamePage() {
   const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(false);
   const [spectatorMessage, setSpectatorMessage] = useState<string>('');
 
+  // Disqualification states
+  const [isDisqualified, setIsDisqualified] = useState<boolean>(false);
+  const [disqualificationMessage, setDisqualificationMessage] = useState<string>('');
+  const [showDisqualificationModal, setShowDisqualificationModal] = useState<boolean>(false);
+  const [disqualificationDetails, setDisqualificationDetails] = useState<{
+    message: string;
+    patternClaimed?: string;
+    markedPositions?: number;
+    calledNumbers?: number;
+  } | null>(null);
+
   // Refs
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gameEndedCheckRef = useRef(false);
@@ -127,16 +138,7 @@ export default function GamePage() {
   const lastUpdateTimeRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const cardUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-//disquaified
-const [isDisqualified, setIsDisqualified] = useState<boolean>(false);
-const [disqualificationMessage, setDisqualificationMessage] = useState<string>('');
-const [showDisqualificationModal, setShowDisqualificationModal] = useState<boolean>(false);
-const [disqualificationDetails, setDisqualificationDetails] = useState<{
-  message: string;
-  patternClaimed?: string;
-  markedPositions?: number;
-  calledNumbers?: number;
-} | null>(null);
+
   // Polling intervals
   const POLL_INTERVAL = 3000;
   const MIN_UPDATE_INTERVAL = 1500;
@@ -150,80 +152,121 @@ const [disqualificationDetails, setDisqualificationDetails] = useState<{
     return 'O';
   };
 
+  // Helper function to handle disqualification
+  const handleDisqualification = useCallback((errorMessage: string, details?: any) => {
+    console.log('🚨 User disqualified:', errorMessage, details);
+    
+    // Update disqualification state
+    setIsDisqualified(true);
+    setDisqualificationMessage(errorMessage);
+    
+    // Mark card as disqualified in local state
+    if (localBingoCard) {
+      setLocalBingoCard({
+        ...localBingoCard,
+        isDisqualified: true,
+      });
+    }
+    
+    // Set spectator mode
+    setIsSpectatorMode(true);
+    setSpectatorMessage('You have been disqualified. Watching as spectator.');
+    
+    // Show disqualification modal with details
+    setDisqualificationDetails({
+      message: errorMessage,
+      patternClaimed: details?.patternClaimed,
+      markedPositions: localBingoCard?.markedPositions?.length,
+      calledNumbers: allCalledNumbers.length
+    });
+    
+    setShowDisqualificationModal(true);
+    
+    // Stop polling when disqualified
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    
+    // Show a more prominent error message
+    setClaimResult({
+      success: false,
+      message: `❌ ${errorMessage}`
+    });
+  }, [localBingoCard, allCalledNumbers]);
+
   // FIXED: Check if user has a bingo card
-const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false): Promise<boolean> => {
-  if (autoRetryInProgress && !isRetry) return false;
+  const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false): Promise<boolean> => {
+    if (autoRetryInProgress && !isRetry) return false;
 
-  if (hasCardCheckedRef.current && !forceCheck && !isRetry) {
-    return !!localBingoCard;
-  }
-
-  try {
-    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-    if (!userId || !id) {
-      setIsSpectatorMode(true);
-      setSpectatorMessage('Please login to join the game.');
-      hasCardCheckedRef.current = true;
-      return false;
+    if (hasCardCheckedRef.current && !forceCheck && !isRetry) {
+      return !!localBingoCard;
     }
 
-  
-
-    const cardResponse = await gameAPI.getUserBingoCard(id, userId);
-
-    if (cardResponse.data.success && cardResponse.data.bingoCard) {
-      const apiCard = cardResponse.data.bingoCard;
-      
-      // Check if card is disqualified
-      if (apiCard.isDisqualified) {
-        setIsDisqualified(true);
-        setDisqualificationMessage(apiCard.disqualificationReason || 'Your card has been disqualified');
+    try {
+      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+      if (!userId || !id) {
         setIsSpectatorMode(true);
-        setSpectatorMessage('Your card has been disqualified. Watching as spectator.');
-        setCardError('');
+        setSpectatorMessage('Please login to join the game.');
         hasCardCheckedRef.current = true;
         return false;
       }
 
-      const newCard = {
-        cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
-        numbers: apiCard.numbers || [],
-        markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
-        selected: (apiCard as any).selected,
-        isDisqualified: apiCard.isDisqualified || false
-      };
+      const cardResponse = await gameAPI.getUserBingoCard(id, userId);
 
-      setLocalBingoCard(newCard);
-      setIsDisqualified(false);
-      setIsSpectatorMode(false);
-      setSpectatorMessage('');
-      setCardError('');
-      setRetryCount(0);
-      hasCardCheckedRef.current = true;
-      return true;
-    }
+      if (cardResponse.data.success && cardResponse.data.bingoCard) {
+        const apiCard = cardResponse.data.bingoCard;
+        
+        // Check if card is disqualified
+        if (apiCard.isDisqualified) {
+          setIsDisqualified(true);
+          setDisqualificationMessage(apiCard.disqualificationReason || 'Your card has been disqualified');
+          setIsSpectatorMode(true);
+          setSpectatorMessage('Your card has been disqualified. Watching as spectator.');
+          setCardError('');
+          hasCardCheckedRef.current = true;
+          return false;
+        }
 
-    setIsSpectatorMode(true);
-    setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
-    hasCardCheckedRef.current = true;
-    return false;
+        const newCard = {
+          cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
+          numbers: apiCard.numbers || [],
+          markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
+          selected: (apiCard as any).selected,
+          isDisqualified: apiCard.isDisqualified || false
+        };
 
-  } catch (error: any) {
-    console.error('Error checking user card:', error);
+        setLocalBingoCard(newCard);
+        setIsDisqualified(false);
+        setIsSpectatorMode(false);
+        setSpectatorMessage('');
+        setCardError('');
+        setRetryCount(0);
+        hasCardCheckedRef.current = true;
+        return true;
+      }
 
-    if (error.response?.status === 404) {
       setIsSpectatorMode(true);
       setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
       hasCardCheckedRef.current = true;
       return false;
-    } else {
-      if (isRetry) {
-        setCardError('Failed to load your card. Please check your connection.');
+
+    } catch (error: any) {
+      console.error('Error checking user card:', error);
+
+      if (error.response?.status === 404) {
+        setIsSpectatorMode(true);
+        setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
+        hasCardCheckedRef.current = true;
+        return false;
+      } else {
+        if (isRetry) {
+          setCardError('Failed to load your card. Please check your connection.');
+        }
+        return false;
       }
-      return false;
     }
-  }
-}, [id, localBingoCard, autoRetryInProgress]);
+  }, [id, localBingoCard, autoRetryInProgress]);
 
   // FIXED: Initialize user card
   const initializeUserCard = useCallback(async (forceCheck = false) => {
@@ -305,6 +348,16 @@ const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false)
       return () => clearTimeout(timer);
     }
   }, [cardError, localBingoCard, isLoadingCard, retryCount, initializeUserCard]);
+
+  // Check if user was previously disqualified on page load
+  useEffect(() => {
+    if (localBingoCard?.isDisqualified) {
+      setIsDisqualified(true);
+      setDisqualificationMessage('Your card has been disqualified');
+      setIsSpectatorMode(true);
+      setSpectatorMessage('You have been disqualified. Watching as spectator.');
+    }
+  }, [localBingoCard]);
 
   // FIXED: Check for winner
   const checkForWinner = useCallback(async (gameData?: Game) => {
@@ -592,9 +645,16 @@ const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false)
     return () => clearTimeout(safetyTimeout);
   }, [isLoadingCard]);
 
+  // Add this to hide disqualification modal when game ends
+  useEffect(() => {
+    if (showDisqualificationModal && game?.status === 'FINISHED') {
+      setShowDisqualificationModal(false);
+    }
+  }, [game?.status, showDisqualificationModal]);
+
   // FIXED: Handle manual number marking with immediate UI feedback
   const handleMarkNumber = async (number: number) => {
-    if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE') return;
+    if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE' || isDisqualified) return;
 
     try {
       setIsMarking(true);
@@ -674,144 +734,95 @@ const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false)
   };
 
   // FIXED: Handle manual Bingo claim
-const handleClaimBingo = async () => {
-  if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard) return;
+  const handleClaimBingo = async () => {
+    if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard || isDisqualified) return;
 
-  try {
-    setIsClaimingBingo(true);
-    setClaimResult(null);
+    try {
+      setIsClaimingBingo(true);
+      setClaimResult(null);
 
-    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-    if (!userId) throw new Error('User ID not found');
+      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+      if (!userId) throw new Error('User ID not found');
 
-    const response = await gameAPI.claimBingo(id, userId, 'BINGO');
+      const response = await gameAPI.claimBingo(id, userId, 'BINGO');
 
-    if (response.data.success) {
-      setClaimResult({
-        success: true,
-        message: response.data.message || 'Bingo claimed successfully!',
-        patternType: response.data.patternType,
-        prizeAmount: response.data.prizeAmount
-      });
+      if (response.data.success) {
+        setClaimResult({
+          success: true,
+          message: response.data.message || 'Bingo claimed successfully!',
+          patternType: response.data.patternType,
+          prizeAmount: response.data.prizeAmount
+        });
 
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+
+        setTimeout(() => updateGameState(true), 2000);
+      } else {
+        // Handle backend error response
+        const errorMsg = response.data.message || response.data.error || 'Failed to claim bingo';
+        setClaimResult({
+          success: false,
+          message: errorMsg
+        });
+        
+        // Check for disqualification in error message
+        if (errorMsg.toLowerCase().includes('disqualified') || 
+            errorMsg.toLowerCase().includes('false bingo claim')) {
+          handleDisqualification(errorMsg, {
+            patternClaimed: 'BINGO',
+            markedPositions: localBingoCard.markedPositions?.length
+          });
+        }
       }
-
-      setTimeout(() => updateGameState(true), 2000);
-    } else {
-      // Handle backend error response
-      const errorMsg = response.data.message || response.data.error || 'Failed to claim bingo';
-      setClaimResult({
-        success: false,
-        message: errorMsg
+    } catch (error: any) {
+      console.error('❌ Bingo claim failed:', error);
+      
+      // Get the actual error message from the API response
+      let errorMessage = 'Failed to claim bingo';
+      
+      if (error.response?.data) {
+        // Try multiple possible error fields
+        errorMessage = error.response.data.error || 
+                       error.response.data.message || 
+                       error.message || 
+                       'Failed to claim bingo';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      console.log('Raw error data:', {
+        responseData: error.response?.data,
+        errorMessage
       });
       
-      // Check for disqualification in error message
-      if (errorMsg.toLowerCase().includes('disqualified') || 
-          errorMsg.toLowerCase().includes('false bingo claim')) {
-        handleDisqualification(errorMsg, {
+      setClaimResult({
+        success: false,
+        message: errorMessage
+      });
+      
+      // Check if this is a disqualification error
+      const isDisqualifiedError = errorMessage.toLowerCase().includes('disqualified') || 
+                                  errorMessage.toLowerCase().includes('false bingo claim');
+      
+      if (isDisqualifiedError) {
+        handleDisqualification(errorMessage, {
           patternClaimed: 'BINGO',
-          markedPositions: localBingoCard.markedPositions?.length
+          markedPositions: localBingoCard?.markedPositions?.length
         });
       }
-    }
-  } catch (error: any) {
-    console.error('❌ Bingo claim failed:', error);
-    
-    // Get the actual error message from the API response
-    let errorMessage = 'Failed to claim bingo';
-    
-    if (error.response?.data) {
-      // Try multiple possible error fields
-      errorMessage = error.response.data.error || 
-                     error.response.data.message || 
-                     error.message || 
-                     'Failed to claim bingo';
-    } else if (error.message) {
-      errorMessage = error.message;
-    }
-    
-    console.log('Raw error data:', {
-      responseData: error.response?.data,
-      errorMessage
-    });
-    
-    setClaimResult({
-      success: false,
-      message: errorMessage
-    });
-    
-    // Check if this is a disqualification error
-    const isDisqualifiedError = errorMessage.toLowerCase().includes('disqualified') || 
-                                errorMessage.toLowerCase().includes('false bingo claim');
-    
-    if (isDisqualifiedError) {
-      handleDisqualification(errorMessage, {
-        patternClaimed: 'BINGO',
-        markedPositions: localBingoCard?.markedPositions?.length
-      });
-    }
-  } finally {
-    setIsClaimingBingo(false);
+    } finally {
+      setIsClaimingBingo(false);
 
-    // Show disqualification message longer
-    setTimeout(() => {
-      setClaimResult(null);
-    }, isDisqualified ? 10000 : 5000);
-  }
-};
+      // Show disqualification message longer
+      setTimeout(() => {
+        setClaimResult(null);
+      }, isDisqualified ? 10000 : 5000);
+    }
+  };
 
-// Add this to hide disqualification modal when game ends
-useEffect(() => {
-  if (showDisqualificationModal && game?.status === 'FINISHED') {
-    setShowDisqualificationModal(false);
-  }
-}, [game?.status, showDisqualificationModal]);
-// Helper function to handle disqualification
-
-const handleDisqualification = (errorMessage: string, details?: any) => {
-  console.log('🚨 User disqualified:', errorMessage, details);
-  
-  // Update disqualification state
-  setIsDisqualified(true);
-  setDisqualificationMessage(errorMessage);
-  
-  // Mark card as disqualified in local state
-  if (localBingoCard) {
-    setLocalBingoCard({
-      ...localBingoCard,
-      isDisqualified: true,
-    });
-  }
-  
-  // Set spectator mode
-  setIsSpectatorMode(true);
-  setSpectatorMessage('You have been disqualified. Watching as spectator.');
-  
-  // Show disqualification modal with details
-  setDisqualificationDetails({
-    message: errorMessage,
-    patternClaimed: details?.patternClaimed,
-    markedPositions: localBingoCard?.markedPositions?.length,
-    calledNumbers: allCalledNumbers.length
-  });
-  
-  setShowDisqualificationModal(true);
-  
-  // Stop polling when disqualified
-  if (pollingRef.current) {
-    clearInterval(pollingRef.current);
-    pollingRef.current = null;
-  }
-  
-  // Show a more prominent error message
-  setClaimResult({
-    success: false,
-    message: `❌ ${errorMessage}`
-  });
-};
   // Handle returning to lobby
   const handleReturnToLobby = () => {
     if (countdownRef.current) clearInterval(countdownRef.current);
@@ -830,6 +841,7 @@ const handleDisqualification = (errorMessage: string, details?: any) => {
     setAllCalledNumbers([]);
     setClaimResult(null);
     setCountdown(10);
+    setShowDisqualificationModal(false);
 
     gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
@@ -838,16 +850,6 @@ const handleDisqualification = (errorMessage: string, details?: any) => {
 
     router.push('/');
   };
-
-  // Handle play again
-  const handlePlayAgain = () => {
-    handleReturnToLobby();
-  };
-
-  // Manual refresh button
-  const handleManualRefresh = useCallback(() => {
-    updateGameState(true);
-  }, [updateGameState]);
 
   // Use local card if available
   const displayBingoCard = useMemo(() => {
@@ -941,186 +943,124 @@ const handleDisqualification = (errorMessage: string, details?: any) => {
       </div>
     );
   }
-  // Add this to check if user was previously disqualified on page load
-useEffect(() => {
-  if (localBingoCard?.isDisqualified) {
-    setIsDisqualified(true);
-    setDisqualificationMessage('Your card has been disqualified');
-    setIsSpectatorMode(true);
-    setSpectatorMessage('You have been disqualified. Watching as spectator.');
-  }
-}, [localBingoCard]);
-
-// Update the condition for showing the bingo card to hide it when disqualified
-{!isDisqualified ? (
-  displayBingoCard ? (
-    <div className="mb-3 sm:mb-4">
-      {/* Your existing bingo card rendering */}
-    </div>
-  ) : (
-    <div className="text-center text-white/70 py-6 sm:py-8">
-      {/* Your existing "no card found" message */}
-    </div>
-  )
-) : (
-  <div className="text-center py-12 bg-gradient-to-br from-red-900/20 to-orange-900/20 rounded-2xl border border-red-500/30">
-    <div className="text-5xl mb-4">⛔</div>
-    <h3 className="text-xl font-bold text-white mb-2">CARD DISQUALIFIED</h3>
-    <p className="text-white/70 text-sm mb-4">
-      Your card has been removed from the game
-    </p>
-    <button
-      onClick={() => setShowDisqualificationModal(true)}
-      className="bg-gradient-to-r from-red-600/30 to-orange-600/30 text-white px-6 py-2 rounded-lg hover:from-red-600/40 hover:to-orange-600/40 transition-all text-sm"
-    >
-      View Disqualification Details
-    </button>
-  </div>
-)}
 
   // Main game render - game exists and loading is complete
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
       {/* Disqualification Modal */}
-<AnimatePresence>
-  {showDisqualificationModal && (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
-      onClick={(e) => {
-        // Only close if clicking the overlay (not the modal content)
-        if (e.target === e.currentTarget) {
-          setShowDisqualificationModal(false);
-        }
-      }}
-    >
-      <motion.div
-        initial={{ scale: 0.8, y: 50 }}
-        animate={{ scale: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 100 }}
-        className="bg-gradient-to-br from-red-900/90 to-orange-900/90 rounded-2xl p-6 max-w-md w-full border-2 border-red-500 shadow-2xl relative overflow-hidden"
-      >
-        {/* Close button for the modal */}
-        <button
-          onClick={() => setShowDisqualificationModal(false)}
-          className="absolute top-3 right-3 text-white/70 hover:text-white transition-colors"
-        >
-          ✕
-        </button>
-        
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="text-5xl mb-4">⛔</div>
-          <h1 className="text-2xl font-bold text-white mb-2">
-            DISQUALIFIED
-          </h1>
-          <p className="text-white/70 text-sm">
-            Game #{game?.code || id}
-          </p>
-        </div>
-
-        {/* Reason */}
-        <div className="bg-gradient-to-r from-red-800/50 to-orange-800/50 rounded-xl p-4 mb-6 border border-white/20">
-          <h3 className="text-lg font-bold text-white mb-3">Reason for Disqualification</h3>
-          <p className="text-white/80 text-sm mb-3">
-            {disqualificationDetails?.message || 'False bingo claim'}
-          </p>
-          
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            <div className="bg-gradient-to-r from-gray-900 to-black rounded-lg p-3">
-              <p className="text-white/70 text-xs mb-1">Marked Positions</p>
-              <p className="text-white text-lg font-bold">
-                {disqualificationDetails?.markedPositions || 0}/24
-              </p>
-            </div>
-            <div className="bg-gradient-to-r from-gray-900 to-black rounded-lg p-3">
-              <p className="text-white/70 text-xs mb-1">Numbers Called</p>
-              <p className="text-white text-lg font-bold">
-                {disqualificationDetails?.calledNumbers || 0}/75
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Consequences */}
-        <div className="bg-gradient-to-r from-gray-900 to-black rounded-xl p-4 mb-6 border border-white/10">
-          <h3 className="text-lg font-bold text-white mb-3">Consequences</h3>
-          <ul className="space-y-2 text-white/80 text-sm">
-            <li className="flex items-start gap-2">
-              <span className="text-red-400 mt-0.5">•</span>
-              <span>Your entry fee of 10 ብር is forfeited</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-red-400 mt-0.5">•</span>
-              <span>You cannot mark numbers or claim bingo</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-red-400 mt-0.5">•</span>
-              <span>You cannot rejoin this specific game</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-green-400 mt-0.5">✓</span>
-              <span>You can still join future games</span>
-            </li>
-          </ul>
-        </div>
-
-        {/* Actions */}
-        <div className="mt-6 pt-6 border-t border-white/20">
-          <div className="text-center">
-            <p className="text-white/70 text-sm mb-4">
-              The game will continue without you. You can watch as a spectator.
-            </p>
-            
-            <div className="flex flex-col gap-3">
+      <AnimatePresence>
+        {showDisqualificationModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
+            onClick={(e) => {
+              // Only close if clicking the overlay (not the modal content)
+              if (e.target === e.currentTarget) {
+                setShowDisqualificationModal(false);
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.8, y: 50 }}
+              animate={{ scale: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 100 }}
+              className="bg-gradient-to-br from-red-900/90 to-orange-900/90 rounded-2xl p-6 max-w-md w-full border-2 border-red-500 shadow-2xl relative overflow-hidden"
+            >
+              {/* Close button for the modal */}
               <button
                 onClick={() => setShowDisqualificationModal(false)}
-                className="bg-gradient-to-r from-gray-700 to-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:from-gray-600 hover:to-gray-800 transition-all"
+                className="absolute top-3 right-3 text-white/70 hover:text-white transition-colors"
               >
-                Continue Watching
+                ✕
               </button>
               
-              <button
-                onClick={handleReturnToLobby}
-                className="bg-gradient-to-r from-red-700 to-red-900 text-white px-6 py-3 rounded-xl font-bold hover:from-red-600 hover:to-red-800 transition-all"
-              >
-                Return to Lobby
-              </button>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-    </motion.div>
-  )}
-</AnimatePresence>
+              {/* Header */}
+              <div className="text-center mb-6">
+                <div className="text-5xl mb-4">⛔</div>
+                <h1 className="text-2xl font-bold text-white mb-2">
+                  DISQUALIFIED
+                </h1>
+                <p className="text-white/70 text-sm">
+                  Game #{game?.code || id}
+                </p>
+              </div>
 
-// Add this after the Header in your JSX (before the main grid)
-{/* Disqualification Warning Banner */}
-{isDisqualified && !showDisqualificationModal && (
-  <motion.div
-    initial={{ opacity: 0, y: -20 }}
-    animate={{ opacity: 1, y: 0 }}
-    className="bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 rounded-2xl p-4 mb-6 backdrop-blur-lg cursor-pointer"
-    onClick={() => setShowDisqualificationModal(true)}
-  >
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <div className="text-2xl">⛔</div>
-        <div>
-          <h3 className="text-white font-bold text-lg">DISQUALIFIED</h3>
-          <p className="text-white/80 text-sm">Click for details</p>
-        </div>
-      </div>
-      <div className="text-white/60">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </div>
-    </div>
-  </motion.div>
-)}
+              {/* Reason */}
+              <div className="bg-gradient-to-r from-red-800/50 to-orange-800/50 rounded-xl p-4 mb-6 border border-white/20">
+                <h3 className="text-lg font-bold text-white mb-3">Reason for Disqualification</h3>
+                <p className="text-white/80 text-sm mb-3">
+                  {disqualificationDetails?.message || 'False bingo claim'}
+                </p>
+                
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  <div className="bg-gradient-to-r from-gray-900 to-black rounded-lg p-3">
+                    <p className="text-white/70 text-xs mb-1">Marked Positions</p>
+                    <p className="text-white text-lg font-bold">
+                      {disqualificationDetails?.markedPositions || 0}/24
+                    </p>
+                  </div>
+                  <div className="bg-gradient-to-r from-gray-900 to-black rounded-lg p-3">
+                    <p className="text-white/70 text-xs mb-1">Numbers Called</p>
+                    <p className="text-white text-lg font-bold">
+                      {disqualificationDetails?.calledNumbers || 0}/75
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Consequences */}
+              <div className="bg-gradient-to-r from-gray-900 to-black rounded-xl p-4 mb-6 border border-white/10">
+                <h3 className="text-lg font-bold text-white mb-3">Consequences</h3>
+                <ul className="space-y-2 text-white/80 text-sm">
+                  <li className="flex items-start gap-2">
+                    <span className="text-red-400 mt-0.5">•</span>
+                    <span>Your entry fee of 10 ብር is forfeited</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-red-400 mt-0.5">•</span>
+                    <span>You cannot mark numbers or claim bingo</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-red-400 mt-0.5">•</span>
+                    <span>You cannot rejoin this specific game</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-green-400 mt-0.5">✓</span>
+                    <span>You can still join future games</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Actions */}
+              <div className="mt-6 pt-6 border-t border-white/20">
+                <div className="text-center">
+                  <p className="text-white/70 text-sm mb-4">
+                    The game will continue without you. You can watch as a spectator.
+                  </p>
+                  
+                  <div className="flex flex-col gap-3">
+                    <button
+                      onClick={() => setShowDisqualificationModal(false)}
+                      className="bg-gradient-to-r from-gray-700 to-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:from-gray-600 hover:to-gray-800 transition-all"
+                    >
+                      Continue Watching
+                    </button>
+                    
+                    <button
+                      onClick={handleReturnToLobby}
+                      className="bg-gradient-to-r from-red-700 to-red-900 text-white px-6 py-3 rounded-xl font-bold hover:from-red-600 hover:to-red-800 transition-all"
+                    >
+                      Return to Lobby
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Winner Modal */}
       <AnimatePresence>
@@ -1320,6 +1260,31 @@ useEffect(() => {
         </div>
       )}
 
+      {/* Disqualification Warning Banner */}
+      {isDisqualified && !showDisqualificationModal && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-red-600/20 to-orange-600/20 border border-red-500/30 rounded-2xl p-4 mb-6 backdrop-blur-lg cursor-pointer"
+          onClick={() => setShowDisqualificationModal(true)}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="text-2xl">⛔</div>
+              <div>
+                <h3 className="text-white font-bold text-lg">DISQUALIFIED</h3>
+                <p className="text-white/80 text-sm">Click for details</p>
+              </div>
+            </div>
+            <div className="text-white/60">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Header */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="grid grid-cols-6 gap-4 text-center">
@@ -1350,8 +1315,6 @@ useEffect(() => {
             <p className="text-white/60 text-xs">Called</p>
           </div>
         </div>
-
-
       </div>
 
       <div className="grid grid-cols-5 gap-1">
@@ -1439,7 +1402,7 @@ useEffect(() => {
 
         {/* Right: Bingo Card */}
         <div className="col-span-3">
-          {/* Permanent Current Called Number Display - Added here */}
+          {/* Permanent Current Called Number Display */}
           {currentCalledNumber && (
             <div className="mb-3 sm:mb-4">
               <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-4 py-3 rounded-2xl shadow-lg font-bold text-center">
@@ -1471,7 +1434,21 @@ useEffect(() => {
               </div>
             </div>
 
-            {displayBingoCard ? (
+            {isDisqualified ? (
+              <div className="text-center py-12 bg-gradient-to-br from-red-900/20 to-orange-900/20 rounded-2xl border border-red-500/30">
+                <div className="text-5xl mb-4">⛔</div>
+                <h3 className="text-xl font-bold text-white mb-2">CARD DISQUALIFIED</h3>
+                <p className="text-white/70 text-sm mb-4">
+                  Your card has been removed from the game
+                </p>
+                <button
+                  onClick={() => setShowDisqualificationModal(true)}
+                  className="bg-gradient-to-r from-red-600/30 to-orange-600/30 text-white px-6 py-2 rounded-lg hover:from-red-600/40 hover:to-orange-600/40 transition-all text-sm"
+                >
+                  View Disqualification Details
+                </button>
+              </div>
+            ) : displayBingoCard ? (
               <div className="mb-3 sm:mb-4">
                 {/* BINGO Header - Responsive text sizes */}
                 <div className="grid grid-cols-5 gap-0.5 sm:gap-1 mb-1 sm:mb-2">
@@ -1521,7 +1498,6 @@ useEffect(() => {
                             }
                           `}
                           onClick={() => {
-                             if (isDisqualified) return; // Disable clicks if disqualified
                             if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
                               handleMarkNumber(number as number);
                             }
