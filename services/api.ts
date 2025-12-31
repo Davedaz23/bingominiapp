@@ -279,6 +279,7 @@ claimBingo: (gameId: string, userId: string, patternType?: string) =>
       patternType?: string;
       winningPositions?: number[];
       prizeAmount?: number;
+      error?: string;
     }>(`/games/${gameId}/claim-bingo`, { userId, patternType }),
 
   //   api.post<{ success: boolean; gameStarted: boolean; game?: Game }>(`/games/${gameId}/check-auto-start`),

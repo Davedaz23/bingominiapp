@@ -667,7 +667,7 @@ const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false)
   };
 
   // FIXED: Handle manual Bingo claim
- const handleClaimBingo = async () => {
+const handleClaimBingo = async () => {
   if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard) return;
 
   try {
@@ -694,53 +694,88 @@ const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false)
 
       setTimeout(() => updateGameState(true), 2000);
     } else {
+      // Handle backend error response
+      const errorMsg = response.data.message || response.data.error || 'Failed to claim bingo';
       setClaimResult({
         success: false,
-        message: response.data.message || 'Failed to claim bingo'
+        message: errorMsg
       });
+      
+      // Check for disqualification in error message
+      if (errorMsg.toLowerCase().includes('disqualified') || 
+          errorMsg.toLowerCase().includes('false bingo claim')) {
+        handleDisqualification(errorMsg);
+      }
     }
   } catch (error: any) {
     console.error('❌ Bingo claim failed:', error);
     
-    const errorMessage = error.response?.data?.message || error.message || 'Failed to claim bingo';
+    // Get the actual error message from the API response
+    let errorMessage = 'Failed to claim bingo';
     
-    // Check if this is a disqualification error
-    const isDisqualified = errorMessage.toLowerCase().includes('disqualified') || 
-                          errorMessage.toLowerCase().includes('false bingo claim');
+    if (error.response?.data) {
+      // Try multiple possible error fields
+      errorMessage = error.response.data.error || 
+                     error.response.data.message || 
+                     error.message || 
+                     'Failed to claim bingo';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    console.log('Raw error data:', {
+      responseData: error.response?.data,
+      errorMessage
+    });
     
     setClaimResult({
       success: false,
       message: errorMessage
     });
     
-    // If disqualified, update the UI to reflect this
-    if (isDisqualified) {
-      // Mark card as disqualified in local state
-      if (localBingoCard) {
-        setLocalBingoCard({
-          ...localBingoCard,
-          isDisqualified: true,
-          // disqualifiedAt: new Date().toISOString()
-        });
-      }
-      
-      // Show a more prominent error message
-      setTimeout(() => {
-        setClaimResult({
-          success: false,
-          message: '❌ You have been DISQUALIFIED for a false bingo claim!'
-        });
-      }, 100);
+    // Check if this is a disqualification error
+    const isDisqualifiedError = errorMessage.toLowerCase().includes('disqualified') || 
+                                errorMessage.toLowerCase().includes('false bingo claim');
+    
+    if (isDisqualifiedError) {
+      handleDisqualification(errorMessage);
     }
   } finally {
     setIsClaimingBingo(false);
 
+    // Show disqualification message longer
     setTimeout(() => {
       setClaimResult(null);
-    }, isDisqualified ? 10000 : 5000); // Show disqualification message longer
+    }, isDisqualified ? 10000 : 5000);
   }
 };
+// Helper function to handle disqualification
 
+const handleDisqualification = (errorMessage: string) => {
+  console.log('🚨 User disqualified:', errorMessage);
+  
+  // Update disqualification state
+  setIsDisqualified(true);
+  setDisqualificationMessage(errorMessage);
+  
+  // Mark card as disqualified in local state
+  if (localBingoCard) {
+    setLocalBingoCard({
+      ...localBingoCard,
+      isDisqualified: true,
+    });
+  }
+  
+  // Set spectator mode
+  setIsSpectatorMode(true);
+  setSpectatorMessage('You have been disqualified. Watching as spectator.');
+  
+  // Show a more prominent error message
+  setClaimResult({
+    success: false,
+    message: `❌ ${errorMessage}`
+  });
+};
   // Handle returning to lobby
   const handleReturnToLobby = () => {
     if (countdownRef.current) clearInterval(countdownRef.current);
