@@ -382,7 +382,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   // Fetch available cards when conditions are met
   useEffect(() => {
     console.log('🔄 useCardSelection main effect triggered:', {
-      gameId: gameData?._id,
+      gameId: gameData?._id||gameData?.id,
       gameStatus,
       walletBalance,
       userId: user?.id,
@@ -390,7 +390,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       isSelectionActive: cardSelectionStatus.isSelectionActive
     });
 
-    const canFetchCards = gameData?._id && shouldEnableCardSelection() && user?.id;
+    const canFetchCards = (gameData?._id||gameData?.id) && shouldEnableCardSelection() && user?.id;
     
     if (canFetchCards) {
       console.log('🚀 Fetching available cards...');
