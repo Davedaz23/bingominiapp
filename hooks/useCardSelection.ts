@@ -58,7 +58,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   }, [availableCards, selectedNumber, removeAccountData]);
 
   const shouldEnableCardSelection = useCallback(() => {
-    if (!gameData?._id) {
+    if (!gameData?._id||!gameData?.id) {
       console.log('❌ No game ID');
       return false;
     }
@@ -70,7 +70,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
     console.log('❌ Insufficient wallet balance:', walletBalance);
     return false;
-  }, [gameData?._id, walletBalance]);
+  }, [gameData?._id,gameData?.id, walletBalance]);
 
   const clearSelectedCard = useCallback(() => {
     setSelectedNumber(null);
