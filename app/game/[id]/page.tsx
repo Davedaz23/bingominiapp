@@ -145,10 +145,12 @@ export default function GamePage() {
   const cardUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const disqualificationCheckRef = useRef<boolean>(false);
   const initializationCompleteRef = useRef<boolean>(false);
-
+const [recentCalledNumbers, setRecentCalledNumbers] = useState<
+  Array<{ number: number; letter: string; isCurrent?: boolean }>
+>([]);
   // Polling intervals
   const POLL_INTERVAL = 3000;
-  const MIN_UPDATE_INTERVAL = 1500;
+  const MIN_UPDATE_INTERVAL = 3000;
 
 // Add this at the beginning of your GamePage component, right after the imports
 useEffect(() => {
@@ -570,69 +572,87 @@ useEffect(() => {
   }, [getWinnerInfo, showWinnerModal, clearSelectedCard]);
 
   // FIXED: Update game state
-  const updateGameState = useCallback(async (force = false) => {
-    if (updateInProgressRef.current && !force) return;
-    if (!id || showWinnerModal) return;
+const updateGameState = useCallback(async (force = false) => {
+  if (updateInProgressRef.current && !force) return;
+  if (!id || showWinnerModal) return;
 
-    const now = Date.now();
-    if (!force && now - lastUpdateTimeRef.current < MIN_UPDATE_INTERVAL) {
-      return;
-    }
+  const now = Date.now();
+  if (!force && now - lastUpdateTimeRef.current < MIN_UPDATE_INTERVAL) {
+    return;
+  }
 
-    try {
-      updateInProgressRef.current = true;
-      lastUpdateTimeRef.current = now;
+  try {
+    updateInProgressRef.current = true;
+    lastUpdateTimeRef.current = now;
 
-      const response = await gameAPI.getGame(id);
-      const updatedGame = response.data.game as Game;
+    const response = await gameAPI.getGame(id);
+    const updatedGame = response.data.game as Game;
 
-      if (updatedGame) {
-        const currentState = lastGameStateRef.current;
+    if (updatedGame) {
+      const currentState = lastGameStateRef.current;
 
-        const numbersChanged = !currentState ||
-          JSON.stringify(currentState.numbersCalled) !== JSON.stringify(updatedGame.numbersCalled);
+      const numbersChanged = !currentState ||
+        JSON.stringify(currentState.numbersCalled) !== JSON.stringify(updatedGame.numbersCalled);
 
-        const statusChanged = currentState?.status !== updatedGame.status;
-        const winnerChanged = currentState?.winnerId !== updatedGame.winnerId;
+      const statusChanged = currentState?.status !== updatedGame.status;
+      const winnerChanged = currentState?.winnerId !== updatedGame.winnerId;
 
-        if (numbersChanged || statusChanged || winnerChanged || force) {
-          if (updatedGame.numbersCalled && updatedGame.numbersCalled.length > 0) {
-            setAllCalledNumbers(updatedGame.numbersCalled);
+      if (numbersChanged || statusChanged || winnerChanged || force) {
+        if (updatedGame.numbersCalled && updatedGame.numbersCalled.length > 0) {
+          setAllCalledNumbers(updatedGame.numbersCalled);
 
-            const lastNumber = updatedGame.numbersCalled[updatedGame.numbersCalled.length - 1];
-            if (lastNumber) {
-              setCurrentCalledNumber({
-                number: lastNumber,
-                letter: getNumberLetter(lastNumber),
-                isNew: numbersChanged
-              });
-
-              if (animationTimeoutRef.current) {
-                clearTimeout(animationTimeoutRef.current);
+          const lastNumber = updatedGame.numbersCalled[updatedGame.numbersCalled.length - 1];
+          if (lastNumber) {
+            // Create recent called numbers (last 3)
+            const recentNumbers = [];
+            const totalCalled = updatedGame.numbersCalled.length;
+            
+            // Get the last 3 numbers (or fewer if not enough)
+            for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
+              const num = updatedGame.numbersCalled[i];
+              if (num) {
+                recentNumbers.push({
+                  number: num,
+                  letter: getNumberLetter(num),
+                  isCurrent: i === totalCalled - 1 // Mark the most recent as current
+                });
               }
-
-              animationTimeoutRef.current = setTimeout(() => {
-                setCurrentCalledNumber(prev =>
-                  prev ? { ...prev, isNew: false } : null
-                );
-              }, 100);
             }
-          }
+            
+            setRecentCalledNumbers(recentNumbers);
+            
+            setCurrentCalledNumber({
+              number: lastNumber,
+              letter: getNumberLetter(lastNumber),
+              isNew: numbersChanged
+            });
 
-          if (updatedGame.status === 'FINISHED' && updatedGame.winnerId && !gameEndedCheckRef.current) {
-            gameEndedCheckRef.current = true;
-            await checkForWinner(updatedGame);
-          }
+            if (animationTimeoutRef.current) {
+              clearTimeout(animationTimeoutRef.current);
+            }
 
-          lastGameStateRef.current = updatedGame;
+            animationTimeoutRef.current = setTimeout(() => {
+              setCurrentCalledNumber(prev =>
+                prev ? { ...prev, isNew: false } : null
+              );
+            }, 100);
+          }
         }
+
+        if (updatedGame.status === 'FINISHED' && updatedGame.winnerId && !gameEndedCheckRef.current) {
+          gameEndedCheckRef.current = true;
+          await checkForWinner(updatedGame);
+        }
+
+        lastGameStateRef.current = updatedGame;
       }
-    } catch (error) {
-      console.warn('Failed to update game state:', error);
-    } finally {
-      updateInProgressRef.current = false;
     }
-  }, [id, showWinnerModal, checkForWinner, MIN_UPDATE_INTERVAL]);
+  } catch (error) {
+    console.warn('Failed to update game state:', error);
+  } finally {
+    updateInProgressRef.current = false;
+  }
+}, [id, showWinnerModal, checkForWinner, MIN_UPDATE_INTERVAL]);
 
   // FIXED: Start polling - SKIP if disqualified
   const startPolling = useCallback(() => {
@@ -1554,6 +1574,88 @@ useEffect(() => {
               </div>
             </div>
           )}
+          {recentCalledNumbers.length > 0 && (
+    <div className="mb-3 sm:mb-4">
+      <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-lg rounded-xl border border-white/20 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-white/80 text-xs sm:text-sm font-medium">
+            Recent Numbers
+          </h4>
+          <span className="text-white/60 text-xs">
+            {allCalledNumbers.length}/75
+          </span>
+        </div>
+        
+        <div className="flex items-center justify-center gap-2 sm:gap-3">
+          {recentCalledNumbers.map((item, index) => (
+            <motion.div
+              key={`${item.number}-${index}`}
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: index * 0.1 }}
+              className={`
+                flex-1 max-w-[80px] aspect-square rounded-lg
+                flex flex-col items-center justify-center
+                transition-all duration-300
+                ${item.isCurrent
+                  ? 'bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border-2 border-yellow-400/50 shadow-lg shadow-yellow-500/20'
+                  : 'bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-white/10'
+                }
+              `}
+            >
+              <div className={`
+                text-xs sm:text-sm font-bold mb-0.5
+                ${item.isCurrent ? 'text-yellow-300' : 'text-white/70'}
+              `}>
+                {item.letter}
+              </div>
+              <div className={`
+                text-lg sm:text-xl md:text-2xl font-bold
+                ${item.isCurrent ? 'text-white' : 'text-white/90'}
+              `}>
+                {item.number}
+              </div>
+              {item.isCurrent && (
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ repeat: Infinity, duration: 1.5 }}
+                  className="mt-1 w-2 h-2 bg-yellow-400 rounded-full"
+                />
+              )}
+            </motion.div>
+          ))}
+          
+          {/* If we have less than 3 recent numbers, show placeholder */}
+          {recentCalledNumbers.length < 3 &&
+            Array.from({ length: 3 - recentCalledNumbers.length }).map((_, index) => (
+              <div
+                key={`placeholder-${index}`}
+                className="flex-1 max-w-[80px] aspect-square rounded-lg bg-gradient-to-br from-gray-800/20 to-gray-900/20 border border-white/5 flex flex-col items-center justify-center"
+              >
+                <div className="text-xs text-white/30 font-bold mb-0.5">
+                  ?
+                </div>
+                <div className="text-lg text-white/20 font-bold">
+                  -
+                </div>
+              </div>
+            ))
+          }
+        </div>
+        
+        <div className="mt-2 flex items-center justify-center gap-4 text-xs text-white/50">
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+            <span>Current</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-purple-400/30 rounded-full"></div>
+            <span>Recent</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
           
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
             <div className="flex justify-between items-center mb-3 sm:mb-4">
