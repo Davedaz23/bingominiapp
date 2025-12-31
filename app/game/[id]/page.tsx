@@ -1577,14 +1577,7 @@ const updateGameState = useCallback(async (force = false) => {
           {recentCalledNumbers.length > 0 && (
     <div className="mb-3 sm:mb-4">
       <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-lg rounded-xl border border-white/20 p-3">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-white/80 text-xs sm:text-sm font-medium">
-            Recent Numbers
-          </h4>
-          <span className="text-white/60 text-xs">
-            {allCalledNumbers.length}/75
-          </span>
-        </div>
+     
         
         <div className="flex items-center justify-center gap-2 sm:gap-3">
           {recentCalledNumbers.map((item, index) => (
@@ -1643,16 +1636,7 @@ const updateGameState = useCallback(async (force = false) => {
           }
         </div>
         
-        <div className="mt-2 flex items-center justify-center gap-4 text-xs text-white/50">
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-            <span>Current</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 bg-purple-400/30 rounded-full"></div>
-            <span>Recent</span>
-          </div>
-        </div>
+      
       </div>
     </div>
   )}
