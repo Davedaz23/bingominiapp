@@ -37,6 +37,8 @@ export interface BingoCard {
   createdAt?: string;
   user?: User;
   markedNumbers?: number[]; // Flat array of marked numbers
+  isDisqualified?: boolean;
+  disqualificationReason?: string;
 }
 
 export interface GameState {

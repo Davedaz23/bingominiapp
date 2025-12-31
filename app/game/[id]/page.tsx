@@ -19,6 +19,7 @@ interface LocalBingoCard {
   id?: string;
   _id?: string;
   cardIndex?: number;
+  isDisqualified?: boolean;
 }
 
 interface WinnerInfo {
@@ -126,7 +127,9 @@ export default function GamePage() {
   const lastUpdateTimeRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const cardUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
+//disquaified
+const [isDisqualified, setIsDisqualified] = useState<boolean>(false);
+const [disqualificationMessage, setDisqualificationMessage] = useState<string>('');
   // Polling intervals
   const POLL_INTERVAL = 3000;
   const MIN_UPDATE_INTERVAL = 1500;
@@ -141,63 +144,79 @@ export default function GamePage() {
   };
 
   // FIXED: Check if user has a bingo card
-  const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false): Promise<boolean> => {
-    if (autoRetryInProgress && !isRetry) return false;
+const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false): Promise<boolean> => {
+  if (autoRetryInProgress && !isRetry) return false;
 
-    if (hasCardCheckedRef.current && !forceCheck && !isRetry) {
-      return !!localBingoCard;
+  if (hasCardCheckedRef.current && !forceCheck && !isRetry) {
+    return !!localBingoCard;
+  }
+
+  try {
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    if (!userId || !id) {
+      setIsSpectatorMode(true);
+      setSpectatorMessage('Please login to join the game.');
+      hasCardCheckedRef.current = true;
+      return false;
     }
 
-    try {
-      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      if (!userId || !id) {
+  
+
+    const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+
+    if (cardResponse.data.success && cardResponse.data.bingoCard) {
+      const apiCard = cardResponse.data.bingoCard;
+      
+      // Check if card is disqualified
+      if (apiCard.isDisqualified) {
+        setIsDisqualified(true);
+        setDisqualificationMessage(apiCard.disqualificationReason || 'Your card has been disqualified');
         setIsSpectatorMode(true);
-        setSpectatorMessage('Please login to join the game.');
+        setSpectatorMessage('Your card has been disqualified. Watching as spectator.');
+        setCardError('');
         hasCardCheckedRef.current = true;
         return false;
       }
 
-      const cardResponse = await gameAPI.getUserBingoCard(id, userId);
+      const newCard = {
+        cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
+        numbers: apiCard.numbers || [],
+        markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
+        selected: (apiCard as any).selected,
+        isDisqualified: apiCard.isDisqualified || false
+      };
 
-      if (cardResponse.data.success && cardResponse.data.bingoCard) {
-        const apiCard = cardResponse.data.bingoCard;
-        const newCard = {
-          cardNumber: (apiCard as any).cardNumber || (apiCard as any).cardIndex || 0,
-          numbers: apiCard.numbers || [],
-          markedPositions: apiCard.markedNumbers || apiCard.markedPositions || [],
-          selected: (apiCard as any).selected
-        };
+      setLocalBingoCard(newCard);
+      setIsDisqualified(false);
+      setIsSpectatorMode(false);
+      setSpectatorMessage('');
+      setCardError('');
+      setRetryCount(0);
+      hasCardCheckedRef.current = true;
+      return true;
+    }
 
-        setLocalBingoCard(newCard);
-        setIsSpectatorMode(false);
-        setSpectatorMessage('');
-        setCardError('');
-        setRetryCount(0);
-        hasCardCheckedRef.current = true;
-        return true;
-      }
+    setIsSpectatorMode(true);
+    setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
+    hasCardCheckedRef.current = true;
+    return false;
 
+  } catch (error: any) {
+    console.error('Error checking user card:', error);
+
+    if (error.response?.status === 404) {
       setIsSpectatorMode(true);
       setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
       hasCardCheckedRef.current = true;
       return false;
-
-    } catch (error: any) {
-      console.error('Error checking user card:', error);
-
-      if (error.response?.status === 404) {
-        setIsSpectatorMode(true);
-        setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
-        hasCardCheckedRef.current = true;
-        return false;
-      } else {
-        if (isRetry) {
-          setCardError('Failed to load your card. Please check your connection.');
-        }
-        return false;
+    } else {
+      if (isRetry) {
+        setCardError('Failed to load your card. Please check your connection.');
       }
+      return false;
     }
-  }, [id, localBingoCard, autoRetryInProgress]);
+  }
+}, [id, localBingoCard, autoRetryInProgress]);
 
   // FIXED: Initialize user card
   const initializeUserCard = useCallback(async (forceCheck = false) => {
@@ -648,52 +667,79 @@ export default function GamePage() {
   };
 
   // FIXED: Handle manual Bingo claim
-  const handleClaimBingo = async () => {
-    if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard) return;
+ const handleClaimBingo = async () => {
+  if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard) return;
 
-    try {
-      setIsClaimingBingo(true);
-      setClaimResult(null);
+  try {
+    setIsClaimingBingo(true);
+    setClaimResult(null);
 
-      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      if (!userId) throw new Error('User ID not found');
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    if (!userId) throw new Error('User ID not found');
 
-      const response = await gameAPI.claimBingo(id, userId, 'BINGO');
+    const response = await gameAPI.claimBingo(id, userId, 'BINGO');
 
-      if (response.data.success) {
-        setClaimResult({
-          success: true,
-          message: response.data.message || 'Bingo claimed successfully!',
-          patternType: response.data.patternType,
-          prizeAmount: response.data.prizeAmount
-        });
+    if (response.data.success) {
+      setClaimResult({
+        success: true,
+        message: response.data.message || 'Bingo claimed successfully!',
+        patternType: response.data.patternType,
+        prizeAmount: response.data.prizeAmount
+      });
 
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
-
-        setTimeout(() => updateGameState(true), 2000);
-      } else {
-        setClaimResult({
-          success: false,
-          message: response.data.message || 'Failed to claim bingo'
-        });
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
       }
-    } catch (error: any) {
-      console.error('❌ Bingo claim failed:', error);
+
+      setTimeout(() => updateGameState(true), 2000);
+    } else {
       setClaimResult({
         success: false,
-        message: error.response?.data?.message || error.message || 'Failed to claim bingo'
+        message: response.data.message || 'Failed to claim bingo'
       });
-    } finally {
-      setIsClaimingBingo(false);
-
-      setTimeout(() => {
-        setClaimResult(null);
-      }, 5000);
     }
-  };
+  } catch (error: any) {
+    console.error('❌ Bingo claim failed:', error);
+    
+    const errorMessage = error.response?.data?.message || error.message || 'Failed to claim bingo';
+    
+    // Check if this is a disqualification error
+    const isDisqualified = errorMessage.toLowerCase().includes('disqualified') || 
+                          errorMessage.toLowerCase().includes('false bingo claim');
+    
+    setClaimResult({
+      success: false,
+      message: errorMessage
+    });
+    
+    // If disqualified, update the UI to reflect this
+    if (isDisqualified) {
+      // Mark card as disqualified in local state
+      if (localBingoCard) {
+        setLocalBingoCard({
+          ...localBingoCard,
+          isDisqualified: true,
+          // disqualifiedAt: new Date().toISOString()
+        });
+      }
+      
+      // Show a more prominent error message
+      setTimeout(() => {
+        setClaimResult({
+          success: false,
+          message: '❌ You have been DISQUALIFIED for a false bingo claim!'
+        });
+      }, 100);
+    }
+  } finally {
+    setIsClaimingBingo(false);
+
+    setTimeout(() => {
+      setClaimResult(null);
+    }, isDisqualified ? 10000 : 5000); // Show disqualification message longer
+  }
+};
 
   // Handle returning to lobby
   const handleReturnToLobby = () => {
@@ -1227,6 +1273,7 @@ export default function GamePage() {
                             }
                           `}
                           onClick={() => {
+                             if (isDisqualified) return; // Disable clicks if disqualified
                             if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
                               handleMarkNumber(number as number);
                             }
@@ -1291,7 +1338,7 @@ export default function GamePage() {
       </div>
 
       {/* Claim Bingo Button - Fixed Position */}
-      {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && allCalledNumbers.length > 0 && (
+      {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && !isDisqualified && allCalledNumbers.length > 0 && (
         <div className="fixed bottom-4 right-2 sm:right-4 md:right-6 z-10">
           <div className="flex flex-col items-end">
             <button
