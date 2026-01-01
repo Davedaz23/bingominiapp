@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable react-hooks/preserve-manual-memoization */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/hooks/useCardSelection.ts - OPTIMIZED VERSION
+// app/hooks/useCardSelection.ts - FIXED OPTIMIZED VERSION
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { gameAPI } from '../services/api';
 import { useAuth } from '@/app/contexts/AuthContext';
@@ -66,8 +66,8 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     }
   }, [availableCards, selectedNumber, removeAccountData]);
 
-  // MEMOIZED: shouldEnableCardSelection with caching
-  const shouldEnableCardSelection = useMemo(() => {
+  // MEMOIZED: shouldEnableCardSelection result
+  const shouldEnableCardSelectionResult = useMemo(() => {
     const gameId = gameIdRef.current;
     const balance = walletBalance;
     
@@ -84,6 +84,11 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     console.log('❌ Insufficient wallet balance:', balance);
     return false;
   }, [gameData?._id, gameData?.id, walletBalance]);
+
+  // Function version for backward compatibility
+  const shouldEnableCardSelection = useCallback(() => {
+    return shouldEnableCardSelectionResult;
+  }, [shouldEnableCardSelectionResult]);
 
   const clearSelectedCard = useCallback(() => {
     setSelectedNumber(null);
@@ -156,6 +161,12 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
       const response = await gameAPI.getAvailableCards(gameId, userId, 400);
       
+      console.log('📦 Available cards response:', {
+        success: response.data.success,
+        cardsCount: response.data.cards?.length,
+        firstCard: response.data.cards?.[0],
+      });
+      
       if (response.data.success) {
         const cards = response.data.cards || [];
         setAvailableCards(cards);
@@ -190,8 +201,14 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       
       const selectedCardData = availableCards.find(card => card.cardIndex === cardNumber);
       
+      console.log('🔍 Looking for card:', {
+        cardNumber,
+        availableCardsLength: availableCards.length,
+        selectedCardData
+      });
+      
       if (!selectedCardData) {
-        const errorMsg = `Card ${cardNumber} not found in available cards.`;
+        const errorMsg = `Card ${cardNumber} not found in available cards. Refresh and try again.`;
         setCardSelectionError(errorMsg);
         
         // Force refresh available cards
@@ -213,10 +230,18 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
         cardNumber: selectedCardData.cardIndex
       };
       
+      console.log('📤 Sending to backend:', {
+        url: `/games/${gameId}/select-card-with-number`,
+        data: requestData,
+        cardIndex: selectedCardData.cardIndex
+      });
+      
       const response = await gameAPI.selectCardWithNumber(gameId, requestData);
       
+      console.log("📡 Backend response:", response.data);
+      
       if (response.data.success) {
-        console.log(`✅ Card selection successful!`);
+        console.log(`✅ Card selection successful! Action: ${response.data.action || 'selected'}`);
         
         setSelectedNumber(cardNumber);
         setBingoCard(selectedCardData.numbers);
@@ -300,6 +325,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       console.log('🔍 Checking card selection status for game:', gameId);
       
       const response = await gameAPI.getCardSelectionStatus(gameId);
+      console.log('📦 Card selection status response:', response.data);
       
       if (response.data.success) {
         const isSelectionActive = gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION';
@@ -357,12 +383,12 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
 
     const gameId = gameIdRef.current;
     const userId = userIdRef.current;
-    const canFetchCards = gameId && shouldEnableCardSelection && userId;
+    const canFetchCards = gameId && shouldEnableCardSelectionResult && userId;
     
     console.log('🔄 useCardSelection evaluation:', {
       gameId,
       userId,
-      shouldEnableCardSelection,
+      shouldEnableCardSelection: shouldEnableCardSelectionResult,
       canFetchCards,
       gameStatus,
       walletBalance
@@ -379,7 +405,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       console.log('⏸️ Skipping card fetch - conditions not met:', {
         hasGameId: !!gameId,
         hasUserId: !!userId,
-        shouldEnableCardSelection,
+        shouldEnableCardSelection: shouldEnableCardSelectionResult,
         gameStatus
       });
       // Reset fetch flag when conditions are no longer met
@@ -393,7 +419,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
         fetchTimeoutRef.current = null;
       }
     };
-  }, [shouldEnableCardSelection, fetchAvailableCards, checkCardSelectionStatus, gameStatus]);
+  }, [shouldEnableCardSelectionResult, fetchAvailableCards, checkCardSelectionStatus, gameStatus]);
 
   // Check card selection status periodically - OPTIMIZED
   useEffect(() => {
@@ -434,7 +460,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     cardSelectionStatus,
     cardSelectionError,
     isLoadingCards,
-    shouldEnableCardSelection: shouldEnableCardSelection, // Return memoized value
+    shouldEnableCardSelection: shouldEnableCardSelection, // Return function for backward compatibility
     handleCardSelect,
     handleCardRelease,
     fetchAvailableCards,
