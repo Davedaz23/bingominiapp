@@ -10,12 +10,12 @@ export const useWebSocket = (gameId?: string, userId?: string) => {
   const [isConnected, setIsConnected] = useState(false);
   const [takenCards, setTakenCards] = useState<{cardNumber: number, userId: string}[]>([]);
   const [gameStatus, setGameStatus] = useState<any>(null);
-const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
-const [currentNumber, setCurrentNumber] = useState<{
-  number: number;
-  letter: string;
-} | null>(null);
-const [recentCalledNumbers, setRecentCalledNumbers] = useState<
+  const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
+  const [currentNumber, setCurrentNumber] = useState<{
+    number: number;
+    letter: string;
+  } | null>(null);
+  const [recentCalledNumbers, setRecentCalledNumbers] = useState<
     Array<{ number: number; letter: string; isCurrent?: boolean }>
   >([]);
   const [error, setError] = useState<string>('');
@@ -43,16 +43,22 @@ const [recentCalledNumbers, setRecentCalledNumbers] = useState<
       wsRef.current.close();
     }
 
-    // Use wss:// for production, ws:// for development
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/game?gameId=${gameId}&userId=${userId}`;
+    // FIXED: Use your Render backend URL directly
+    // For development: ws://localhost:3000
+    // For production: wss://telegram-bingo-bot-opj9.onrender.com
+    const backendUrl = process.env.NODE_ENV === 'production' 
+      ? 'wss://telegram-bingo-bot-opj9.onrender.com'
+      : 'ws://localhost:3000';
+    
+    const wsUrl = `${backendUrl}/ws/game?gameId=${gameId}&userId=${userId}`;
     
     console.log('🔗 Connecting to WebSocket:', wsUrl);
     
     wsRef.current = new WebSocket(wsUrl);
     
     wsRef.current.onopen = () => {
-      console.log('✅ WebSocket connected');
+      console.log('✅ WebSocket connected to Render backend');
+      console.log('🌐 Backend URL:', backendUrl);
       setIsConnected(true);
       setError('');
       setReconnectAttempts(0);
@@ -156,8 +162,15 @@ const [recentCalledNumbers, setRecentCalledNumbers] = useState<
     };
     
     wsRef.current.onclose = (event) => {
-      console.log('🔌 WebSocket disconnected:', event.code, event.reason);
+      console.log('🔌 WebSocket disconnected from Render:', event.code, event.reason);
+      console.log('🌐 Attempted URL:', backendUrl);
       setIsConnected(false);
+      
+      // Don't reconnect for error 1006 (abnormal closure)
+      if (event.code === 1006) {
+        setError('Cannot connect to game server. Please check your internet connection.');
+        return;
+      }
       
       // Attempt reconnection with exponential backoff
       if (reconnectAttempts < 5) {
@@ -174,8 +187,9 @@ const [recentCalledNumbers, setRecentCalledNumbers] = useState<
     };
     
     wsRef.current.onerror = (error) => {
-      console.error('❌ WebSocket error:', error);
-      setError('WebSocket connection error');
+      console.error('❌ WebSocket error connecting to Render:', error);
+      console.error('🌐 Attempted URL:', backendUrl);
+      setError(`Cannot connect to game server at ${backendUrl}`);
     };
   }, [gameId, userId, getNumberLetter, reconnectAttempts]);
 
@@ -226,10 +240,14 @@ const [recentCalledNumbers, setRecentCalledNumbers] = useState<
   // Connect on mount and when dependencies change
   useEffect(() => {
     if (gameId && userId) {
+      console.log('🚀 useWebSocket: Attempting connection', { gameId, userId });
       connect();
+    } else {
+      console.log('⏸️ useWebSocket: Missing gameId or userId', { gameId, userId });
     }
     
     return () => {
+      console.log('🧹 useWebSocket: Cleaning up');
       disconnect();
     };
   }, [gameId, userId, connect, disconnect]);
