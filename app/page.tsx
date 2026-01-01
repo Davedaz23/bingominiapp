@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { gameAPI } from '../services/api';
 import { useRouter, usePathname } from 'next/navigation';
@@ -32,17 +32,19 @@ export default function Home() {
     pageLoading,
     initializeGameState,
   } = useGameState();
-
+//memorization
+const memoizedGameData = useMemo(() => gameData, [gameData?._id, gameData?.status]);
+const memoizedGameStatus = useMemo(() => gameStatus, [gameStatus]);
   // Card selection - Use the hook's handleCardSelect
-  const {
-    selectedNumber,
-    bingoCard,
-    availableCards,
-    takenCards,
-    clearSelectedCard,
-    handleCardSelect, // Use the hook's handleCardSelect
-    cardSelectionError,
-  } = useCardSelection(gameData, gameStatus);
+const {
+  selectedNumber,
+  bingoCard,
+  availableCards,
+  takenCards,
+  clearSelectedCard,
+  handleCardSelect,
+  cardSelectionError,
+} = useCardSelection(memoizedGameData, memoizedGameStatus);
 
   // Local states
   const [hasCardInActiveGame, setHasCardInActiveGame] = useState<boolean>(false);
