@@ -1,18 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { gameAPI } from '../services/api';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
-import { Clock, Check, AlertCircle, Eye, Loader2, X, Info } from 'lucide-react';
+import { Clock, Check, AlertCircle, Loader2, Info } from 'lucide-react';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
 
 // Constants for throttling
-const PLAYER_CHECK_INTERVAL = 5000; // 3 minutes for player status
+const PLAYER_CHECK_INTERVAL = 5000; // 5 seconds for player status
 
 export default function Home() {
   const {
@@ -23,7 +23,6 @@ export default function Home() {
   } = useAuth();
 
   const router = useRouter();
-  const pathname = usePathname();
 
   // Game state
   const {
@@ -33,6 +32,10 @@ export default function Home() {
     initializeGameState,
   } = useGameState();
 
+  // Memoize game data to prevent unnecessary re-renders
+  const memoizedGameData = useMemo(() => gameData, [gameData?._id, gameData?.status]);
+  const memoizedGameStatus = useMemo(() => gameStatus, [gameStatus]);
+
   // Card selection - Use the hook's handleCardSelect
   const {
     selectedNumber,
@@ -40,132 +43,135 @@ export default function Home() {
     availableCards,
     takenCards,
     clearSelectedCard,
-    handleCardSelect, // Use the hook's handleCardSelect
+    handleCardSelect,
     cardSelectionError,
-  } = useCardSelection(gameData, gameStatus);
+    shouldEnableCardSelection,
+  } = useCardSelection(memoizedGameData, memoizedGameStatus);
 
   // Local states
   const [hasCardInActiveGame, setHasCardInActiveGame] = useState<boolean>(false);
   const [playerCardNumber, setPlayerCardNumber] = useState<number | null>(null);
   const [playerGameStatus, setPlayerGameStatus] = useState<string | null>(null);
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
-  const [isRedirecting, setIsRedirecting] = useState<boolean>(false);
   
-  // NEW: State for immediate UI feedback
+  // State for immediate UI feedback
   const [locallyTakenCards, setLocallyTakenCards] = useState<Set<number>>(new Set());
   const [processingCards, setProcessingCards] = useState<Set<number>>(new Set());
   const [totalPlayers, setTotalPlayers] = useState<number>(0);
+  const [isRedirecting, setIsRedirecting] = useState<boolean>(false);
 
   // Refs for tracking
   const isCheckingPlayerStatusRef = useRef<boolean>(false);
   const lastPlayerCheckRef = useRef<number>(0);
   const isInitializedRef = useRef<boolean>(false);
   const redirectAttemptedRef = useRef<boolean>(false);
-  const gameStatusRef = useRef<string>('');
-  const hasCardRef = useRef<boolean>(false);
-  const gameDataRef = useRef<any>(null);
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const currentSelectedCardRef = useRef<number | null>(null);
 
   // Sync refs with state
   useEffect(() => {
-    gameStatusRef.current = gameStatus;
-    hasCardRef.current = hasCardInActiveGame;
-    gameDataRef.current = gameData;
-    currentSelectedCardRef.current = selectedNumber;
-    
     // Update total players from gameData
     if (gameData?.currentPlayers) {
       setTotalPlayers(gameData.currentPlayers);
     }
-  }, [gameStatus, hasCardInActiveGame, gameData, selectedNumber]);
+  }, [gameData]);
 
-  // NEW: Get combined taken cards (server + local)
- const getCombinedTakenCards = useCallback(() => {
-  return [...takenCards]; // Just return server cards
-}, [takenCards]);
+  // Get combined taken cards (server + local)
+  const getCombinedTakenCards = useCallback(() => {
+    return [...takenCards];
+  }, [takenCards]);
 
-  // NEW: Check if game has minimum players (at least 2)
+  // Check if game has minimum players (at least 2)
   const hasMinimumPlayers = useCallback(() => {
     return totalPlayers >= 2;
   }, [totalPlayers]);
 
-  // NEW: Wrapper function for card selection with immediate UI feedback
-const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
-  // Clear any previous timeout
-  if (processingTimeoutRef.current) {
-    clearTimeout(processingTimeoutRef.current);
-  }
+  // Immediate redirect function
+  const handleImmediateRedirect = useCallback(() => {
+    if (redirectAttemptedRef.current || isRedirecting) return;
 
-  // REMOVE PREVIOUS SELECTED CARD: Clear the previously selected card
-  if (selectedNumber && selectedNumber !== cardNumber) {
-    // Clear from local storage via the hook's clear function
-    if (clearSelectedCard) {
-      clearSelectedCard();
+    const gameId = gameData?._id;
+    if (!gameId) {
+      console.warn('No game ID available for redirect');
+      return;
     }
-    // Also remove from locallyTakenCards if it's not actually taken on server
-    if (!takenCards.some(card => card.cardNumber === selectedNumber)) {
+
+    console.log(`🚀 IMMEDIATE REDIRECT to game: ${gameId}`);
+    setIsRedirecting(true);
+    redirectAttemptedRef.current = true;
+    
+    // Small delay for better UX
+    setTimeout(() => {
+      router.push(`/game/${gameId}`);
+    }, 300);
+  }, [gameData, router, isRedirecting]);
+
+  // Wrapper function for card selection with immediate UI feedback
+  const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
+    // Clear any previous timeout
+    if (processingTimeoutRef.current) {
+      clearTimeout(processingTimeoutRef.current);
+    }
+
+    // Remove previous selected card
+    if (selectedNumber && selectedNumber !== cardNumber) {
+      if (clearSelectedCard) {
+        clearSelectedCard();
+      }
+      if (!takenCards.some(card => card.cardNumber === selectedNumber)) {
+        setLocallyTakenCards(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(selectedNumber);
+          return newSet;
+        });
+      }
+    }
+
+    // Immediate UI update
+    setProcessingCards(prev => new Set(prev).add(cardNumber));
+
+    try {
+      await handleCardSelect(cardNumber);
+      
+      // Mark as locally taken
       setLocallyTakenCards(prev => {
         const newSet = new Set(prev);
-        newSet.delete(selectedNumber);
+        newSet.add(cardNumber);
         return newSet;
       });
-    }
-    console.log(`🗑️ Cleared previous card #${selectedNumber} selection`);
-  }
 
-  // IMMEDIATE UI UPDATE: Add to processing set
-  setProcessingCards(prev => new Set(prev).add(cardNumber));
+      console.log(`✅ Card ${cardNumber} selected successfully`);
 
-  try {
-    // Call the hook's handleCardSelect function
-    await handleCardSelect(cardNumber);
-    
-    // SUCCESS: Mark as locally taken (permanent until server sync)
-    setLocallyTakenCards(prev => {
-      const newSet = new Set(prev);
-      newSet.add(cardNumber);
-      return newSet;
-    });
+      // If game is ACTIVE, redirect
+      if (gameStatus === 'ACTIVE' && hasMinimumPlayers()) {
+        setTimeout(() => {
+          handleImmediateRedirect();
+        }, 1000);
+      }
 
-    console.log(`✅ Card ${cardNumber} selected successfully`);
-
-    // Check if we should redirect - ONLY if game has minimum players AND is active
-    if (gameStatus === 'ACTIVE' && hasMinimumPlayers()) {
-      // Small delay before redirect for better UX
-      setTimeout(() => {
-        handleRedirectToActiveGame();
-      }, 1000);
-    }
-
-    return true;
-    
-  } catch (error: any) {
-    console.error('❌ Card selection failed:', error);
-    
-    // REVERT UI: Remove from locally taken cards
-    setLocallyTakenCards(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(cardNumber);
-      return newSet;
-    });
-
-    // Just log the error, don't show modal
-    console.warn('Card selection error:', error.message || 'Failed to select card');
-    
-    return false;
-
-  } finally {
-    // Remove from processing after delay (for visual feedback)
-    processingTimeoutRef.current = setTimeout(() => {
-      setProcessingCards(prev => {
+      return true;
+      
+    } catch (error: any) {
+      console.error('❌ Card selection failed:', error);
+      
+      // Revert UI
+      setLocallyTakenCards(prev => {
         const newSet = new Set(prev);
         newSet.delete(cardNumber);
         return newSet;
       });
-    }, 1500);
-  }
-}, [handleCardSelect, gameStatus, hasMinimumPlayers, selectedNumber, clearSelectedCard, takenCards]);
+
+      return false;
+    } finally {
+      // Remove from processing after delay
+      processingTimeoutRef.current = setTimeout(() => {
+        setProcessingCards(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(cardNumber);
+          return newSet;
+        });
+      }, 1500);
+    }
+  }, [handleCardSelect, gameStatus, hasMinimumPlayers, selectedNumber, clearSelectedCard, takenCards, handleImmediateRedirect]);
 
   // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
@@ -174,9 +180,8 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
     const now = Date.now();
     const timeSinceLastCheck = now - lastPlayerCheckRef.current;
 
-    // Throttle checks
     if (!force && timeSinceLastCheck < PLAYER_CHECK_INTERVAL) {
-      return hasCardRef.current;
+      return hasCardInActiveGame;
     }
 
     try {
@@ -199,7 +204,12 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
               setHasCardInActiveGame(true);
               setPlayerCardNumber(playerParticipant.cardNumber || 0);
               setPlayerGameStatus(game.status);
-              isCheckingPlayerStatusRef.current = false;
+              
+              if (game.status === 'ACTIVE' && !redirectAttemptedRef.current) {
+                console.log('Player has card in ACTIVE game - Immediate redirect');
+                handleImmediateRedirect();
+              }
+              
               return true;
             }
           }
@@ -213,59 +223,32 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
 
     } catch (error) {
       console.error('Error checking player card:', error);
-      return hasCardRef.current;
+      return hasCardInActiveGame;
     } finally {
       isCheckingPlayerStatusRef.current = false;
     }
-  }, [user?.id]);
+  }, [user?.id, hasCardInActiveGame, handleImmediateRedirect]);
 
-  // Handle manual redirect to active game - ONLY if minimum players exist
-  const handleRedirectToActiveGame = useCallback(() => {
-    if (redirectAttemptedRef.current || isRedirecting) return;
-    
-    // Check if game has minimum players before redirecting
-    if (!hasMinimumPlayers() && gameStatus !== 'ACTIVE') {
-      console.log('Not redirecting: Need at least 2 players to start game');
-      return;
-    }
+  // Handle manual redirect
+  const handleManualRedirect = useCallback(() => {
+    handleImmediateRedirect();
+  }, [handleImmediateRedirect]);
 
-    setIsRedirecting(true);
-    redirectAttemptedRef.current = true;
-
-    const gameId = gameData?._id || 'active';
-    const query = hasCardRef.current ? '' : '?spectator=true';
-
-    console.log(`Manual redirect to game: ${gameId}${query}`);
-
-    // Small delay for better UX
-    setTimeout(() => {
-      router.push(`/game/${gameId}${query}`);
-    }, 300);
-  }, [gameData, router, isRedirecting, hasMinimumPlayers, gameStatus]);
-
-  // Check for active game and auto-redirect IMMEDIATELY - ONLY if minimum players
+  // Auto-redirect when game is ACTIVE
   useEffect(() => {
     if (authLoading || pageLoading || redirectAttemptedRef.current) return;
-
-    const hasActiveCard = hasCardRef.current && playerGameStatus === 'ACTIVE';
-    const isGameActive = gameStatusRef.current === 'ACTIVE';
-
-    // Only redirect if game has minimum players
-    const canRedirect = hasMinimumPlayers();
-
-    // IMMEDIATE REDIRECT: If game is active AND has minimum players, redirect immediately
-    if (isGameActive && canRedirect && !redirectAttemptedRef.current) {
-      console.log('Game is ACTIVE with minimum players - Immediate redirect to game page');
-      handleRedirectToActiveGame();
+    
+    if (gameStatus === 'ACTIVE' && hasMinimumPlayers() && !redirectAttemptedRef.current) {
+      console.log('🚀 Game is ACTIVE - Immediate auto-redirect');
+      handleImmediateRedirect();
       return;
     }
-
-    // Also redirect if user has a card in active game AND minimum players exist
-    if (hasActiveCard && canRedirect && !redirectAttemptedRef.current) {
-      console.log('User has card in active game with minimum players - Immediate redirect');
-      handleRedirectToActiveGame();
+    
+    if (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !redirectAttemptedRef.current) {
+      console.log('Player has card in ACTIVE game - Immediate redirect');
+      handleImmediateRedirect();
     }
-  }, [gameStatus, playerGameStatus, authLoading, pageLoading, handleRedirectToActiveGame, hasMinimumPlayers]);
+  }, [gameStatus, playerGameStatus, authLoading, pageLoading, handleImmediateRedirect, hasCardInActiveGame, hasMinimumPlayers]);
 
   // Initialize
   useEffect(() => {
@@ -282,10 +265,9 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
       }
 
       if (isAuthenticated && user) {
-        // Small delay before checking player status
         setTimeout(() => {
           checkPlayerCardInActiveGame(true);
-        }, 1500);
+        }, 1000);
       }
     };
 
@@ -294,12 +276,10 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
 
   // Set up periodic checks
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
+    if (!isAuthenticated || !user || redirectAttemptedRef.current) return;
 
     const playerCheckInterval = setInterval(() => {
-      if (!redirectAttemptedRef.current) {
-        checkPlayerCardInActiveGame();
-      }
+      checkPlayerCardInActiveGame();
     }, PLAYER_CHECK_INTERVAL);
 
     return () => {
@@ -307,7 +287,7 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
     };
   }, [isAuthenticated, user, checkPlayerCardInActiveGame]);
 
-  // Cleanup on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
       if (processingTimeoutRef.current) {
@@ -316,7 +296,7 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
     };
   }, []);
 
-  // Show loading during auth or page loading
+  // Show loading
   if (authLoading || pageLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
@@ -328,7 +308,7 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
     );
   }
 
-  // Show redirecting state - This will be shown briefly before redirect
+  // Show redirecting
   if (isRedirecting || (gameStatus === 'ACTIVE' && hasMinimumPlayers())) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
@@ -345,7 +325,7 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
     );
   }
 
-  // Simple status message
+  // Get status message
   const getStatusMessage = () => {
     if (hasCardInActiveGame) {
       return playerGameStatus === 'ACTIVE'
@@ -363,8 +343,16 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
       return 'Game finished - Next game soon';
     }
 
-    return 'Select your card to play';
+    if (gameStatus === 'CARD_SELECTION') {
+      return 'Select your card to play';
+    }
+
+    return 'Loading game...';
   };
+
+  // IMPORTANT: Check if we should show card selection
+  const showCardSelection = (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
+    (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
@@ -425,10 +413,10 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
             </div>
             {playerGameStatus === 'ACTIVE' && (
               <button
-                onClick={handleRedirectToActiveGame}
+                onClick={handleManualRedirect}
                 className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-lg text-xs hover:from-green-600 hover:to-emerald-700 transition-all"
               >
-                Join Game
+                Join Game Now
               </button>
             )}
           </div>
@@ -486,87 +474,82 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
         </motion.div>
       )}
 
-      {/* Card selection grid - Only when game is in selectable state */}
-      {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
-        (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
-          <>
-            <CardSelectionGrid
-              availableCards={availableCards}
-              takenCards={getCombinedTakenCards()} // Use combined taken cards
-              selectedNumber={selectedNumber} // Use the hook's selectedNumber
-              walletBalance={walletBalance}
-              gameStatus={gameStatus}
-              onCardSelect={handleCardSelectWithFeedback} // Pass our wrapper function
-            />
+      {/* Card selection grid */}
+      {showCardSelection && (
+        <>
+          <CardSelectionGrid
+            availableCards={availableCards}
+            takenCards={getCombinedTakenCards()}
+            selectedNumber={selectedNumber}
+            walletBalance={walletBalance}
+            gameStatus={gameStatus}
+            onCardSelect={handleCardSelectWithFeedback}
+          />
 
-            {/* Selected card preview */}
-            {selectedNumber && bingoCard && (
-              <motion.div
-                className="mb-6 mt-4"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <div className="bg-gradient-to-br from-purple-500/20 to-blue-600/20 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-white font-bold text-sm">Your Selected Card</h3>
-                    <span className="text-telegram-button text-sm font-bold">
-                      Card #{selectedNumber}
-                    </span>
-                  </div>
-                  
-                  {/* Display card exactly as shown in your expected format */}
-                  <div className="space-y-2">
-                    {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
-                      <div key={letter} className="flex items-center">
-                        <div className="w-8 text-telegram-button font-bold text-sm">{letter}</div>
-                        <div className="flex-1 grid grid-cols-5 gap-1">
-                          {bingoCard[colIndex]?.map((number, rowIndex) => (
-                            <div
-                              key={`${colIndex}-${rowIndex}`}
-                              className={`text-center py-2 rounded text-sm ${
-                                number === 'FREE' 
-                                  ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
-                                  : 'bg-white/20 text-white'
-                              }`}
-                            >
-                              {number}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* Clear button */}
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      onClick={() => {
-                        if (clearSelectedCard) {
-                          clearSelectedCard();
-                          console.log('🗑️ Cleared card selection');
-                        }
-                        // Also clear from locallyTakenCards
-                        if (selectedNumber) {
-                          setLocallyTakenCards(prev => {
-                            const newSet = new Set(prev);
-                            newSet.delete(selectedNumber);
-                            return newSet;
-                          });
-                        }
-                      }}
-                      className="px-4 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-all"
-                    >
-                      Clear Selection
-                    </button>
-                  </div>
+          {/* Selected card preview */}
+          {selectedNumber && bingoCard && (
+            <motion.div
+              className="mb-6 mt-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <div className="bg-gradient-to-br from-purple-500/20 to-blue-600/20 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-white font-bold text-sm">Your Selected Card</h3>
+                  <span className="text-telegram-button text-sm font-bold">
+                    Card #{selectedNumber}
+                  </span>
                 </div>
-              </motion.div>
-            )}
-          </>
-        )}
+                
+                <div className="space-y-2">
+                  {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
+                    <div key={letter} className="flex items-center">
+                      <div className="w-8 text-telegram-button font-bold text-sm">{letter}</div>
+                      <div className="flex-1 grid grid-cols-5 gap-1">
+                        {bingoCard[colIndex]?.map((number, rowIndex) => (
+                          <div
+                            key={`${colIndex}-${rowIndex}`}
+                            className={`text-center py-2 rounded text-sm ${
+                              number === 'FREE' 
+                                ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
+                                : 'bg-white/20 text-white'
+                            }`}
+                          >
+                            {number}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <div className="mt-4 flex justify-center">
+                  <button
+                    onClick={() => {
+                      if (clearSelectedCard) {
+                        clearSelectedCard();
+                      }
+                      if (selectedNumber) {
+                        setLocallyTakenCards(prev => {
+                          const newSet = new Set(prev);
+                          newSet.delete(selectedNumber);
+                          return newSet;
+                        });
+                      }
+                    }}
+                    className="px-4 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-all"
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </>
+      )}
 
       {/* Footer info */}
-      {gameStatus === 'FINISHED' && (
+      {gameStatus === 'FINISHED' && !showCardSelection && (
         <motion.div
           className="bg-gradient-to-r from-gray-700/20 to-gray-900/20 backdrop-blur-lg rounded-2xl p-4 mt-6 border border-white/10"
           initial={{ opacity: 0, y: 10 }}
@@ -578,7 +561,7 @@ const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Pro
               The previous game has ended. A new game will start soon.
             </p>
             <p className="text-white/40 text-xs mt-2">
-              Check back in a few minutes to select a card for the next game.
+              Check back in a few minutes to select a card for the next game.  
             </p>
           </div>
         </motion.div>
