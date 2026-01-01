@@ -44,6 +44,8 @@ const {
   clearSelectedCard,
   handleCardSelect,
   cardSelectionError,
+    shouldEnableCardSelection, // ADD THIS LINE
+
 } = useCardSelection(memoizedGameData, memoizedGameStatus);
 
   // Local states
@@ -498,83 +500,86 @@ const {
       )}
 
       {/* Card selection grid - Only when game is in selectable state */}
-      {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
-        (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && (
-          <>
-            <CardSelectionGrid
-              availableCards={availableCards}
-              takenCards={getCombinedTakenCards()} // Use combined taken cards
-              selectedNumber={selectedNumber} // Use the hook's selectedNumber
-              walletBalance={walletBalance}
-              gameStatus={gameStatus}
-              onCardSelect={handleCardSelectWithFeedback} // Pass our wrapper function
-            />
+    {/* Card selection grid - Only when game is in selectable state */}
+{(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
+  (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && 
+  shouldEnableCardSelection() && ( // ADD THIS CHECK
+    <>
+      <CardSelectionGrid
+        availableCards={availableCards}
+        takenCards={getCombinedTakenCards()} // Use combined taken cards
+        selectedNumber={selectedNumber} // Use the hook's selectedNumber
+        walletBalance={walletBalance}
+        gameStatus={gameStatus}
+        onCardSelect={handleCardSelectWithFeedback} // Pass our wrapper function
+      />
 
-            {/* Selected card preview */}
-            {selectedNumber && bingoCard && (
-              <motion.div
-                className="mb-6 mt-4"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <div className="bg-gradient-to-br from-purple-500/20 to-blue-600/20 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-white font-bold text-sm">Your Selected Card</h3>
-                    <span className="text-telegram-button text-sm font-bold">
-                      Card #{selectedNumber}
-                    </span>
-                  </div>
-                  
-                  {/* Display card exactly as shown in your expected format */}
-                  <div className="space-y-2">
-                    {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
-                      <div key={letter} className="flex items-center">
-                        <div className="w-8 text-telegram-button font-bold text-sm">{letter}</div>
-                        <div className="flex-1 grid grid-cols-5 gap-1">
-                          {bingoCard[colIndex]?.map((number, rowIndex) => (
-                            <div
-                              key={`${colIndex}-${rowIndex}`}
-                              className={`text-center py-2 rounded text-sm ${
-                                number === 'FREE' 
-                                  ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
-                                  : 'bg-white/20 text-white'
-                              }`}
-                            >
-                              {number}
-                            </div>
-                          ))}
-                        </div>
+      {/* Selected card preview */}
+      {selectedNumber && bingoCard && (
+        <motion.div
+          className="mb-6 mt-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="bg-gradient-to-br from-purple-500/20 to-blue-600/20 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white font-bold text-sm">Your Selected Card</h3>
+              <span className="text-telegram-button text-sm font-bold">
+                Card #{selectedNumber}
+              </span>
+            </div>
+            
+            {/* Display card exactly as shown in your expected format */}
+            <div className="space-y-2">
+              {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
+                <div key={letter} className="flex items-center">
+                  <div className="w-8 text-telegram-button font-bold text-sm">{letter}</div>
+                  <div className="flex-1 grid grid-cols-5 gap-1">
+                    {bingoCard[colIndex]?.map((number, rowIndex) => (
+                      <div
+                        key={`${colIndex}-${rowIndex}`}
+                        className={`text-center py-2 rounded text-sm ${
+                          number === 'FREE' 
+                            ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
+                            : 'bg-white/20 text-white'
+                        }`}
+                      >
+                        {number}
                       </div>
                     ))}
                   </div>
-                  
-                  {/* Clear button */}
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      onClick={() => {
-                        if (clearSelectedCard) {
-                          clearSelectedCard();
-                          console.log('🗑️ Cleared card selection');
-                        }
-                        // Also clear from locallyTakenCards
-                        if (selectedNumber) {
-                          setLocallyTakenCards(prev => {
-                            const newSet = new Set(prev);
-                            newSet.delete(selectedNumber);
-                            return newSet;
-                          });
-                        }
-                      }}
-                      className="px-4 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-all"
-                    >
-                      Clear Selection
-                    </button>
-                  </div>
                 </div>
-              </motion.div>
-            )}
-          </>
-        )}
+              ))}
+            </div>
+            
+            {/* Clear button */}
+            <div className="mt-4 flex justify-center">
+              <button
+                onClick={() => {
+                  if (clearSelectedCard) {
+                    clearSelectedCard();
+                    console.log('🗑️ Cleared card selection');
+                  }
+                  // Also clear from locallyTakenCards
+                  if (selectedNumber) {
+                    setLocallyTakenCards(prev => {
+                      const newSet = new Set(prev);
+                      newSet.delete(selectedNumber);
+                      return newSet;
+                    });
+                  }
+                }}
+                className="px-4 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-all"
+              >
+                Clear Selection
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </>
+  )
+}
 
       {/* Footer info */}
       {gameStatus === 'FINISHED' && (
