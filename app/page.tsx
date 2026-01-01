@@ -4,11 +4,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { gameAPI } from '../services/api';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
-import { Clock, Check, AlertCircle, Loader2, Info } from 'lucide-react';
+import { Clock, Check, AlertCircle, Eye, Loader2, X, Info } from 'lucide-react';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
 
 // Constants for throttling
@@ -23,6 +23,7 @@ export default function Home() {
   } = useAuth();
 
   const router = useRouter();
+  const pathname = usePathname();
 
   // Game state
   const {
@@ -31,22 +32,21 @@ export default function Home() {
     pageLoading,
     initializeGameState,
   } = useGameState();
-
-  // Memoize game data to prevent unnecessary re-renders
-  const memoizedGameData = useMemo(() => gameData, [gameData?._id, gameData?.status]);
-  const memoizedGameStatus = useMemo(() => gameStatus, [gameStatus]);
-
+//memorization
+const memoizedGameData = useMemo(() => gameData, [gameData?._id, gameData?.status]);
+const memoizedGameStatus = useMemo(() => gameStatus, [gameStatus]);
   // Card selection - Use the hook's handleCardSelect
-  const {
-    selectedNumber,
-    bingoCard,
-    availableCards,
-    takenCards,
-    clearSelectedCard,
-    handleCardSelect,
-    cardSelectionError,
-    shouldEnableCardSelection,
-  } = useCardSelection(memoizedGameData, memoizedGameStatus);
+const {
+  selectedNumber,
+  bingoCard,
+  availableCards,
+  takenCards,
+  clearSelectedCard,
+  handleCardSelect,
+  cardSelectionError,
+    shouldEnableCardSelection, // ADD THIS LINE
+
+} = useCardSelection(memoizedGameData, memoizedGameStatus);
 
   // Local states
   const [hasCardInActiveGame, setHasCardInActiveGame] = useState<boolean>(false);
@@ -54,40 +54,54 @@ export default function Home() {
   const [playerGameStatus, setPlayerGameStatus] = useState<string | null>(null);
   const [hasRestartCooldown, setHasRestartCooldown] = useState<boolean>(false);
   
-  // State for immediate UI feedback
+  // NEW: State for immediate UI feedback
   const [locallyTakenCards, setLocallyTakenCards] = useState<Set<number>>(new Set());
   const [processingCards, setProcessingCards] = useState<Set<number>>(new Set());
   const [totalPlayers, setTotalPlayers] = useState<number>(0);
-  const [isRedirecting, setIsRedirecting] = useState<boolean>(false);
 
   // Refs for tracking
   const isCheckingPlayerStatusRef = useRef<boolean>(false);
   const lastPlayerCheckRef = useRef<number>(0);
   const isInitializedRef = useRef<boolean>(false);
   const redirectAttemptedRef = useRef<boolean>(false);
+  const gameStatusRef = useRef<string>('');
+  const hasCardRef = useRef<boolean>(false);
+  const gameDataRef = useRef<any>(null);
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentSelectedCardRef = useRef<number | null>(null);
+  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Sync refs with state
   useEffect(() => {
+    gameStatusRef.current = gameStatus;
+    hasCardRef.current = hasCardInActiveGame;
+    gameDataRef.current = gameData;
+    currentSelectedCardRef.current = selectedNumber;
+    
     // Update total players from gameData
     if (gameData?.currentPlayers) {
       setTotalPlayers(gameData.currentPlayers);
     }
-  }, [gameData]);
+  }, [gameStatus, hasCardInActiveGame, gameData, selectedNumber]);
 
-  // Get combined taken cards (server + local)
+  // NEW: Get combined taken cards (server + local)
   const getCombinedTakenCards = useCallback(() => {
-    return [...takenCards];
+    return [...takenCards]; // Just return server cards
   }, [takenCards]);
 
-  // Check if game has minimum players (at least 2)
+  // NEW: Check if game has minimum players (at least 2)
   const hasMinimumPlayers = useCallback(() => {
     return totalPlayers >= 2;
   }, [totalPlayers]);
 
-  // Immediate redirect function
+  // NEW: IMMEDIATE REDIRECT FUNCTION - NO DELAYS
   const handleImmediateRedirect = useCallback(() => {
-    if (redirectAttemptedRef.current || isRedirecting) return;
+    if (redirectTimeoutRef.current) {
+      clearTimeout(redirectTimeoutRef.current);
+      redirectTimeoutRef.current = null;
+    }
+
+    if (redirectAttemptedRef.current) return;
 
     const gameId = gameData?._id;
     if (!gameId) {
@@ -96,27 +110,26 @@ export default function Home() {
     }
 
     console.log(`🚀 IMMEDIATE REDIRECT to game: ${gameId}`);
-    setIsRedirecting(true);
     redirectAttemptedRef.current = true;
     
-    // Small delay for better UX
-    setTimeout(() => {
-      router.push(`/game/${gameId}`);
-    }, 300);
-  }, [gameData, router, isRedirecting]);
+    // IMMEDIATE redirect - no delay
+    router.push(`/game/${gameId}`);
+  }, [gameData, router]);
 
-  // Wrapper function for card selection with immediate UI feedback
+  // NEW: Wrapper function for card selection with immediate UI feedback
   const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
     // Clear any previous timeout
     if (processingTimeoutRef.current) {
       clearTimeout(processingTimeoutRef.current);
     }
 
-    // Remove previous selected card
+    // REMOVE PREVIOUS SELECTED CARD: Clear the previously selected card
     if (selectedNumber && selectedNumber !== cardNumber) {
+      // Clear from local storage via the hook's clear function
       if (clearSelectedCard) {
         clearSelectedCard();
       }
+      // Also remove from locallyTakenCards if it's not actually taken on server
       if (!takenCards.some(card => card.cardNumber === selectedNumber)) {
         setLocallyTakenCards(prev => {
           const newSet = new Set(prev);
@@ -124,15 +137,17 @@ export default function Home() {
           return newSet;
         });
       }
+      console.log(`🗑️ Cleared previous card #${selectedNumber} selection`);
     }
 
-    // Immediate UI update
+    // IMMEDIATE UI UPDATE: Add to processing set
     setProcessingCards(prev => new Set(prev).add(cardNumber));
 
     try {
+      // Call the hook's handleCardSelect function
       await handleCardSelect(cardNumber);
       
-      // Mark as locally taken
+      // SUCCESS: Mark as locally taken (permanent until server sync)
       setLocallyTakenCards(prev => {
         const newSet = new Set(prev);
         newSet.add(cardNumber);
@@ -141,11 +156,10 @@ export default function Home() {
 
       console.log(`✅ Card ${cardNumber} selected successfully`);
 
-      // If game is ACTIVE, redirect
-      if (gameStatus === 'ACTIVE' && hasMinimumPlayers()) {
-        setTimeout(() => {
-          handleImmediateRedirect();
-        }, 1000);
+      // Check if we should redirect - If game is ACTIVE, redirect immediately
+      if (gameStatus === 'ACTIVE') {
+        console.log('Game is ACTIVE - Immediate redirect after card selection');
+        handleImmediateRedirect();
       }
 
       return true;
@@ -153,16 +167,20 @@ export default function Home() {
     } catch (error: any) {
       console.error('❌ Card selection failed:', error);
       
-      // Revert UI
+      // REVERT UI: Remove from locally taken cards
       setLocallyTakenCards(prev => {
         const newSet = new Set(prev);
         newSet.delete(cardNumber);
         return newSet;
       });
 
+      // Just log the error, don't show modal
+      console.warn('Card selection error:', error.message || 'Failed to select card');
+      
       return false;
+
     } finally {
-      // Remove from processing after delay
+      // Remove from processing after delay (for visual feedback)
       processingTimeoutRef.current = setTimeout(() => {
         setProcessingCards(prev => {
           const newSet = new Set(prev);
@@ -171,7 +189,7 @@ export default function Home() {
         });
       }, 1500);
     }
-  }, [handleCardSelect, gameStatus, hasMinimumPlayers, selectedNumber, clearSelectedCard, takenCards, handleImmediateRedirect]);
+  }, [handleCardSelect, gameStatus, selectedNumber, clearSelectedCard, takenCards, handleImmediateRedirect]);
 
   // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
@@ -180,8 +198,9 @@ export default function Home() {
     const now = Date.now();
     const timeSinceLastCheck = now - lastPlayerCheckRef.current;
 
+    // Throttle checks
     if (!force && timeSinceLastCheck < PLAYER_CHECK_INTERVAL) {
-      return hasCardInActiveGame;
+      return hasCardRef.current;
     }
 
     try {
@@ -204,8 +223,10 @@ export default function Home() {
               setHasCardInActiveGame(true);
               setPlayerCardNumber(playerParticipant.cardNumber || 0);
               setPlayerGameStatus(game.status);
+              isCheckingPlayerStatusRef.current = false;
               
-              if (game.status === 'ACTIVE' && !redirectAttemptedRef.current) {
+              // If game is ACTIVE and user has card, redirect immediately
+              if (game.status === 'ACTIVE') {
                 console.log('Player has card in ACTIVE game - Immediate redirect');
                 handleImmediateRedirect();
               }
@@ -223,32 +244,34 @@ export default function Home() {
 
     } catch (error) {
       console.error('Error checking player card:', error);
-      return hasCardInActiveGame;
+      return hasCardRef.current;
     } finally {
       isCheckingPlayerStatusRef.current = false;
     }
-  }, [user?.id, hasCardInActiveGame, handleImmediateRedirect]);
+  }, [user?.id, handleImmediateRedirect]);
 
-  // Handle manual redirect
+  // Handle manual redirect to active game
   const handleManualRedirect = useCallback(() => {
     handleImmediateRedirect();
   }, [handleImmediateRedirect]);
 
-  // Auto-redirect when game is ACTIVE
+  // MAIN EFFECT: Auto-redirect when game is ACTIVE
   useEffect(() => {
     if (authLoading || pageLoading || redirectAttemptedRef.current) return;
     
-    if (gameStatus === 'ACTIVE' && hasMinimumPlayers() && !redirectAttemptedRef.current) {
+    // If game is ACTIVE, redirect immediately (regardless of player count or card)
+    if (gameStatus === 'ACTIVE') {
       console.log('🚀 Game is ACTIVE - Immediate auto-redirect');
       handleImmediateRedirect();
       return;
     }
     
+    // Also check if user already has a card in an active game
     if (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !redirectAttemptedRef.current) {
       console.log('Player has card in ACTIVE game - Immediate redirect');
       handleImmediateRedirect();
     }
-  }, [gameStatus, playerGameStatus, authLoading, pageLoading, handleImmediateRedirect, hasCardInActiveGame, hasMinimumPlayers]);
+  }, [gameStatus, playerGameStatus, authLoading, pageLoading, handleImmediateRedirect, hasCardInActiveGame]);
 
   // Initialize
   useEffect(() => {
@@ -265,9 +288,8 @@ export default function Home() {
       }
 
       if (isAuthenticated && user) {
-        setTimeout(() => {
-          checkPlayerCardInActiveGame(true);
-        }, 1000);
+        // Immediate check for player status (no delay)
+        checkPlayerCardInActiveGame(true);
       }
     };
 
@@ -276,27 +298,37 @@ export default function Home() {
 
   // Set up periodic checks
   useEffect(() => {
-    if (!isAuthenticated || !user || redirectAttemptedRef.current) return;
+    if (!isAuthenticated || !user) return;
 
     const playerCheckInterval = setInterval(() => {
-      checkPlayerCardInActiveGame();
+      if (!redirectAttemptedRef.current) {
+        checkPlayerCardInActiveGame();
+      }
     }, PLAYER_CHECK_INTERVAL);
 
     return () => {
       clearInterval(playerCheckInterval);
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+        redirectTimeoutRef.current = null;
+      }
     };
   }, [isAuthenticated, user, checkPlayerCardInActiveGame]);
 
-  // Cleanup
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (processingTimeoutRef.current) {
         clearTimeout(processingTimeoutRef.current);
       }
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+        redirectTimeoutRef.current = null;
+      }
     };
   }, []);
 
-  // Show loading
+  // Show loading during auth or page loading
   if (authLoading || pageLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
@@ -308,24 +340,21 @@ export default function Home() {
     );
   }
 
-  // Show redirecting
-  if (isRedirecting || (gameStatus === 'ACTIVE' && hasMinimumPlayers())) {
+  // Check if we should redirect - If game is active, we'll redirect so no UI should show
+  if (gameStatus === 'ACTIVE' && !redirectAttemptedRef.current) {
+    // This is a safety check - the redirect should happen in useEffect
+    console.log('Game is active, redirecting...');
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-          <p className="mt-4">
-            {hasCardInActiveGame
-              ? `Redirecting to your game (Card #${playerCardNumber})...`
-              : 'Game is active - Redirecting...'
-            }
-          </p>
+          <p className="mt-4">Game is active - Redirecting...</p>
         </div>
       </div>
     );
   }
 
-  // Get status message
+  // Simple status message
   const getStatusMessage = () => {
     if (hasCardInActiveGame) {
       return playerGameStatus === 'ACTIVE'
@@ -349,10 +378,6 @@ export default function Home() {
 
     return 'Loading game...';
   };
-
-  // IMPORTANT: Check if we should show card selection
-  const showCardSelection = (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
-    (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
@@ -474,82 +499,90 @@ export default function Home() {
         </motion.div>
       )}
 
-      {/* Card selection grid */}
-      {showCardSelection && (
-        <>
-          <CardSelectionGrid
-            availableCards={availableCards}
-            takenCards={getCombinedTakenCards()}
-            selectedNumber={selectedNumber}
-            walletBalance={walletBalance}
-            gameStatus={gameStatus}
-            onCardSelect={handleCardSelectWithFeedback}
-          />
+      {/* Card selection grid - Only when game is in selectable state */}
+    {/* Card selection grid - Only when game is in selectable state */}
+{(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
+  (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE') && 
+  shouldEnableCardSelection() && ( // ADD THIS CHECK
+    <>
+      <CardSelectionGrid
+        availableCards={availableCards}
+        takenCards={getCombinedTakenCards()} // Use combined taken cards
+        selectedNumber={selectedNumber} // Use the hook's selectedNumber
+        walletBalance={walletBalance}
+        gameStatus={gameStatus}
+        onCardSelect={handleCardSelectWithFeedback} // Pass our wrapper function
+      />
 
-          {/* Selected card preview */}
-          {selectedNumber && bingoCard && (
-            <motion.div
-              className="mb-6 mt-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <div className="bg-gradient-to-br from-purple-500/20 to-blue-600/20 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-white font-bold text-sm">Your Selected Card</h3>
-                  <span className="text-telegram-button text-sm font-bold">
-                    Card #{selectedNumber}
-                  </span>
-                </div>
-                
-                <div className="space-y-2">
-                  {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
-                    <div key={letter} className="flex items-center">
-                      <div className="w-8 text-telegram-button font-bold text-sm">{letter}</div>
-                      <div className="flex-1 grid grid-cols-5 gap-1">
-                        {bingoCard[colIndex]?.map((number, rowIndex) => (
-                          <div
-                            key={`${colIndex}-${rowIndex}`}
-                            className={`text-center py-2 rounded text-sm ${
-                              number === 'FREE' 
-                                ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
-                                : 'bg-white/20 text-white'
-                            }`}
-                          >
-                            {number}
-                          </div>
-                        ))}
+      {/* Selected card preview */}
+      {selectedNumber && bingoCard && (
+        <motion.div
+          className="mb-6 mt-4"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="bg-gradient-to-br from-purple-500/20 to-blue-600/20 backdrop-blur-lg rounded-2xl p-4 border border-white/20">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white font-bold text-sm">Your Selected Card</h3>
+              <span className="text-telegram-button text-sm font-bold">
+                Card #{selectedNumber}
+              </span>
+            </div>
+            
+            {/* Display card exactly as shown in your expected format */}
+            <div className="space-y-2">
+              {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
+                <div key={letter} className="flex items-center">
+                  <div className="w-8 text-telegram-button font-bold text-sm">{letter}</div>
+                  <div className="flex-1 grid grid-cols-5 gap-1">
+                    {bingoCard[colIndex]?.map((number, rowIndex) => (
+                      <div
+                        key={`${colIndex}-${rowIndex}`}
+                        className={`text-center py-2 rounded text-sm ${
+                          number === 'FREE' 
+                            ? 'bg-gradient-to-br from-green-400 to-teal-400 text-white' 
+                            : 'bg-white/20 text-white'
+                        }`}
+                      >
+                        {number}
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-                
-                <div className="mt-4 flex justify-center">
-                  <button
-                    onClick={() => {
-                      if (clearSelectedCard) {
-                        clearSelectedCard();
-                      }
-                      if (selectedNumber) {
-                        setLocallyTakenCards(prev => {
-                          const newSet = new Set(prev);
-                          newSet.delete(selectedNumber);
-                          return newSet;
-                        });
-                      }
-                    }}
-                    className="px-4 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-all"
-                  >
-                    Clear Selection
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </>
+              ))}
+            </div>
+            
+            {/* Clear button */}
+            <div className="mt-4 flex justify-center">
+              <button
+                onClick={() => {
+                  if (clearSelectedCard) {
+                    clearSelectedCard();
+                    console.log('🗑️ Cleared card selection');
+                  }
+                  // Also clear from locallyTakenCards
+                  if (selectedNumber) {
+                    setLocallyTakenCards(prev => {
+                      const newSet = new Set(prev);
+                      newSet.delete(selectedNumber);
+                      return newSet;
+                    });
+                  }
+                }}
+                className="px-4 py-2 bg-white/10 text-white/70 rounded-lg text-sm hover:bg-white/20 transition-all"
+              >
+                Clear Selection
+              </button>
+            </div>
+          </div>
+        </motion.div>
       )}
+    </>
+  )
+}
 
       {/* Footer info */}
-      {gameStatus === 'FINISHED' && !showCardSelection && (
+      {gameStatus === 'FINISHED' && (
         <motion.div
           className="bg-gradient-to-r from-gray-700/20 to-gray-900/20 backdrop-blur-lg rounded-2xl p-4 mt-6 border border-white/10"
           initial={{ opacity: 0, y: 10 }}
@@ -561,7 +594,7 @@ export default function Home() {
               The previous game has ended. A new game will start soon.
             </p>
             <p className="text-white/40 text-xs mt-2">
-              Check back in a few minutes to select a card for the next game.  
+              Check back in a few minutes to select a card for the next game.
             </p>
           </div>
         </motion.div>
