@@ -24,7 +24,7 @@ export default function Home() {
 
   const router = useRouter();
 
-  // Game state - NO memoization needed here
+  // Game state
   const {
     gameStatus,
     gameData,
@@ -32,7 +32,7 @@ export default function Home() {
     initializeGameState,
   } = useGameState();
 
-  // Card selection - Pass directly, no memoization
+  // Card selection - Pass directly
   const {
     selectedNumber,
     bingoCard,
@@ -42,6 +42,7 @@ export default function Home() {
     handleCardSelect,
     cardSelectionError,
     shouldEnableCardSelection,
+    isLoadingCards,
   } = useCardSelection(gameData, gameStatus);
 
   // Local states
@@ -68,7 +69,7 @@ export default function Home() {
     }
   }, [gameData]);
 
-  // Immediate redirect function - NO DELAYS
+  // Immediate redirect function
   const handleImmediateRedirect = useCallback((gameId: string) => {
     if (redirectAttemptedRef.current) return;
 
@@ -81,6 +82,12 @@ export default function Home() {
 
   // Wrapper function for card selection
   const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
+    // Check if card selection should be enabled
+    if (!shouldEnableCardSelection) {
+      console.log('❌ Card selection not enabled - insufficient balance');
+      return false;
+    }
+
     if (processingTimeoutRef.current) {
       clearTimeout(processingTimeoutRef.current);
     }
@@ -112,7 +119,7 @@ export default function Home() {
         });
       }, 1500);
     }
-  }, [handleCardSelect, gameStatus, gameData?._id, handleImmediateRedirect]);
+  }, [handleCardSelect, gameStatus, gameData?._id, handleImmediateRedirect, shouldEnableCardSelection]);
 
   // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
@@ -234,21 +241,6 @@ export default function Home() {
     };
   }, []);
 
-  // **IMPORTANT: Single loading screen check**
-  if (authLoading || pageLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-          <p className="mt-4">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // **REMOVED: No separate "Game is active - Redirecting..." screen**
-  // Let the useEffect handle the immediate redirect
-
   // Get status message
   const getStatusMessage = () => {
     if (hasCardInActiveGame) {
@@ -274,11 +266,27 @@ export default function Home() {
     return 'Loading game...';
   };
 
-  // Show card selection logic
+  // **FIXED: Show card selection logic with shouldEnableCardSelection**
   const showCardSelection = (
+    shouldEnableCardSelection && // Check if card selection is enabled
     (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
     !hasCardInActiveGame
   );
+
+  // **FIXED: Show available cards count correctly**
+  const availableCardsCount = availableCards?.length || 0;
+
+  // **IMPORTANT: Single loading screen check**
+  if (authLoading || pageLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
+          <p className="mt-4">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
@@ -346,7 +354,7 @@ export default function Home() {
       )}
 
       {/* Balance warning */}
-      {walletBalance < 10 && (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION') && (
+      {!shouldEnableCardSelection && (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION') && (
         <motion.div
           className="bg-gradient-to-r from-red-500/20 to-rose-600/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-red-500/30"
           initial={{ opacity: 0, y: -10 }}
@@ -365,7 +373,7 @@ export default function Home() {
       )}
 
       {/* Game status info */}
-      {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION') && (
+      {(gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION') && shouldEnableCardSelection && (
         <motion.div
           className="bg-gradient-to-r from-blue-500/20 to-purple-600/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
           initial={{ opacity: 0, y: -10 }}
@@ -389,16 +397,45 @@ export default function Home() {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-white text-sm font-bold">{availableCards.length} available</p>
+              <p className="text-white text-sm font-bold">{availableCardsCount} available</p>
               <p className="text-white/60 text-xs">cards remaining</p>
             </div>
           </div>
         </motion.div>
       )}
 
+      {/* Loading state for cards */}
+      {isLoadingCards && showCardSelection && (
+        <motion.div
+          className="bg-gradient-to-br from-purple-500/20 to-blue-600/20 backdrop-blur-lg rounded-2xl p-8 mb-6 border border-white/20"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-white font-medium">Loading available cards...</p>
+            <p className="text-white/60 text-sm mt-2">Please wait while we fetch the cards</p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Card selection grid */}
-      {showCardSelection && (
+      {showCardSelection && !isLoadingCards && (
         <>
+          {/* Error message if any */}
+          {cardSelectionError && (
+            <motion.div
+              className="bg-gradient-to-r from-red-500/20 to-rose-600/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-red-500/30"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-red-300" />
+                <p className="text-red-300 text-sm">{cardSelectionError}</p>
+              </div>
+            </motion.div>
+          )}
+
           <CardSelectionGrid
             availableCards={availableCards}
             takenCards={takenCards}
@@ -459,6 +496,26 @@ export default function Home() {
         </>
       )}
 
+      {/* No cards available message */}
+      {showCardSelection && !isLoadingCards && availableCardsCount === 0 && (
+        <motion.div
+          className="bg-gradient-to-r from-yellow-500/20 to-amber-600/20 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-yellow-500/30"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="text-center">
+            <Info className="w-12 h-12 text-yellow-300 mx-auto mb-3" />
+            <h3 className="text-yellow-300 font-bold text-lg mb-2">No Cards Available</h3>
+            <p className="text-yellow-200 text-sm">
+              All cards have been taken for this game.
+            </p>
+            <p className="text-yellow-100 text-xs mt-2">
+              Please wait for the next game or try refreshing the page.
+            </p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Footer info */}
       {gameStatus === 'FINISHED' && !showCardSelection && (
         <motion.div
@@ -476,6 +533,21 @@ export default function Home() {
             </p>
           </div>
         </motion.div>
+      )}
+
+      {/* Debug info (only in development) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mt-8 p-4 bg-black/20 rounded-lg">
+          <h4 className="text-white/70 text-sm font-bold mb-2">Debug Info:</h4>
+          <div className="grid grid-cols-2 gap-2 text-xs text-white/50">
+            <div>shouldEnableCardSelection: {shouldEnableCardSelection ? '✅' : '❌'}</div>
+            <div>walletBalance: {walletBalance}</div>
+            <div>gameStatus: {gameStatus}</div>
+            <div>availableCards: {availableCardsCount}</div>
+            <div>hasCardInActiveGame: {hasCardInActiveGame ? '✅' : '❌'}</div>
+            <div>isLoadingCards: {isLoadingCards ? '✅' : '❌'}</div>
+          </div>
+        </div>
       )}
     </div>
   );
