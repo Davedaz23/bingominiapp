@@ -32,10 +32,6 @@ export default function Home() {
     initializeGameState,
   } = useGameState();
 
-  // Memoize game data to prevent unnecessary re-renders
-  const memoizedGameData = useMemo(() => gameData, [gameData?._id, gameData?.status]);
-  const memoizedGameStatus = useMemo(() => gameStatus, [gameStatus]);
-
   // Card selection - Use the hook's handleCardSelect
   const {
     selectedNumber,
@@ -46,7 +42,7 @@ export default function Home() {
     handleCardSelect,
     cardSelectionError,
     shouldEnableCardSelection,
-  } = useCardSelection(memoizedGameData, memoizedGameStatus);
+  } = useCardSelection(gameData, gameStatus);
 
   // Local states
   const [hasCardInActiveGame, setHasCardInActiveGame] = useState<boolean>(false);
@@ -85,7 +81,7 @@ export default function Home() {
     return totalPlayers >= 2;
   }, [totalPlayers]);
 
-  // Immediate redirect function
+  // Immediate redirect function - FIXED: No delays
   const handleImmediateRedirect = useCallback(() => {
     if (redirectAttemptedRef.current || isRedirecting) return;
 
@@ -96,13 +92,10 @@ export default function Home() {
     }
 
     console.log(`🚀 IMMEDIATE REDIRECT to game: ${gameId}`);
-    setIsRedirecting(true);
     redirectAttemptedRef.current = true;
     
-    // Small delay for better UX
-    setTimeout(() => {
-      router.push(`/game/${gameId}`);
-    }, 300);
+    // IMMEDIATE redirect - no delay
+    router.push(`/game/${gameId}`);
   }, [gameData, router, isRedirecting]);
 
   // Wrapper function for card selection with immediate UI feedback
@@ -141,11 +134,10 @@ export default function Home() {
 
       console.log(`✅ Card ${cardNumber} selected successfully`);
 
-      // If game is ACTIVE, redirect
-      if (gameStatus === 'ACTIVE' && hasMinimumPlayers()) {
-        setTimeout(() => {
-          handleImmediateRedirect();
-        }, 1000);
+      // If game is ACTIVE, redirect IMMEDIATELY
+      if (gameStatus === 'ACTIVE') {
+        console.log('Game is ACTIVE - Immediate redirect after card selection');
+        handleImmediateRedirect();
       }
 
       return true;
@@ -171,7 +163,7 @@ export default function Home() {
         });
       }, 1500);
     }
-  }, [handleCardSelect, gameStatus, hasMinimumPlayers, selectedNumber, clearSelectedCard, takenCards, handleImmediateRedirect]);
+  }, [handleCardSelect, gameStatus, selectedNumber, clearSelectedCard, takenCards, handleImmediateRedirect]);
 
   // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
@@ -205,6 +197,7 @@ export default function Home() {
               setPlayerCardNumber(playerParticipant.cardNumber || 0);
               setPlayerGameStatus(game.status);
               
+              // If game is ACTIVE, redirect IMMEDIATELY
               if (game.status === 'ACTIVE' && !redirectAttemptedRef.current) {
                 console.log('Player has card in ACTIVE game - Immediate redirect');
                 handleImmediateRedirect();
@@ -234,21 +227,17 @@ export default function Home() {
     handleImmediateRedirect();
   }, [handleImmediateRedirect]);
 
-  // Auto-redirect when game is ACTIVE
+  // Auto-redirect when game is ACTIVE - FIXED: Only check gameStatus
   useEffect(() => {
     if (authLoading || pageLoading || redirectAttemptedRef.current) return;
     
-    if (gameStatus === 'ACTIVE' && hasMinimumPlayers() && !redirectAttemptedRef.current) {
+    // If game is ACTIVE, redirect immediately (regardless of player count or card)
+    if (gameStatus === 'ACTIVE') {
       console.log('🚀 Game is ACTIVE - Immediate auto-redirect');
       handleImmediateRedirect();
       return;
     }
-    
-    if (hasCardInActiveGame && playerGameStatus === 'ACTIVE' && !redirectAttemptedRef.current) {
-      console.log('Player has card in ACTIVE game - Immediate redirect');
-      handleImmediateRedirect();
-    }
-  }, [gameStatus, playerGameStatus, authLoading, pageLoading, handleImmediateRedirect, hasCardInActiveGame, hasMinimumPlayers]);
+  }, [gameStatus, authLoading, pageLoading, handleImmediateRedirect]);
 
   // Initialize
   useEffect(() => {
@@ -308,35 +297,28 @@ export default function Home() {
     );
   }
 
-  // Show redirecting
-  if (isRedirecting || (gameStatus === 'ACTIVE' && hasMinimumPlayers())) {
+  // Check if game is ACTIVE - redirect immediately without showing any UI
+  if (gameStatus === 'ACTIVE' && !redirectAttemptedRef.current) {
+    console.log('Game is active - immediate redirect');
+    handleImmediateRedirect();
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-          <p className="mt-4">
-            {hasCardInActiveGame
-              ? `Redirecting to your game (Card #${playerCardNumber})...`
-              : 'Game is active - Redirecting...'
-            }
-          </p>
+          <p className="mt-4">Game is active - Redirecting...</p>
         </div>
       </div>
     );
   }
 
-  // Get status message
+  // Get status message - FIXED: Simplified
   const getStatusMessage = () => {
     if (hasCardInActiveGame) {
-      return playerGameStatus === 'ACTIVE'
-        ? `You have card #${playerCardNumber} in active game`
-        : `You have card #${playerCardNumber} - Waiting for game`;
+      return `You have card #${playerCardNumber}`;
     }
 
     if (gameStatus === 'WAITING_FOR_PLAYERS') {
-      return hasMinimumPlayers() 
-        ? `Waiting for game to start (${totalPlayers}/2 players)` 
-        : `Need ${2 - totalPlayers} more players to start`;
+      return `Waiting for players (${totalPlayers}/2)`;
     }
 
     if (gameStatus === 'FINISHED') {
@@ -347,12 +329,18 @@ export default function Home() {
       return 'Select your card to play';
     }
 
+    if (gameStatus === 'ACTIVE') {
+      return 'Game is active - Redirecting...';
+    }
+
     return 'Loading game...';
   };
 
-  // IMPORTANT: Check if we should show card selection
-  const showCardSelection = (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
-    (!hasCardInActiveGame || playerGameStatus !== 'ACTIVE');
+  // Show card selection logic - FIXED: Simplified condition
+  const showCardSelection = (
+    (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
+    !hasCardInActiveGame
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
@@ -474,7 +462,7 @@ export default function Home() {
         </motion.div>
       )}
 
-      {/* Card selection grid */}
+      {/* Card selection grid - FIXED: Show only when appropriate */}
       {showCardSelection && (
         <>
           <CardSelectionGrid
