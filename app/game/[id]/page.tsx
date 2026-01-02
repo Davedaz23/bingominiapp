@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - FIXED WEB SOCKET VERSION
+// app/game/[id]/page.tsx - FIXED VERSION (No page reload)
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -58,6 +58,23 @@ interface Game {
   message?: string;
   noWinner?: boolean;
 }
+
+// Custom debounce hook
+const useDebounce = <T,>(value: T, delay: number): T => {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
 
 export default function GamePage() {
   const params = useParams();
@@ -154,32 +171,8 @@ export default function GamePage() {
   const disqualificationCheckRef = useRef<boolean>(false);
   const initializationCompleteRef = useRef<boolean>(false);
   const wsInitializedRef = useRef<boolean>(false);
-
-  // Reduce console logs in production
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'production') {
-      const originalLog = console.log;
-      const originalError = console.error;
-      
-      console.log = (...args) => {
-        const message = args[0]?.toString() || '';
-        if (
-          message.includes('WebSocket') ||
-          message.includes('wsConnected') ||
-          message.includes('useCardSelection') ||
-          message.includes('Polling')
-        ) {
-          return;
-        }
-        originalLog(...args);
-      };
-      
-      return () => {
-        console.log = originalLog;
-        console.error = originalError;
-      };
-    }
-  }, []);
+  const lastWsCalledNumbersRef = useRef<number[]>([]);
+  const lastWsCurrentNumberRef = useRef<any>(null);
 
   // Helper function to get BINGO letter
   const getNumberLetter = useCallback((num: number): string => {
@@ -189,6 +182,10 @@ export default function GamePage() {
     if (num <= 60) return 'G';
     return 'O';
   }, []);
+
+  // Debounced WebSocket values to prevent rapid updates
+  const debouncedWsCalledNumbers = useDebounce(wsCalledNumbers, 300);
+  const debouncedWsCurrentNumber = useDebounce(wsCurrentNumber, 300);
 
   // Helper function to handle disqualification - IMMEDIATELY
   const handleDisqualification = useCallback((errorMessage: string, details?: any) => {
@@ -382,6 +379,93 @@ export default function GamePage() {
     }
   }, [checkUserHasCard, isSpectatorMode, isDisqualified]);
 
+  // FIXED: Handle WebSocket updates WITHOUT causing page reloads
+  useEffect(() => {
+    if (!wsConnected || !game || isDisqualified) return;
+
+    // Check if we need to update called numbers
+    if (debouncedWsCalledNumbers && debouncedWsCalledNumbers.length > 0) {
+      // Compare with last known value to prevent unnecessary updates
+      const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
+      
+      if (isDifferent) {
+        console.log('🔢 Updating called numbers (debounced)');
+        setAllCalledNumbers(debouncedWsCalledNumbers);
+        lastWsCalledNumbersRef.current = debouncedWsCalledNumbers;
+        
+        // Update recent called numbers
+        const recentNumbers = [];
+        const totalCalled = debouncedWsCalledNumbers.length;
+        
+        for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
+          const num = debouncedWsCalledNumbers[i];
+          if (num) {
+            recentNumbers.push({
+              number: num,
+              letter: getNumberLetter(num),
+              isCurrent: i === totalCalled - 1
+            });
+          }
+        }
+        
+        setRecentCalledNumbers(recentNumbers);
+      }
+    }
+
+    // Check if we need to update current number
+    if (debouncedWsCurrentNumber) {
+      const isDifferent = !lastWsCurrentNumberRef.current || 
+                         lastWsCurrentNumberRef.current.number !== debouncedWsCurrentNumber.number;
+      
+      if (isDifferent) {
+        console.log('🎯 Updating current number (debounced)');
+        const newCurrentNumber = {
+          number: debouncedWsCurrentNumber.number,
+          letter: getNumberLetter(debouncedWsCurrentNumber.number),
+          isNew: true
+        };
+
+        setCurrentCalledNumber(newCurrentNumber);
+        lastWsCurrentNumberRef.current = debouncedWsCurrentNumber;
+
+        // Clear previous animation timeout
+        if (animationTimeoutRef.current) {
+          clearTimeout(animationTimeoutRef.current);
+        }
+
+        // Remove "new" animation after 1 second
+        animationTimeoutRef.current = setTimeout(() => {
+          setCurrentCalledNumber(prev =>
+            prev ? { ...prev, isNew: false } : null
+          );
+        }, 1000);
+      }
+    }
+  }, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter]);
+
+  // Initialize WebSocket once when connected
+  useEffect(() => {
+    if (!wsConnected || wsInitializedRef.current || !game || isDisqualified) return;
+
+    console.log('✅ WebSocket connected - initializing once');
+    wsInitializedRef.current = true;
+
+    // Set initial values without triggering re-renders
+    if (wsCalledNumbers && wsCalledNumbers.length > 0) {
+      lastWsCalledNumbersRef.current = wsCalledNumbers;
+      setAllCalledNumbers(wsCalledNumbers);
+    }
+    
+    if (wsCurrentNumber) {
+      lastWsCurrentNumberRef.current = wsCurrentNumber;
+      setCurrentCalledNumber({
+        number: wsCurrentNumber.number,
+        letter: getNumberLetter(wsCurrentNumber.number),
+        isNew: false
+      });
+    }
+  }, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter]);
+
   // Auto-retry card loading
   useEffect(() => {
     if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS && !isDisqualified) {
@@ -528,92 +612,6 @@ export default function GamePage() {
       abortControllerRef.current = null;
     }
   }, [getWinnerInfo, showWinnerModal, clearSelectedCard]);
-
-  // Update game state from WebSocket data
-  const updateGameStateFromWebSocket = useCallback(() => {
-    if (!game || isDisqualified) return;
-
-    // Update called numbers from WebSocket
-    if (wsCalledNumbers && wsCalledNumbers.length > 0) {
-      const numbersChanged = JSON.stringify(wsCalledNumbers) !== JSON.stringify(allCalledNumbers);
-      
-      if (numbersChanged) {
-        setAllCalledNumbers(wsCalledNumbers);
-
-        // Update recent called numbers
-        const recentNumbers = [];
-        const totalCalled = wsCalledNumbers.length;
-        
-        for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
-          const num = wsCalledNumbers[i];
-          if (num) {
-            recentNumbers.push({
-              number: num,
-              letter: getNumberLetter(num),
-              isCurrent: i === totalCalled - 1
-            });
-          }
-        }
-        
-        setRecentCalledNumbers(recentNumbers);
-      }
-    }
-
-    // Update current called number from WebSocket
-    if (wsCurrentNumber) {
-      const newCurrentNumber = {
-        number: wsCurrentNumber.number,
-        letter: getNumberLetter(wsCurrentNumber.number),
-      };
-
-      setCurrentCalledNumber(prev => {
-        if (!prev || prev.number !== newCurrentNumber.number) {
-          return { ...newCurrentNumber, isNew: true };
-        }
-        return prev;
-      });
-
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-      }
-
-      animationTimeoutRef.current = setTimeout(() => {
-        setCurrentCalledNumber(prev =>
-          prev ? { ...prev, isNew: false } : null
-        );
-      }, 1000);
-    } else if (wsRecentCalledNumbers && wsRecentCalledNumbers.length > 0) {
-      // Fallback to recent numbers
-      const mostRecent = wsRecentCalledNumbers[wsRecentCalledNumbers.length - 1];
-      if (mostRecent) {
-        setCurrentCalledNumber({
-          number: mostRecent.number,
-          letter: getNumberLetter(mostRecent.number),
-          isNew: false
-        });
-      }
-    }
-  }, [game, isDisqualified, wsCalledNumbers, wsCurrentNumber, wsRecentCalledNumbers, allCalledNumbers, getNumberLetter]);
-
-  // Handle WebSocket updates - FIXED with better state management
-  useEffect(() => {
-    if (!wsConnected || !game || wsInitializedRef.current) return;
-
-    // Initialize WebSocket data once
-    if (!wsInitializedRef.current) {
-      console.log('✅ WebSocket connected - initializing game data');
-      wsInitializedRef.current = true;
-      updateGameStateFromWebSocket();
-    }
-  }, [wsConnected, game, updateGameStateFromWebSocket]);
-
-  // Listen for WebSocket data changes
-  useEffect(() => {
-    if (!wsConnected || !wsInitializedRef.current) return;
-
-    // Update when WebSocket data changes
-    updateGameStateFromWebSocket();
-  }, [wsConnected, wsCurrentNumber, wsCalledNumbers, wsRecentCalledNumbers, updateGameStateFromWebSocket]);
 
   // Handle game status changes - SKIP if disqualified
   useEffect(() => {
@@ -907,6 +905,29 @@ export default function GamePage() {
   const displayBingoCard = useMemo(() => {
     return localBingoCard || gameBingoCard;
   }, [localBingoCard, gameBingoCard]);
+
+  // Get selected number from multiple sources
+  const getSelectedCardNumber = useMemo(() => {
+    // Priority 1: From useCardSelection hook
+    if (selectedNumber) return selectedNumber;
+    
+    // Priority 2: From local storage
+    const storedCard = localStorage.getItem(`selected_card_${id}`);
+    if (storedCard) {
+      try {
+        const cardData = JSON.parse(storedCard);
+        return cardData.cardNumber;
+      } catch (e) {
+        return null;
+      }
+    }
+    
+    // Priority 3: From bingo card
+    if (localBingoCard?.cardNumber) return localBingoCard.cardNumber;
+    if (gameBingoCard?.cardNumber) return gameBingoCard.cardNumber;
+    
+    return null;
+  }, [selectedNumber, id, localBingoCard, gameBingoCard]);
 
   // Helper function to check if a position is in winning pattern
   const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
