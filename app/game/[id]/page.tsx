@@ -227,7 +227,7 @@ const initialLoadCompleteRef = useRef(false);
     
     setDisqualificationProcessed(true);
     
-    console.log('✅ Disqualification processed immediately');
+    console.log('✅ Disqualification processed immediately',allCalledNumbers);
   }, [localBingoCard, allCalledNumbers]);
 
   // FIXED: Check if user has a bingo card with IMMEDIATE disqualification detection
