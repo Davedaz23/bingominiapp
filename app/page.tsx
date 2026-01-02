@@ -650,19 +650,20 @@ const getCombinedTakenCards = useCallback(() => {
       {showCardSelection && (
         <>
           <CardSelectionGrid
-            availableCards={getCombinedAvailableCards().map(cardNumber => ({
-              cardIndex: cardNumber,
-              numbers: [] // This should be populated with actual card data
-            }))}
-            takenCards={getCombinedTakenCards()}
-            selectedNumber={selectedNumber}
-            walletBalance={walletBalance}
-            gameStatus={gameStatus}
-            onCardSelect={handleCardSelectWithFeedback}
-            processingCards={processingCards}
-            locallyTakenCards={locallyTakenCards}
-            wsConnected={wsConnected}
-          />
+  availableCards={getCombinedAvailableCards().map(cardNumber => ({
+    cardIndex: cardNumber,
+    numbers: [] // This should be populated with actual card data
+  }))}
+  takenCards={getCombinedTakenCards()}
+  selectedNumber={selectedNumber}
+  walletBalance={walletBalance}
+  gameStatus={gameStatus}
+  onCardSelect={handleCardSelectWithFeedback}
+  processingCards={processingCards}
+  locallyTakenCards={locallyTakenCards}
+  wsConnected={wsConnected}
+  currentUserId={user?.id} // ADD THIS LINE
+/>
 
           {/* Selected card preview */}
           {selectedNumber && bingoCard && (
