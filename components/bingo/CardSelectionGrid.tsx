@@ -50,8 +50,13 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
 
   // Check if card is taken
   const isCardTaken = (cardNumber: number): boolean => {
-    return takenCardMap.has(cardNumber) || locallyTakenCards.has(cardNumber);
-  };
+  const isServerTaken = takenCardMap.has(cardNumber);
+  const isLocalTaken = locallyTakenCards.has(cardNumber);
+  const isProcessing = processingCards.has(cardNumber);
+  
+  // IMPORTANT: If someone else is processing the card, show it as taken
+  return isServerTaken || isLocalTaken || isProcessing;
+};
 
   // Check if card is available
   const isCardAvailable = (cardNumber: number): boolean => {
@@ -64,14 +69,14 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   };
 
   // Check if user can select this card
-  const canUserSelect = (cardNumber: number): boolean => {
-    return (
-      walletBalance >= 10 &&
-      isCardAvailable(cardNumber) &&
-      !isCardProcessing(cardNumber) &&
-      (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED')
-    );
-  };
+const canUserSelect = (cardNumber: number): boolean => {
+  return (
+    walletBalance >= 10 &&
+    !isCardTaken(cardNumber) &&
+    !isCardProcessing(cardNumber) &&
+    (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED')
+  );
+};
 
   // Handle card selection
   const handleCardSelect = async (cardNumber: number) => {
@@ -311,13 +316,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
         </motion.div>
       )}
 
-      {/* Instructions */}
-      <div className="text-center text-white/40 text-xs">
-        <p>• Green dots indicate available cards</p>
-        <p>• Red cards are taken by other players</p>
-        <p>• Orange cards were recently taken</p>
-        <p>• Yellow cards are currently being selected</p>
-      </div>
+     
     </div>
   );
 };

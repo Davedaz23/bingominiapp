@@ -101,28 +101,30 @@ export default function Home() {
   }, [gameData]);
 
   // Combine all sources of taken cards
-  const getCombinedTakenCards = useCallback(() => {
-    // Merge API taken cards, WebSocket taken cards, and locally taken cards
-    const allTakenCards = [
-      ...apiTakenCards,
-      ...realtimeTakenCards,
-      ...Array.from(locallyTakenCards).map(cardNumber => ({
-        cardNumber,
-        userId: user?.id || 'local',
-        timestamp: new Date().toISOString()
-      }))
-    ];
-    
-    // Remove duplicates
-    const uniqueTakenCards = allTakenCards.reduce((acc, card) => {
-      if (!acc.some((c: { cardNumber: any; }) => c.cardNumber === card.cardNumber)) {
-        acc.push(card);
-      }
-      return acc;
-    }, [] as any[]);
-    
-    return uniqueTakenCards;
-  }, [apiTakenCards, realtimeTakenCards, locallyTakenCards, user?.id]);
+const getCombinedTakenCards = useCallback(() => {
+  // Start with WebSocket real-time cards (most up-to-date)
+  const allTakenCards = [
+    ...realtimeTakenCards, // WebSocket real-time updates
+    ...apiTakenCards,      // API data as fallback
+    ...Array.from(locallyTakenCards).map(cardNumber => ({
+      cardNumber,
+      userId: user?.id || 'local',
+      timestamp: new Date().toISOString()
+    }))
+  ];
+  
+  // Create a map to remove duplicates, keeping the most recent
+  const cardMap = new Map();
+  
+  allTakenCards.forEach(card => {
+    if (!cardMap.has(card.cardNumber) || 
+        new Date(card.timestamp || 0) > new Date(cardMap.get(card.cardNumber).timestamp || 0)) {
+      cardMap.set(card.cardNumber, card);
+    }
+  });
+  
+  return Array.from(cardMap.values());
+}, [realtimeTakenCards, apiTakenCards, locallyTakenCards, user?.id]);
 
   // Get combined available cards
   const getCombinedAvailableCards = useCallback(() => {

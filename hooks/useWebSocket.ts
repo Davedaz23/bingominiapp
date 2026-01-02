@@ -38,6 +38,7 @@ export const useWebSocket = (
   >([]);
   const [error, setError] = useState<string>('');
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const isConnectingRef = useRef(false);
   
   // Message handlers
   const messageHandlers = useRef<Map<string, (data: any) => void>>(new Map());
@@ -51,12 +52,6 @@ export const useWebSocket = (
     return 'O';
   }, []);
 
-  // Initialize available cards (1-400)
-  const initializeAvailableCards = useCallback(() => {
-    const allCards = Array.from({ length: 400 }, (_, i) => i + 1);
-    setAvailableCards(allCards);
-  }, []);
-
   // Update available cards based on taken cards
   const updateAvailableCards = useCallback((newTakenCards: TakenCard[]) => {
     const takenCardNumbers = newTakenCards.map(card => card.cardNumber);
@@ -67,56 +62,73 @@ export const useWebSocket = (
   }, []);
 
   const connect = useCallback(() => {
-    if (!gameId || !userId || wsRef.current?.readyState === WebSocket.OPEN) {
+    if (!gameId || !userId || wsRef.current?.readyState === WebSocket.OPEN || isConnectingRef.current) {
       return;
     }
 
+    isConnectingRef.current = true;
+    console.log('🚀 Starting WebSocket connection...', { gameId, userId });
+
     // Clean up existing connection
     if (wsRef.current) {
+      console.log('🧹 Closing existing WebSocket connection');
       wsRef.current.close();
+      wsRef.current = null;
     }
-
-    // Initialize available cards
-    initializeAvailableCards();
 
     const backendUrl = process.env.NODE_ENV === 'production' 
       ? 'wss://telegram-bingo-bot-opj9.onrender.com'
       : 'ws://localhost:3000';
     
-    const wsUrl = `${backendUrl}/ws/game?gameId=${gameId}&userId=${userId}`;
+    const wsUrl = `${backendUrl}/ws?gameId=${gameId}&userId=${userId}`;
     
     console.log('🔗 Connecting to WebSocket:', wsUrl);
     
-    wsRef.current = new WebSocket(wsUrl);
+    try {
+      wsRef.current = new WebSocket(wsUrl);
+    } catch (err) {
+      console.error('❌ Failed to create WebSocket:', err);
+      isConnectingRef.current = false;
+      return;
+    }
     
     wsRef.current.onopen = () => {
-      console.log('✅ WebSocket connected to Render backend');
-      console.log('🌐 Backend URL:', backendUrl);
+      console.log('✅ WebSocket connected successfully');
       setIsConnected(true);
       setError('');
       setReconnectAttempts(0);
+      isConnectingRef.current = false;
       
       // Request initial card availability
-      if (gameId) {
-        sendMessage({
-          type: 'GET_CARD_AVAILABILITY',
-          gameId
-        });
-      }
+      setTimeout(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          sendMessage({
+            type: 'GET_CARD_AVAILABILITY',
+            gameId,
+            userId
+          });
+          console.log('📤 Sent GET_CARD_AVAILABILITY request');
+        }
+      }, 500);
     };
     
     wsRef.current.onmessage = (event) => {
       try {
         const data: WebSocketMessage = JSON.parse(event.data);
-        console.log('📨 WebSocket message:', data.type, data);
+        console.log('📨 WebSocket message received:', data.type, data);
         
         // Handle different message types
         switch (data.type) {
+          case 'CONNECTED':
+            console.log('✅ WebSocket connection confirmed');
+            break;
+            
           case 'TAKEN_CARDS_UPDATE':
+            console.log('🔄 TAKEN_CARDS_UPDATE:', data.takenCards?.length, 'taken cards');
             setTakenCards(data.takenCards || []);
             const { availableCards: updatedCards } = updateAvailableCards(data.takenCards || []);
             
-            // Notify parent component if callback provided
+            // Notify parent component
             if (onCardsAvailabilityUpdate) {
               onCardsAvailabilityUpdate({
                 type: 'CARD_AVAILABILITY_UPDATE',
@@ -129,36 +141,60 @@ export const useWebSocket = (
             break;
             
           case 'CARD_AVAILABILITY_UPDATE':
-            // Direct card availability update from server
+            console.log('🎴 CARD_AVAILABILITY_UPDATE:', {
+              taken: data.takenCards?.length,
+              available: data.availableCards?.length
+            });
             setTakenCards(data.takenCards || []);
             setAvailableCards(data.availableCards || []);
             
             if (onCardsAvailabilityUpdate) {
-            onCardsAvailabilityUpdate(data.availableCards);
+              onCardsAvailabilityUpdate({
+                type: 'CARD_AVAILABILITY_UPDATE',
+                takenCards: data.takenCards || [],
+                availableCards: data.availableCards || [],
+                totalTakenCards: data.takenCards?.length || 0,
+                totalAvailableCards: data.availableCards?.length || 0
+              });
             }
             break;
             
           case 'CARD_SELECTED':
           case 'CARD_SELECTED_WITH_NUMBER':
-            // When a card is selected, update available cards
+            console.log(`🎯 ${data.type}: User ${data.userId} selected card ${data.cardNumber}`);
+            
+            // Add to taken cards if not already there
             if (data.cardNumber) {
-              const newTakenCard = {
-                cardNumber: data.cardNumber,
-                userId: data.userId
-              };
-              const updatedTakenCards = [...takenCards, newTakenCard];
-              setTakenCards(updatedTakenCards);
-              const { availableCards: newAvailableCards } = updateAvailableCards(updatedTakenCards);
-              
-              if (onCardsAvailabilityUpdate) {
-                onCardsAvailabilityUpdate({
-                  type: 'CARD_AVAILABILITY_UPDATE',
-                  takenCards: updatedTakenCards,
-                  availableCards: newAvailableCards,
-                  totalTakenCards: updatedTakenCards.length,
-                  totalAvailableCards: newAvailableCards.length
-                });
-              }
+              setTakenCards(prev => {
+                // Check if card is already in the list
+                const alreadyTaken = prev.some(card => card.cardNumber === data.cardNumber);
+                if (alreadyTaken) {
+                  return prev;
+                }
+                
+                const newTakenCard = {
+                  cardNumber: data.cardNumber,
+                  userId: data.userId
+                };
+                
+                const updatedTakenCards = [...prev, newTakenCard];
+                
+                // Update available cards
+                const { availableCards: newAvailableCards } = updateAvailableCards(updatedTakenCards);
+                
+                // Notify parent component
+                if (onCardsAvailabilityUpdate) {
+                  onCardsAvailabilityUpdate({
+                    type: 'CARD_AVAILABILITY_UPDATE',
+                    takenCards: updatedTakenCards,
+                    availableCards: newAvailableCards,
+                    totalTakenCards: updatedTakenCards.length,
+                    totalAvailableCards: newAvailableCards.length
+                  });
+                }
+                
+                return updatedTakenCards;
+              });
             }
             break;
             
@@ -216,19 +252,14 @@ export const useWebSocket = (
             
           case 'USER_JOINED':
           case 'USER_LEFT':
+            console.log('👥 User event:', data.type, data.userId);
+            break;
+            
           case 'GAME_STARTED':
           case 'BINGO_CLAIMED':
           case 'WINNER_DECLARED':
           case 'NO_WINNER':
-            // These events might trigger UI updates
-            console.log('🔔 Game event:', data.type);
-            break;
-            
-          case 'PLAYER_DISQUALIFIED':
-            if (data.userId === userId) {
-              console.log('⛔ You have been disqualified');
-              setError('You have been disqualified from this game');
-            }
+            console.log('🎮 Game event:', data.type);
             break;
             
           case 'PONG':
@@ -243,14 +274,20 @@ export const useWebSocket = (
             }
         }
       } catch (error) {
-        console.error('❌ Error parsing WebSocket message:', error);
+        console.error('❌ Error parsing WebSocket message:', error, event.data);
       }
     };
     
     wsRef.current.onclose = (event) => {
-      console.log('🔌 WebSocket disconnected from Render:', event.code, event.reason);
-      console.log('🌐 Attempted URL:', backendUrl);
+      console.log('🔌 WebSocket disconnected:', event.code, event.reason);
       setIsConnected(false);
+      isConnectingRef.current = false;
+      
+      // Don't reconnect for normal closure
+      if (event.code === 1000) {
+        console.log('WebSocket closed normally');
+        return;
+      }
       
       // Don't reconnect for error 1006 (abnormal closure)
       if (event.code === 1006) {
@@ -261,7 +298,7 @@ export const useWebSocket = (
       // Attempt reconnection with exponential backoff
       if (reconnectAttempts < 5) {
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-        console.log(`🔄 Reconnecting in ${delay}ms...`);
+        console.log(`🔄 Reconnecting in ${delay}ms... (attempt ${reconnectAttempts + 1}/5)`);
         
         setTimeout(() => {
           setReconnectAttempts(prev => prev + 1);
@@ -273,21 +310,21 @@ export const useWebSocket = (
     };
     
     wsRef.current.onerror = (error) => {
-      console.error('❌ WebSocket error connecting to Render:', error);
-      console.error('🌐 Attempted URL:', backendUrl);
-      setError(`Cannot connect to game server at ${backendUrl}`);
+      console.error('❌ WebSocket error:', error);
+      setError(`WebSocket connection error`);
+      isConnectingRef.current = false;
     };
   }, [
     gameId, 
     userId, 
     getNumberLetter, 
     reconnectAttempts, 
-    initializeAvailableCards, 
     updateAvailableCards,
     onCardsAvailabilityUpdate
   ]);
 
   const disconnect = useCallback(() => {
+    console.log('🔌 Disconnecting WebSocket');
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -300,11 +337,13 @@ export const useWebSocket = (
     setCurrentNumber(null);
     setRecentCalledNumbers([]);
     setError('');
+    setReconnectAttempts(0);
   }, []);
 
   const sendMessage = useCallback((message: WebSocketMessage) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
+      console.log('📤 WebSocket message sent:', message.type);
       return true;
     }
     console.warn('⚠️ WebSocket not connected, cannot send message');
@@ -324,13 +363,15 @@ export const useWebSocket = (
   // Request current card availability
   const requestCardAvailability = useCallback(() => {
     if (gameId) {
+      console.log('📤 Requesting card availability for game:', gameId);
       return sendMessage({
         type: 'GET_CARD_AVAILABILITY',
-        gameId
+        gameId,
+        userId
       });
     }
     return false;
-  }, [gameId, sendMessage]);
+  }, [gameId, userId, sendMessage]);
 
   // Heartbeat to keep connection alive
   useEffect(() => {
@@ -346,14 +387,14 @@ export const useWebSocket = (
   // Connect on mount and when dependencies change
   useEffect(() => {
     if (gameId && userId) {
-      console.log('🚀 useWebSocket: Attempting connection', { gameId, userId });
+      console.log('🚀 useWebSocket: Connecting...', { gameId, userId });
       connect();
     } else {
       console.log('⏸️ useWebSocket: Missing gameId or userId', { gameId, userId });
     }
     
     return () => {
-      console.log('🧹 useWebSocket: Cleaning up');
+      console.log('🧹 useWebSocket: Cleaning up on unmount');
       disconnect();
     };
   }, [gameId, userId, connect, disconnect]);
@@ -371,6 +412,7 @@ export const useWebSocket = (
     onMessage,
     requestCardAvailability,
     reconnect: connect,
-    disconnect
+    disconnect,
+    connectionStatus: wsRef.current?.readyState || 3 // 3 = CLOSED
   };
 };
