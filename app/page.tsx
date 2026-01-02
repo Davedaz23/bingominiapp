@@ -10,6 +10,7 @@ import { useGameState } from '../hooks/useGameState';
 import { useCardSelection } from '../hooks/useCardSelection';
 import { Clock, Check, AlertCircle, Loader2, Info } from 'lucide-react';
 import { CardSelectionGrid } from '../components/bingo/CardSelectionGrid';
+import { useWebSocket } from '../hooks/useWebSocket'; // Import WebSocket hook
 
 // Constants for throttling
 const PLAYER_CHECK_INTERVAL = 5000; // 5 seconds for player status
@@ -32,12 +33,37 @@ export default function Home() {
     initializeGameState,
   } = useGameState();
 
+  // WebSocket connection for real-time updates
+  const {
+    isConnected: wsConnected,
+    takenCards: wsTakenCards,
+    availableCards: wsAvailableCards,
+    error: wsError,
+    sendMessage,
+    requestCardAvailability,
+  } = useWebSocket(
+    gameData?._id,
+    user?.id,
+    // Callback for card availability updates
+    (data) => {
+      console.log('🔔 Real-time card update received:', data);
+      // Update UI state with real-time data
+      setRealtimeTakenCards(data.takenCards || []);
+      setRealtimeAvailableCards(data.availableCards || []);
+      
+      // Show notification if cards were just taken
+      if (data.totalTakenCards > 0) {
+        showCardTakenNotification(data.totalTakenCards);
+      }
+    }
+  );
+
   // Card selection - Use the hook's handleCardSelect
   const {
     selectedNumber,
     bingoCard,
-    availableCards,
-    takenCards,
+    availableCards: apiAvailableCards,
+    takenCards: apiTakenCards,
     clearSelectedCard,
     handleCardSelect,
     cardSelectionError,
@@ -53,8 +79,11 @@ export default function Home() {
   // State for immediate UI feedback
   const [locallyTakenCards, setLocallyTakenCards] = useState<Set<number>>(new Set());
   const [processingCards, setProcessingCards] = useState<Set<number>>(new Set());
+  const [realtimeTakenCards, setRealtimeTakenCards] = useState<any[]>([]);
+  const [realtimeAvailableCards, setRealtimeAvailableCards] = useState<number[]>([]);
   const [totalPlayers, setTotalPlayers] = useState<number>(0);
   const [isRedirecting, setIsRedirecting] = useState<boolean>(false);
+  const [notifications, setNotifications] = useState<{id: string, message: string}[]>([]);
 
   // Refs for tracking
   const isCheckingPlayerStatusRef = useRef<boolean>(false);
@@ -71,17 +100,84 @@ export default function Home() {
     }
   }, [gameData]);
 
-  // Get combined taken cards (server + local)
+  // Combine all sources of taken cards
   const getCombinedTakenCards = useCallback(() => {
-    return [...takenCards];
-  }, [takenCards]);
+    // Merge API taken cards, WebSocket taken cards, and locally taken cards
+    const allTakenCards = [
+      ...apiTakenCards,
+      ...realtimeTakenCards,
+      ...Array.from(locallyTakenCards).map(cardNumber => ({
+        cardNumber,
+        userId: user?.id || 'local',
+        timestamp: new Date().toISOString()
+      }))
+    ];
+    
+    // Remove duplicates
+    const uniqueTakenCards = allTakenCards.reduce((acc, card) => {
+      if (!acc.some((c: { cardNumber: any; }) => c.cardNumber === card.cardNumber)) {
+        acc.push(card);
+      }
+      return acc;
+    }, [] as any[]);
+    
+    return uniqueTakenCards;
+  }, [apiTakenCards, realtimeTakenCards, locallyTakenCards, user?.id]);
+
+  // Get combined available cards
+  const getCombinedAvailableCards = useCallback(() => {
+    // Start with all possible cards (1-400)
+    const allCards = Array.from({ length: 400 }, (_, i) => i + 1);
+    
+    // Get taken card numbers
+    const takenCards = getCombinedTakenCards();
+    const takenCardNumbers = new Set(takenCards.map((card: { cardNumber: any; }) => card.cardNumber));
+    
+    // Filter out taken cards
+    const available = allCards.filter(card => !takenCardNumbers.has(card));
+    
+    // If we have WebSocket available cards, prioritize them
+    if (realtimeAvailableCards.length > 0) {
+      // Intersect with realtime data
+      const realtimeSet = new Set(realtimeAvailableCards);
+      return available.filter(card => realtimeSet.has(card));
+    }
+    
+    return available;
+  }, [getCombinedTakenCards, realtimeAvailableCards]);
+
+  // Calculate statistics
+  const cardStats = useMemo(() => {
+    const takenCards = getCombinedTakenCards();
+    const availableCards = getCombinedAvailableCards();
+    
+    return {
+      totalTaken: takenCards.length,
+      totalAvailable: availableCards.length,
+      totalInactive: 400 - (takenCards.length + availableCards.length),
+      takenByOthers: takenCards.filter((card: { userId: string | undefined; }) => card.userId !== user?.id).length,
+    };
+  }, [getCombinedTakenCards, getCombinedAvailableCards, user?.id]);
+
+  // Show notification for card taken events
+  const showCardTakenNotification = useCallback((count: number) => {
+    const id = Date.now().toString();
+    const message = `${count} card${count > 1 ? 's were' : ' was'} just taken by other players`;
+    
+    setNotifications(prev => [...prev, { id, message }]);
+    
+    // Auto-remove notification after 5 seconds
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 5000);
+  }, []);
 
   // Check if game has minimum players (at least 2)
   const hasMinimumPlayers = useCallback(() => {
     return totalPlayers >= 2;
   }, [totalPlayers]);
 
-  // Immediate redirect function - FIXED: No delays
+  // Immediate redirect function
   const handleImmediateRedirect = useCallback(() => {
     if (redirectAttemptedRef.current || isRedirecting) return;
 
@@ -110,38 +206,49 @@ export default function Home() {
       if (clearSelectedCard) {
         clearSelectedCard();
       }
-      if (!takenCards.some(card => card.cardNumber === selectedNumber)) {
-        setLocallyTakenCards(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(selectedNumber);
-          return newSet;
-        });
-      }
+      setLocallyTakenCards(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(selectedNumber);
+        return newSet;
+      });
     }
 
     // Immediate UI update
     setProcessingCards(prev => new Set(prev).add(cardNumber));
 
     try {
-      await handleCardSelect(cardNumber);
+      const result = await handleCardSelect(cardNumber);
+      const success = typeof result === 'boolean' ? result : true;
       
-      // Mark as locally taken
-      setLocallyTakenCards(prev => {
-        const newSet = new Set(prev);
-        newSet.add(cardNumber);
-        return newSet;
-      });
+      if (success) {
+        // Mark as locally taken
+        setLocallyTakenCards(prev => {
+          const newSet = new Set(prev);
+          newSet.add(cardNumber);
+          return newSet;
+        });
 
-      console.log(`✅ Card ${cardNumber} selected successfully`);
+        console.log(`✅ Card ${cardNumber} selected successfully`);
+        
+        // Request updated card availability via WebSocket
+        if (wsConnected) {
+          sendMessage({
+            type: 'GET_CARD_AVAILABILITY',
+            gameId: gameData?._id
+          });
+        }
 
-      // If game is ACTIVE, redirect IMMEDIATELY
-      if (gameStatus === 'ACTIVE') {
-        console.log('Game is ACTIVE - Immediate redirect after card selection');
-        handleImmediateRedirect();
+        // If game is ACTIVE, redirect IMMEDIATELY
+        if (gameStatus === 'ACTIVE') {
+          console.log('Game is ACTIVE - Immediate redirect after card selection');
+          handleImmediateRedirect();
+        }
+
+        return true;
+      } else {
+        return false;
       }
 
-      return true;
-      
     } catch (error: any) {
       console.error('❌ Card selection failed:', error);
       
@@ -163,7 +270,16 @@ export default function Home() {
         });
       }, 1500);
     }
-  }, [handleCardSelect, gameStatus, selectedNumber, clearSelectedCard, takenCards, handleImmediateRedirect]);
+  }, [
+    handleCardSelect, 
+    gameStatus, 
+    selectedNumber, 
+    clearSelectedCard, 
+    wsConnected, 
+    sendMessage, 
+    gameData, 
+    handleImmediateRedirect
+  ]);
 
   // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
@@ -227,11 +343,11 @@ export default function Home() {
     handleImmediateRedirect();
   }, [handleImmediateRedirect]);
 
-  // Auto-redirect when game is ACTIVE - FIXED: Only check gameStatus
+  // Auto-redirect when game is ACTIVE
   useEffect(() => {
     if (authLoading || pageLoading || redirectAttemptedRef.current) return;
     
-    // If game is ACTIVE, redirect immediately (regardless of player count or card)
+    // If game is ACTIVE, redirect immediately
     if (gameStatus === 'ACTIVE') {
       console.log('🚀 Game is ACTIVE - Immediate auto-redirect');
       handleImmediateRedirect();
@@ -297,7 +413,7 @@ export default function Home() {
     );
   }
 
-  // Check if game is ACTIVE - redirect immediately without showing any UI
+  // Check if game is ACTIVE - redirect immediately
   if (gameStatus === 'ACTIVE' && !redirectAttemptedRef.current) {
     console.log('Game is active - immediate redirect');
     handleImmediateRedirect();
@@ -311,7 +427,7 @@ export default function Home() {
     );
   }
 
-  // Get status message - FIXED: Simplified
+  // Get status message
   const getStatusMessage = () => {
     if (hasCardInActiveGame) {
       return `You have card #${playerCardNumber}`;
@@ -336,7 +452,7 @@ export default function Home() {
     return 'Loading game...';
   };
 
-  // Show card selection logic - FIXED: Simplified condition
+  // Show card selection logic
   const showCardSelection = (
     (gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION' || gameStatus === 'FINISHED') &&
     !hasCardInActiveGame
@@ -344,6 +460,34 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
+      {/* WebSocket Connection Status */}
+      {!wsConnected && showCardSelection && (
+        <div className="fixed top-4 right-4 bg-yellow-500/20 backdrop-blur-lg rounded-lg p-2 border border-yellow-500/30 z-50">
+          <div className="flex items-center gap-2 text-white text-xs">
+            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+            <span>Connecting to real-time updates...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Real-time Notifications */}
+      <div className="fixed top-20 right-4 space-y-2 z-50 max-w-xs">
+        {notifications.map(notification => (
+          <motion.div
+            key={notification.id}
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 100 }}
+            className="bg-gradient-to-r from-red-500/20 to-rose-600/20 backdrop-blur-lg rounded-xl p-3 border border-red-500/30"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              <p className="text-white text-xs font-medium">{notification.message}</p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
       {/* Navbar */}
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-4 mb-6 border border-white/20">
         <div className="flex justify-between items-center">
@@ -354,6 +498,11 @@ export default function Home() {
             </p>
           </div>
           <div className="flex items-center gap-4">
+            {/* WebSocket status indicator */}
+            <div className={`px-3 py-1 rounded-lg text-xs ${wsConnected ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
+              {wsConnected ? '🟢 Live' : '🟡 Connecting...'}
+            </div>
+            
             <div className="text-right">
               <p className="text-white font-bold text-sm">{walletBalance} ብር</p>
               <p className="text-white/60 text-xs">Balance</p>
@@ -367,6 +516,39 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Real-time card stats */}
+      {showCardSelection && wsConnected && (
+        <motion.div
+          className="bg-white/5 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/10"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="grid grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-green-400 font-bold text-lg">{cardStats.totalAvailable}</div>
+              <div className="text-white/60 text-xs">Available</div>
+            </div>
+            <div className="text-center">
+              <div className="text-red-400 font-bold text-lg">{cardStats.totalTaken}</div>
+              <div className="text-white/60 text-xs">Taken</div>
+            </div>
+            <div className="text-center">
+              <div className="text-yellow-400 font-bold text-lg">{cardStats.takenByOthers}</div>
+              <div className="text-white/60 text-xs">Taken by Others</div>
+            </div>
+            <div className="text-center">
+              <div className="text-blue-400 font-bold text-lg">{processingCards.size}</div>
+              <div className="text-white/60 text-xs">Selecting Now</div>
+            </div>
+          </div>
+          <div className="text-center mt-2">
+            <div className="text-white/40 text-xs">
+              Updates in real-time • {wsConnected ? 'Live' : 'Refreshing every 5s'}
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Player status notification */}
       {hasCardInActiveGame && (
@@ -455,23 +637,29 @@ export default function Home() {
               </div>
             </div>
             <div className="text-right">
-              <p className="text-white text-sm font-bold">{availableCards.length} available</p>
+              <p className="text-white text-sm font-bold">{cardStats.totalAvailable} available</p>
               <p className="text-white/60 text-xs">cards remaining</p>
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* Card selection grid - FIXED: Show only when appropriate */}
+      {/* Card selection grid */}
       {showCardSelection && (
         <>
           <CardSelectionGrid
-            availableCards={availableCards}
+            availableCards={getCombinedAvailableCards().map(cardNumber => ({
+              cardIndex: cardNumber,
+              numbers: [] // This should be populated with actual card data
+            }))}
             takenCards={getCombinedTakenCards()}
             selectedNumber={selectedNumber}
             walletBalance={walletBalance}
             gameStatus={gameStatus}
             onCardSelect={handleCardSelectWithFeedback}
+            processingCards={processingCards}
+            locallyTakenCards={locallyTakenCards}
+            wsConnected={wsConnected}
           />
 
           {/* Selected card preview */}
