@@ -448,41 +448,78 @@ useEffect(() => {
 }, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter]);
 
   // Initialize WebSocket once when connected
- useEffect(() => {
-  if (!wsConnected || wsInitializedRef.current || !game || isDisqualified) return;
+useEffect(() => {
+  if (!wsConnected || !game || isDisqualified) return;
 
-  wsInitializedRef.current = true;
-
-  // Set initial values WITHOUT triggering state updates that cause re-renders
-  if (wsCalledNumbers && wsCalledNumbers.length > 0) {
-    lastWsCalledNumbersRef.current = wsCalledNumbers;
-    // Only update state if it's different from current
-    setAllCalledNumbers(prev => {
-      if (JSON.stringify(prev) !== JSON.stringify(wsCalledNumbers)) {
-        return wsCalledNumbers;
+  const updateFromWebSocket = () => {
+    // Check if we need to update called numbers
+    if (debouncedWsCalledNumbers && debouncedWsCalledNumbers.length > 0) {
+      const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
+      
+      if (isDifferent) {
+        console.log('🔢 WebSocket: Updating called numbers');
+        
+        // Merge WebSocket numbers with existing numbers (remove duplicates)
+        const mergedNumbers = [...new Set([...allCalledNumbers, ...debouncedWsCalledNumbers])];
+        setAllCalledNumbers(mergedNumbers);
+        lastWsCalledNumbersRef.current = debouncedWsCalledNumbers;
+        
+        // Update recent called numbers
+        const recentNumbers = [];
+        const totalCalled = mergedNumbers.length;
+        for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
+          const num = mergedNumbers[i];
+          if (num) {
+            recentNumbers.push({
+              number: num,
+              letter: getNumberLetter(num),
+              isCurrent: i === totalCalled - 1
+            });
+          }
+        }
+        setRecentCalledNumbers(recentNumbers);
       }
-      return prev;
-    });
-  }
-  
-  if (wsCurrentNumber) {
-    lastWsCurrentNumberRef.current = wsCurrentNumber;
-    setCurrentCalledNumber(prev => {
-      if (!prev || prev.number !== wsCurrentNumber.number) {
-        return {
-          number: wsCurrentNumber.number,
-          letter: getNumberLetter(wsCurrentNumber.number),
-          isNew: false
+    }
+
+    // Check if we need to update current number
+    if (debouncedWsCurrentNumber) {
+      const isDifferent = !lastWsCurrentNumberRef.current || 
+                         lastWsCurrentNumberRef.current.number !== debouncedWsCurrentNumber.number;
+      
+      if (isDifferent) {
+        console.log('🎯 WebSocket: New number called');
+        
+        // Add the new number to allCalledNumbers if not already present
+        if (!allCalledNumbers.includes(debouncedWsCurrentNumber.number)) {
+          setAllCalledNumbers(prev => [...prev, debouncedWsCurrentNumber.number]);
+        }
+        
+        const newCurrentNumber = {
+          number: debouncedWsCurrentNumber.number,
+          letter: getNumberLetter(debouncedWsCurrentNumber.number),
+          isNew: true
         };
-      }
-      return prev;
-    });
-  }
-  
-  // Mark initial load as complete
-  initialLoadCompleteRef.current = true;
-}, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter]);
 
+        setCurrentCalledNumber(newCurrentNumber);
+        lastWsCurrentNumberRef.current = debouncedWsCurrentNumber;
+
+        // Clear previous animation timeout
+        if (animationTimeoutRef.current) {
+          clearTimeout(animationTimeoutRef.current);
+        }
+
+        // Remove "new" animation after 1 second
+        animationTimeoutRef.current = setTimeout(() => {
+          setCurrentCalledNumber(prev =>
+            prev ? { ...prev, isNew: false } : null
+          );
+        }, 1000);
+      }
+    }
+  };
+
+  updateFromWebSocket();
+}, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter, allCalledNumbers]);
   // Auto-retry card loading
   useEffect(() => {
     if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS && !isDisqualified) {
