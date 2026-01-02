@@ -108,7 +108,7 @@ export default function GamePage() {
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
   const [initializationAttempted, setInitializationAttempted] = useState(false);
-
+const initialLoadCompleteRef = useRef(false);
   const [currentCalledNumber, setCurrentCalledNumber] = useState<{
     number: number;
     letter: string;
@@ -380,16 +380,17 @@ export default function GamePage() {
   }, [checkUserHasCard, isSpectatorMode, isDisqualified]);
 
   // FIXED: Handle WebSocket updates WITHOUT causing page reloads
-  useEffect(() => {
-    if (!wsConnected || !game || isDisqualified) return;
+useEffect(() => {
+  if (!wsConnected || !game || isDisqualified || !initialLoadCompleteRef.current) return;
 
+  // Debounce logic remains but ensure it doesn't trigger isLoading
+  const updateFromWebSocket = () => {
     // Check if we need to update called numbers
     if (debouncedWsCalledNumbers && debouncedWsCalledNumbers.length > 0) {
-      // Compare with last known value to prevent unnecessary updates
       const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
       
       if (isDifferent) {
-        console.log('🔢 Updating called numbers (debounced)');
+        console.log('🔢 WebSocket: Updating called numbers');
         setAllCalledNumbers(debouncedWsCalledNumbers);
         lastWsCalledNumbersRef.current = debouncedWsCalledNumbers;
         
@@ -418,7 +419,7 @@ export default function GamePage() {
                          lastWsCurrentNumberRef.current.number !== debouncedWsCurrentNumber.number;
       
       if (isDifferent) {
-        console.log('🎯 Updating current number (debounced)');
+        console.log('🎯 WebSocket: New number called');
         const newCurrentNumber = {
           number: debouncedWsCurrentNumber.number,
           letter: getNumberLetter(debouncedWsCurrentNumber.number),
@@ -441,30 +442,46 @@ export default function GamePage() {
         }, 1000);
       }
     }
-  }, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter]);
+  };
+
+  updateFromWebSocket();
+}, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter]);
 
   // Initialize WebSocket once when connected
-  useEffect(() => {
-    if (!wsConnected || wsInitializedRef.current || !game || isDisqualified) return;
+ useEffect(() => {
+  if (!wsConnected || wsInitializedRef.current || !game || isDisqualified) return;
 
-    console.log('✅ WebSocket connected - initializing once');
-    wsInitializedRef.current = true;
+  wsInitializedRef.current = true;
 
-    // Set initial values without triggering re-renders
-    if (wsCalledNumbers && wsCalledNumbers.length > 0) {
-      lastWsCalledNumbersRef.current = wsCalledNumbers;
-      setAllCalledNumbers(wsCalledNumbers);
-    }
-    
-    if (wsCurrentNumber) {
-      lastWsCurrentNumberRef.current = wsCurrentNumber;
-      setCurrentCalledNumber({
-        number: wsCurrentNumber.number,
-        letter: getNumberLetter(wsCurrentNumber.number),
-        isNew: false
-      });
-    }
-  }, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter]);
+  // Set initial values WITHOUT triggering state updates that cause re-renders
+  if (wsCalledNumbers && wsCalledNumbers.length > 0) {
+    lastWsCalledNumbersRef.current = wsCalledNumbers;
+    // Only update state if it's different from current
+    setAllCalledNumbers(prev => {
+      if (JSON.stringify(prev) !== JSON.stringify(wsCalledNumbers)) {
+        return wsCalledNumbers;
+      }
+      return prev;
+    });
+  }
+  
+  if (wsCurrentNumber) {
+    lastWsCurrentNumberRef.current = wsCurrentNumber;
+    setCurrentCalledNumber(prev => {
+      if (!prev || prev.number !== wsCurrentNumber.number) {
+        return {
+          number: wsCurrentNumber.number,
+          letter: getNumberLetter(wsCurrentNumber.number),
+          isNew: false
+        };
+      }
+      return prev;
+    });
+  }
+  
+  // Mark initial load as complete
+  initialLoadCompleteRef.current = true;
+}, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter]);
 
   // Auto-retry card loading
   useEffect(() => {
@@ -963,34 +980,34 @@ export default function GamePage() {
 
   // ==================== RENDER LOGIC ====================
   
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white font-medium">Loading game data...</p>
-          <p className="text-white/60 text-sm mt-2">Game #{id}</p>
-        </div>
+  if (isLoading && !game) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+      <div className="text-white text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+        <p className="text-white font-medium">Loading game data...</p>
+        <p className="text-white/60 text-sm mt-2">Game #{id}</p>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  if (!game && !isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-        <div className="text-white text-center">
-          <h1 className="text-2xl font-bold mb-4">Game Not Found</h1>
-          <p className="text-white/70 mb-6">{gameError || 'The game you are looking for does not exist.'}</p>
-          <button
-            onClick={() => router.push('/')}
-            className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold hover:bg-purple-50 transition-all"
-          >
-            Back to Lobby
-          </button>
-        </div>
+ if (!game && !isLoading) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+      <div className="text-white text-center">
+        <h1 className="text-2xl font-bold mb-4">Game Not Found</h1>
+        <p className="text-white/70 mb-6">{gameError || 'The game you are looking for does not exist.'}</p>
+        <button
+          onClick={() => router.push('/')}
+          className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold hover:bg-purple-50 transition-all"
+        >
+          Back to Lobby
+        </button>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   if (isLoadingCard && !cardError && !isSpectatorMode && !isDisqualified) {
     return (
