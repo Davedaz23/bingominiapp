@@ -165,6 +165,25 @@ export const authAPI = {
 };
 
 export const gameAPI = {
+//==  socket
+ getSyncState: (gameId: string, clientSequence?: number) =>
+    api.get<{
+      success: boolean;
+      syncState: any;
+      needsFullSync: boolean;
+      serverTime: number;
+    }>(`/games/${gameId}/sync`, {
+      params: { clientSequence }
+    }),
+  
+  getSyncHealth: (gameId: string) =>
+    api.get<{
+      success: boolean;
+      game: any;
+      serverState: any;
+      clients: any;
+      syncInfo: any;
+    }>(`/games/${gameId}/sync-health`),
   // ==================== CARD SELECTION ROUTES ====================
   getAvailableCards: (gameId: string, userId: string, count: number = 400) =>
     api.get<AvailableCardsResponse>(`/games/${gameId}/available-cards/${userId}`, {

@@ -51,10 +51,7 @@ export default function Home() {
       setRealtimeTakenCards(data.takenCards || []);
       setRealtimeAvailableCards(data.availableCards || []);
       
-      // Show notification if cards were just taken
-      if (data.totalTakenCards > 0) {
-        showCardTakenNotification(data.totalTakenCards);
-      }
+     
     }
   );
 
@@ -162,17 +159,17 @@ const getCombinedTakenCards = useCallback(() => {
   }, [getCombinedTakenCards, getCombinedAvailableCards, user?.id]);
 
   // Show notification for card taken events
-  const showCardTakenNotification = useCallback((count: number) => {
-    const id = Date.now().toString();
-    const message = `${count} card${count > 1 ? 's were' : ' was'} just taken by other players`;
+  // const showCardTakenNotification = useCallback((count: number) => {
+  //   const id = Date.now().toString();
+  //   const message = `${count} card${count > 1 ? 's were' : ' was'} just taken by other players`;
     
-    setNotifications(prev => [...prev, { id, message }]);
+  //   setNotifications(prev => [...prev, { id, message }]);
     
-    // Auto-remove notification after 5 seconds
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 5000);
-  }, []);
+  //   // Auto-remove notification after 5 seconds
+  //   setTimeout(() => {
+  //     setNotifications(prev => prev.filter(n => n.id !== id));
+  //   }, 5000);
+  // }, []);
 
   // Check if game has minimum players (at least 2)
   const hasMinimumPlayers = useCallback(() => {
