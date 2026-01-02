@@ -287,6 +287,11 @@ export const useWebSocket = (
           case 'WINNER_DECLARED':
           case 'NO_WINNER':
             console.log('🎮 Game event:', data.type);
+            setGameStatus({
+    ...gameStatus,
+    status: 'NO_WINNER',
+    noWinner: true
+  });
             break;
             
           case 'PONG':
