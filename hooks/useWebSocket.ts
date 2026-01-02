@@ -24,6 +24,8 @@ export const useWebSocket = (
   onCardsAvailabilityUpdate?: (data: CardAvailabilityUpdate) => void
 ) => {
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [takenCards, setTakenCards] = useState<TakenCard[]>([]);
   const [availableCards, setAvailableCards] = useState<number[]>([]);
@@ -38,7 +40,12 @@ export const useWebSocket = (
   >([]);
   const [error, setError] = useState<string>('');
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
-  const isConnectingRef = useRef(false);
+  
+  // Track if we're intentionally disconnecting
+  const intentionalDisconnectRef = useRef(false);
+  // Track last gameId and userId to prevent unnecessary reconnections
+  const lastGameIdRef = useRef<string | undefined>(gameId);
+  const lastUserIdRef = useRef<string | undefined>(userId);
   
   // Message handlers
   const messageHandlers = useRef<Map<string, (data: any) => void>>(new Map());
@@ -62,18 +69,35 @@ export const useWebSocket = (
   }, []);
 
   const connect = useCallback(() => {
-    if (!gameId || !userId || wsRef.current?.readyState === WebSocket.OPEN || isConnectingRef.current) {
+    // Check if we should reconnect
+    if (intentionalDisconnectRef.current) {
+      console.log('⏸️ Intentional disconnect in progress, skipping reconnect');
       return;
     }
 
-    isConnectingRef.current = true;
+    // Check if already connected
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('✅ Already connected to WebSocket');
+      return;
+    }
+
+    // Check if connecting
+    if (wsRef.current?.readyState === WebSocket.CONNECTING) {
+      console.log('⏳ WebSocket connection in progress');
+      return;
+    }
+
+    if (!gameId || !userId) {
+      console.log('⏸️ Missing gameId or userId');
+      return;
+    }
+
     console.log('🚀 Starting WebSocket connection...', { gameId, userId });
 
-    // Clean up existing connection
-    if (wsRef.current) {
-      console.log('🧹 Closing existing WebSocket connection');
-      wsRef.current.close();
-      wsRef.current = null;
+    // Clean up any existing timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
 
     const backendUrl = process.env.NODE_ENV === 'production' 
@@ -88,7 +112,7 @@ export const useWebSocket = (
       wsRef.current = new WebSocket(wsUrl);
     } catch (err) {
       console.error('❌ Failed to create WebSocket:', err);
-      isConnectingRef.current = false;
+      setError('Failed to create WebSocket connection');
       return;
     }
     
@@ -97,7 +121,11 @@ export const useWebSocket = (
       setIsConnected(true);
       setError('');
       setReconnectAttempts(0);
-      isConnectingRef.current = false;
+      intentionalDisconnectRef.current = false;
+      
+      // Store current gameId and userId
+      lastGameIdRef.current = gameId;
+      lastUserIdRef.current = userId;
       
       // Request initial card availability
       setTimeout(() => {
@@ -115,7 +143,7 @@ export const useWebSocket = (
     wsRef.current.onmessage = (event) => {
       try {
         const data: WebSocketMessage = JSON.parse(event.data);
-        console.log('📨 WebSocket message received:', data.type, data);
+        console.log('📨 WebSocket message received:', data.type);
         
         // Handle different message types
         switch (data.type) {
@@ -141,10 +169,7 @@ export const useWebSocket = (
             break;
             
           case 'CARD_AVAILABILITY_UPDATE':
-            console.log('🎴 CARD_AVAILABILITY_UPDATE:', {
-              taken: data.takenCards?.length,
-              available: data.availableCards?.length
-            });
+            console.log('🎴 CARD_AVAILABILITY_UPDATE');
             setTakenCards(data.takenCards || []);
             setAvailableCards(data.availableCards || []);
             
@@ -161,12 +186,10 @@ export const useWebSocket = (
             
           case 'CARD_SELECTED':
           case 'CARD_SELECTED_WITH_NUMBER':
-            console.log(`🎯 ${data.type}: User ${data.userId} selected card ${data.cardNumber}`);
+            console.log(`🎯 ${data.type}: User ${data.userId} selected card`);
             
-            // Add to taken cards if not already there
             if (data.cardNumber) {
               setTakenCards(prev => {
-                // Check if card is already in the list
                 const alreadyTaken = prev.some(card => card.cardNumber === data.cardNumber);
                 if (alreadyTaken) {
                   return prev;
@@ -178,11 +201,8 @@ export const useWebSocket = (
                 };
                 
                 const updatedTakenCards = [...prev, newTakenCard];
-                
-                // Update available cards
                 const { availableCards: newAvailableCards } = updateAvailableCards(updatedTakenCards);
                 
-                // Notify parent component
                 if (onCardsAvailabilityUpdate) {
                   onCardsAvailabilityUpdate({
                     type: 'CARD_AVAILABILITY_UPDATE',
@@ -229,7 +249,14 @@ export const useWebSocket = (
             break;
             
           case 'NUMBER_CALLED':
-            setCalledNumbers(prev => [...prev, data.number]);
+            // Only update if it's a new number
+            setCalledNumbers(prev => {
+              if (prev.includes(data.number)) {
+                return prev;
+              }
+              return [...prev, data.number];
+            });
+            
             setCurrentNumber({
               number: data.number,
               letter: getNumberLetter(data.number)
@@ -252,7 +279,7 @@ export const useWebSocket = (
             
           case 'USER_JOINED':
           case 'USER_LEFT':
-            console.log('👥 User event:', data.type, data.userId);
+            console.log('👥 User event:', data.type);
             break;
             
           case 'GAME_STARTED':
@@ -274,23 +301,22 @@ export const useWebSocket = (
             }
         }
       } catch (error) {
-        console.error('❌ Error parsing WebSocket message:', error, event.data);
+        console.error('❌ Error parsing WebSocket message:', error);
       }
     };
     
     wsRef.current.onclose = (event) => {
       console.log('🔌 WebSocket disconnected:', event.code, event.reason);
       setIsConnected(false);
-      isConnectingRef.current = false;
       
-      // Don't reconnect for normal closure
-      if (event.code === 1000) {
+      // Don't reconnect for normal closure or intentional disconnect
+      if (event.code === 1000 || intentionalDisconnectRef.current) {
         console.log('WebSocket closed normally');
         return;
       }
       
-      // Don't reconnect for error 1006 (abnormal closure)
-      if (event.code === 1006) {
+      // Don't reconnect for error 1006 (abnormal closure) after max attempts
+      if (event.code === 1006 && reconnectAttempts >= 5) {
         setError('Cannot connect to game server. Please check your internet connection.');
         return;
       }
@@ -300,7 +326,7 @@ export const useWebSocket = (
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
         console.log(`🔄 Reconnecting in ${delay}ms... (attempt ${reconnectAttempts + 1}/5)`);
         
-        setTimeout(() => {
+        reconnectTimeoutRef.current = setTimeout(() => {
           setReconnectAttempts(prev => prev + 1);
           connect();
         }, delay);
@@ -312,7 +338,6 @@ export const useWebSocket = (
     wsRef.current.onerror = (error) => {
       console.error('❌ WebSocket error:', error);
       setError(`WebSocket connection error`);
-      isConnectingRef.current = false;
     };
   }, [
     gameId, 
@@ -324,11 +349,26 @@ export const useWebSocket = (
   ]);
 
   const disconnect = useCallback(() => {
-    console.log('🔌 Disconnecting WebSocket');
+    console.log('🔌 Disconnecting WebSocket intentionally');
+    intentionalDisconnectRef.current = true;
+    
+    // Clear timeouts
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+    
+    // Close WebSocket
     if (wsRef.current) {
-      wsRef.current.close();
+      wsRef.current.close(1000, 'Intentional disconnect');
       wsRef.current = null;
     }
+    
     setIsConnected(false);
     setTakenCards([]);
     setAvailableCards([]);
@@ -373,31 +413,61 @@ export const useWebSocket = (
     return false;
   }, [gameId, userId, sendMessage]);
 
-  // Heartbeat to keep connection alive
+  // Setup heartbeat
   useEffect(() => {
     if (!isConnected || !wsRef.current) return;
     
-    const interval = setInterval(() => {
+    // Clear any existing interval
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+    }
+    
+    heartbeatIntervalRef.current = setInterval(() => {
       sendMessage({ type: 'PING' });
     }, 30000); // Send ping every 30 seconds
     
-    return () => clearInterval(interval);
+    return () => {
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+    };
   }, [isConnected, sendMessage]);
 
-  // Connect on mount and when dependencies change
+  // Connect on mount - only once
   useEffect(() => {
-    if (gameId && userId) {
-      console.log('🚀 useWebSocket: Connecting...', { gameId, userId });
-      connect();
-    } else {
-      console.log('⏸️ useWebSocket: Missing gameId or userId', { gameId, userId });
+    if (!gameId || !userId) return;
+    
+    // Check if we need to reconnect (gameId or userId changed)
+    const shouldReconnect = 
+      lastGameIdRef.current !== gameId || 
+      lastUserIdRef.current !== userId;
+    
+    if (shouldReconnect) {
+      console.log('🔄 GameId or UserId changed, reconnecting...');
+      disconnect(); // Clean up old connection
+      intentionalDisconnectRef.current = false; // Reset flag
+      setReconnectAttempts(0); // Reset reconnect attempts
     }
     
+    // Connect if not already connected
+    if (!isConnected && !intentionalDisconnectRef.current) {
+      connect();
+    }
+    
+    return () => {
+      // Only cleanup on unmount if component is actually unmounting
+      // Don't cleanup when dependencies change
+    };
+  }, [gameId, userId, isConnected, connect, disconnect]);
+
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
       console.log('🧹 useWebSocket: Cleaning up on unmount');
       disconnect();
     };
-  }, [gameId, userId, connect, disconnect]);
+  }, [disconnect]);
 
   return {
     isConnected,
@@ -411,7 +481,11 @@ export const useWebSocket = (
     sendMessage,
     onMessage,
     requestCardAvailability,
-    reconnect: connect,
+    reconnect: () => {
+      setReconnectAttempts(0);
+      intentionalDisconnectRef.current = false;
+      connect();
+    },
     disconnect,
     connectionStatus: wsRef.current?.readyState || 3 // 3 = CLOSED
   };
