@@ -1785,7 +1785,7 @@ export default function GamePage() {
             </button>
 
             {/* Optional: Compact result message for mobile */}
-            {claimResult && (
+            {/* {claimResult && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1799,7 +1799,7 @@ export default function GamePage() {
               >
                 {claimResult.message}
               </motion.div>
-            )}
+            )} */}
           </div>
         </div>
       )}
