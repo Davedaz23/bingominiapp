@@ -457,7 +457,7 @@ useEffect(() => {
       const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
       
       if (isDifferent) {
-        console.log('🔢 WebSocket: Updating called numbers');
+        console.log('🔢 WebSocket: Updating called numbers', allCalledNumbers);
         
         // Merge WebSocket numbers with existing numbers (remove duplicates)
         const mergedNumbers = [...new Set([...allCalledNumbers, ...debouncedWsCalledNumbers])];
