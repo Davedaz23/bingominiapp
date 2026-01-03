@@ -857,80 +857,265 @@ useEffect(() => {
   };
 
   // Handle manual Bingo claim
-  const handleClaimBingo = async () => {
-    if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard || isDisqualified) return;
+  // In your handleClaimBingo function, modify it like this:
+const handleClaimBingo = async () => {
+  if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard || isDisqualified) return;
 
-    try {
-      setIsClaimingBingo(true);
-      setClaimResult(null);
+  try {
+    setIsClaimingBingo(true);
+    setClaimResult(null);
 
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    if (!userId) throw new Error('User ID not found');
+
+    const response = await gameAPI.claimBingo(id, userId, 'BINGO');
+
+    if (response.data.success) {
+      // IMMEDIATELY show winner modal for the user who claimed
       const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      if (!userId) throw new Error('User ID not found');
-
-      const response = await gameAPI.claimBingo(id, userId, 'BINGO');
-
-      if (response.data.success) {
-        setClaimResult({
-          success: true,
-          message: response.data.message || 'Bingo claimed successfully!',
-          patternType: response.data.patternType,
-          prizeAmount: response.data.prizeAmount
-        });
-
-        setTimeout(() => {
-          refetchGame?.();
-        }, 2000);
-      } else {
-        const errorMsg = response.data.message || response.data.error || 'Failed to claim bingo';
-        setClaimResult({
-          success: false,
-          message: errorMsg
-        });
-        
-        if (errorMsg.toLowerCase().includes('disqualified') || 
-            errorMsg.toLowerCase().includes('false bingo claim')) {
-          handleDisqualification(errorMsg, {
-            patternClaimed: 'BINGO',
-            markedPositions: localBingoCard.markedPositions?.length
-          });
-        }
-      }
-    } catch (error: any) {
-      console.error('❌ Bingo claim failed:', error);
+      const currentUsername = localStorage.getItem('username') || 'Player';
+      const currentFirstName = localStorage.getItem('firstName') || 'Player';
       
-      let errorMessage = 'Failed to claim bingo';
-      
-      if (error.response?.data) {
-        errorMessage = error.response.data.error || 
-                       error.response.data.message || 
-                       error.message || 
-                       'Failed to claim bingo';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      setClaimResult({
-        success: false,
-        message: errorMessage
+      // Set winner info for immediate modal display
+      setWinnerInfo({
+        winner: {
+          _id: userId || 'current-user',
+          username: currentUsername,
+          firstName: currentFirstName,
+          // telegramId: userId
+        },
+        gameCode: game?.code || 'N/A',
+        endedAt: new Date().toISOString(),
+        totalPlayers: game?.currentPlayers || 0,
+        numbersCalled: allCalledNumbers.length,
+        winningPattern: response.data.patternType || 'BINGO',
+        winningCard: {
+          cardNumber: localBingoCard.cardNumber || 0,
+          numbers: localBingoCard.numbers,
+          markedPositions: localBingoCard.markedPositions,
+          winningPatternPositions: response.data.winningPositions || []
+        },
+        message: 'Bingo claimed successfully! You are the winner!'
       });
       
-      const isDisqualifiedError = errorMessage.toLowerCase().includes('disqualified') || 
-                                  errorMessage.toLowerCase().includes('false bingo claim');
+      // Set winner state
+      setIsUserWinner(true);
       
-      if (isDisqualifiedError) {
-        handleDisqualification(errorMessage, {
+      // Calculate prize amount
+      const totalPot = (game?.currentPlayers || 0) * 10;
+      const platformFee = totalPot * 0.2;
+      const winnerPrize = totalPot - platformFee;
+      setWinningAmount(winnerPrize);
+      
+      // Clear selected card
+      clearSelectedCard();
+      
+      // Show winner modal immediately
+      setTimeout(() => {
+        console.log('🎉 Showing immediate winner modal after successful claim');
+        setShowWinnerModal(true);
+      }, 300);
+      
+      // Also show success message
+      setClaimResult({
+        success: true,
+        message: response.data.message || 'Bingo claimed successfully! You are the winner!',
+        patternType: response.data.patternType,
+        prizeAmount: winnerPrize
+      });
+
+      // Force refresh game data in background to sync with server
+      setTimeout(() => {
+        if (refetchGame) {
+          refetchGame().then(() => {
+            console.log('✅ Game data refreshed after bingo claim');
+          }).catch(error => {
+            console.error('❌ Failed to refresh game after claim:', error);
+          });
+        }
+      }, 1000);
+    } else {
+      const errorMsg = response.data.message || response.data.error || 'Failed to claim bingo';
+      setClaimResult({
+        success: false,
+        message: errorMsg
+      });
+      
+      if (errorMsg.toLowerCase().includes('disqualified') || 
+          errorMsg.toLowerCase().includes('false bingo claim')) {
+        handleDisqualification(errorMsg, {
           patternClaimed: 'BINGO',
-          markedPositions: localBingoCard?.markedPositions?.length
+          markedPositions: localBingoCard.markedPositions?.length
         });
       }
-    } finally {
-      setIsClaimingBingo(false);
+    }
+  } catch (error: any) {
+    console.error('❌ Bingo claim failed:', error);
+    
+    let errorMessage = 'Failed to claim bingo';
+    
+    if (error.response?.data) {
+      errorMessage = error.response.data.error || 
+                     error.response.data.message || 
+                     error.message || 
+                     'Failed to claim bingo';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    setClaimResult({
+      success: false,
+      message: errorMessage
+    });
+    
+    const isDisqualifiedError = errorMessage.toLowerCase().includes('disqualified') || 
+                                errorMessage.toLowerCase().includes('false bingo claim');
+    
+    if (isDisqualifiedError) {
+      handleDisqualification(errorMessage, {
+        patternClaimed: 'BINGO',
+        markedPositions: localBingoCard?.markedPositions?.length
+      });
+    }
+  } finally {
+    setIsClaimingBingo(false);
 
+    // Clear claim result message after delay (only for non-disqualification cases)
+    if (!isDisqualified) {
       setTimeout(() => {
         setClaimResult(null);
-      }, isDisqualified ? 10000 : 5000);
+      }, 5000);
+    }
+  }
+};
+
+// Also update the claimResult display to show more prominent message for success:
+{claimResult && (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: 10 }}
+    className={`
+      mt-2 p-2 rounded-lg text-center text-xs font-medium max-w-[200px]
+      ${claimResult.success
+        ? 'bg-gradient-to-r from-green-500/30 to-emerald-500/30 text-green-300 border border-green-500/30 shadow-lg shadow-green-500/20'
+        : 'bg-gradient-to-r from-red-500/20 to-red-500/10 text-red-300 border border-red-500/30'
+      }
+    `}
+  >
+    {claimResult.success ? (
+      <div className="flex flex-col items-center">
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-green-400">🎉</span>
+          <span className="font-bold">Success!</span>
+          <span className="text-green-400">🎉</span>
+        </div>
+        <p className="text-xs">{claimResult.message}</p>
+        <p className="text-[10px] text-green-400 mt-1">
+          Winner details loading...
+        </p>
+      </div>
+    ) : (
+      <p>{claimResult.message}</p>
+    )}
+  </motion.div>
+)}
+
+// Enhance the WebSocket winner event handling:
+// Add this to your WebSocket useEffect:
+useEffect(() => {
+  if (!wsConnected || !game || isDisqualified) return;
+
+  // When WebSocket sends WINNER_DECLARED, force a game refresh and winner check
+  const handleWinnerEvent = () => {
+    console.log('🎯 WebSocket winner event received, forcing game refresh');
+    
+    // Set flag to force game refresh
+    forceGameRefreshRef.current = true;
+    
+    // Force refresh game data first
+    if (refetchGame) {
+      refetchGame().then(() => {
+        console.log('✅ Game data refreshed after WebSocket event');
+        
+        // Reset the last check key to allow checking again
+        lastWinnerCheckRef.current = '';
+        
+        // Force a winner check after refresh
+        setTimeout(() => {
+          if (game?.status === 'FINISHED') {
+            console.log('🏆 Forcing winner check after game refresh');
+            checkForWinner(game as Game, true);
+          }
+        }, 1000);
+      }).catch(error => {
+        console.error('❌ Failed to refresh game data after WebSocket event:', error);
+      });
     }
   };
+
+  // Add listener for BINGO_CLAIMED events
+  // This assumes your WebSocket service can emit specific events
+  // You'll need to integrate this with your actual WebSocket implementation
+  const handleBingoClaimed = (data: any) => {
+    console.log('🔔 WebSocket: Bingo claimed event:', data);
+    
+    if (data.isWinner) {
+      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+      const isCurrentUser = userId === data.userId?.toString() || 
+                           userId === data.userId?.telegramId;
+      
+      if (isCurrentUser && !showWinnerModal) {
+        console.log('🎉 Current user is the winner via WebSocket!');
+        // The handleClaimBingo already shows modal, but this is backup
+      }
+    }
+  };
+
+  // Trigger winner check when game status changes to FINISHED
+  if (game.status === 'FINISHED') {
+    handleWinnerEvent();
+  }
+}, [wsConnected, game, checkForWinner, isDisqualified, refetchGame]);
+
+// Also update the useEffect that listens for game status changes to be less restrictive:
+useEffect(() => {
+  if (!game || isDisqualified) return;
+
+  console.log('🔄 Game status check:', {
+    gameId: game._id,
+    status: game.status,
+    showWinnerModal,
+    lastWinnerCheck: lastWinnerCheckRef.current
+  });
+
+  // Check for game end conditions - also check if there's a winnerId
+  const hasWinner = !!game.winnerId;
+  const shouldCheckForWinner = (game.status === 'FINISHED' || 
+                              game.status === 'NO_WINNER' || 
+                              game.status === 'COOLDOWN' ||
+                              hasWinner) && 
+                              !showWinnerModal;
+  
+  if (shouldCheckForWinner) {
+    console.log('🎮 Game ended or has winner, checking for winner');
+    
+    // Create a unique key for this winner check
+    const checkKey = `${game._id}_${game.status}_${Date.now()}`;
+    
+    // Only check if we haven't already checked for this exact state
+    if (lastWinnerCheckRef.current !== checkKey) {
+      lastWinnerCheckRef.current = checkKey;
+      checkForWinner(game as Game);
+    } else {
+      console.log('✅ Winner check already performed for this game state');
+    }
+  }
+
+  if (game.status === 'CANCELLED') {
+    clearSelectedCard();
+  }
+}, [game, showWinnerModal, checkForWinner, clearSelectedCard, isDisqualified]);
 
   // Handle returning to lobby
   const handleReturnToLobby = () => {
