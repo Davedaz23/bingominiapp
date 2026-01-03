@@ -451,75 +451,97 @@ useEffect(() => {
 useEffect(() => {
   if (!wsConnected || !game || isDisqualified) return;
 
-  const updateFromWebSocket = () => {
-    // Check if we need to update called numbers
-    if (debouncedWsCalledNumbers && debouncedWsCalledNumbers.length > 0) {
-      const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
+  // Track if this is the first WebSocket update
+  const isFirstUpdate = !wsInitializedRef.current;
+  
+  // Update initialization flag
+  if (!wsInitializedRef.current) {
+    console.log('🔄 Initializing WebSocket data...');
+    wsInitializedRef.current = true;
+  }
+
+  // Process called numbers from WebSocket
+  if (wsCalledNumbers && wsCalledNumbers.length > 0) {
+    const isDifferent = JSON.stringify(wsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
+    
+    if (isDifferent) {
+      console.log('🔢 WebSocket: Updating called numbers', wsCalledNumbers);
       
-      if (isDifferent) {
-        console.log('🔢 WebSocket: Updating called numbers', allCalledNumbers);
-        
-        // Merge WebSocket numbers with existing numbers (remove duplicates)
-        const mergedNumbers = [...new Set([...allCalledNumbers, ...debouncedWsCalledNumbers])];
-        setAllCalledNumbers(mergedNumbers);
-        lastWsCalledNumbersRef.current = debouncedWsCalledNumbers;
-        
-        // Update recent called numbers
-        const recentNumbers = [];
-        const totalCalled = mergedNumbers.length;
-        for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
-          const num = mergedNumbers[i];
-          if (num) {
-            recentNumbers.push({
-              number: num,
-              letter: getNumberLetter(num),
-              isCurrent: i === totalCalled - 1
-            });
-          }
+      // IMPORTANT: Use WebSocket data as single source of truth
+      // Don't merge, just set it directly
+      setAllCalledNumbers(wsCalledNumbers);
+      lastWsCalledNumbersRef.current = [...wsCalledNumbers]; // Create a copy
+      
+      // Update recent called numbers (show last 3)
+      const recentNumbers = [];
+      const totalCalled = wsCalledNumbers.length;
+      
+      // Get last 3 numbers (or fewer if total is less than 3)
+      const startIndex = Math.max(0, totalCalled - 3);
+      for (let i = startIndex; i < totalCalled; i++) {
+        const num = wsCalledNumbers[i];
+        if (num) {
+          recentNumbers.push({
+            number: num,
+            letter: getNumberLetter(num),
+            isCurrent: i === totalCalled - 1
+          });
         }
-        setRecentCalledNumbers(recentNumbers);
+      }
+      
+      setRecentCalledNumbers(recentNumbers);
+      
+      // On first update, mark the last number as current
+      if (isFirstUpdate && wsCalledNumbers.length > 0) {
+        const lastNumber = wsCalledNumbers[wsCalledNumbers.length - 1];
+        setCurrentCalledNumber({
+          number: lastNumber,
+          letter: getNumberLetter(lastNumber),
+          isNew: false // Don't animate on initial load
+        });
       }
     }
+  }
 
-    // Check if we need to update current number
-    if (debouncedWsCurrentNumber) {
-      const isDifferent = !lastWsCurrentNumberRef.current || 
-                         lastWsCurrentNumberRef.current.number !== debouncedWsCurrentNumber.number;
+  // Process current number from WebSocket
+  if (wsCurrentNumber) {
+    const isDifferent = !lastWsCurrentNumberRef.current || 
+                       lastWsCurrentNumberRef.current.number !== wsCurrentNumber.number;
+    
+    if (isDifferent) {
+      console.log('🎯 WebSocket: New number called', wsCurrentNumber);
       
-      if (isDifferent) {
-        console.log('🎯 WebSocket: New number called');
-        
-        // Add the new number to allCalledNumbers if not already present
-        if (!allCalledNumbers.includes(debouncedWsCurrentNumber.number)) {
-          setAllCalledNumbers(prev => [...prev, debouncedWsCurrentNumber.number]);
+      // Add to allCalledNumbers if not already there
+      setAllCalledNumbers(prev => {
+        if (prev.includes(wsCurrentNumber.number)) {
+          return prev;
         }
-        
-        const newCurrentNumber = {
-          number: debouncedWsCurrentNumber.number,
-          letter: getNumberLetter(debouncedWsCurrentNumber.number),
-          isNew: true
-        };
+        return [...prev, wsCurrentNumber.number];
+      });
+      
+      const newCurrentNumber = {
+        number: wsCurrentNumber.number,
+        letter: getNumberLetter(wsCurrentNumber.number),
+        isNew: true
+      };
 
-        setCurrentCalledNumber(newCurrentNumber);
-        lastWsCurrentNumberRef.current = debouncedWsCurrentNumber;
+      setCurrentCalledNumber(newCurrentNumber);
+      lastWsCurrentNumberRef.current = {...wsCurrentNumber};
 
-        // Clear previous animation timeout
-        if (animationTimeoutRef.current) {
-          clearTimeout(animationTimeoutRef.current);
-        }
-
-        // Remove "new" animation after 1 second
-        animationTimeoutRef.current = setTimeout(() => {
-          setCurrentCalledNumber(prev =>
-            prev ? { ...prev, isNew: false } : null
-          );
-        }, 1000);
+      // Clear previous animation timeout
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
       }
-    }
-  };
 
-  updateFromWebSocket();
-}, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter, allCalledNumbers]);
+      // Remove "new" animation after 1 second
+      animationTimeoutRef.current = setTimeout(() => {
+        setCurrentCalledNumber(prev =>
+          prev ? { ...prev, isNew: false } : null
+        );
+      }, 1000);
+    }
+  }
+}, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter]);
   // Auto-retry card loading
   useEffect(() => {
     if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS && !isDisqualified) {
