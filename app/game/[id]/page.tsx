@@ -452,21 +452,41 @@ useEffect(() => {
   if (!wsConnected || !game || isDisqualified) return;
 
   const updateFromWebSocket = () => {
-    // Check if we need to update called numbers
+    // Initialize with game numbers first if available
+    if (game.numbersCalled && game.numbersCalled.length > 0) {
+      const gameNumbers = game.numbersCalled;
+      const currentNumbers = allCalledNumbers;
+      
+      // Merge game numbers with current numbers
+      const merged = Array.from(new Set([...currentNumbers, ...gameNumbers])).sort((a, b) => a - b);
+      
+      if (JSON.stringify(merged) !== JSON.stringify(allCalledNumbers)) {
+        console.log('🎮 Initializing from game data:', merged.length, 'numbers');
+        setAllCalledNumbers(merged);
+      }
+    }
+
+    // Update from WebSocket called numbers
     if (debouncedWsCalledNumbers && debouncedWsCalledNumbers.length > 0) {
+      // Check if WebSocket has more numbers than we currently have
       const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
       
       if (isDifferent) {
-        console.log('🔢 WebSocket: Updating called numbers', allCalledNumbers);
+        console.log('🔢 WebSocket: Updating called numbers', debouncedWsCalledNumbers.length);
         
-        // Merge WebSocket numbers with existing numbers (remove duplicates)
-        const mergedNumbers = [...new Set([...allCalledNumbers, ...debouncedWsCalledNumbers])];
+        // Merge WebSocket numbers with existing numbers
+        const mergedNumbers = Array.from(
+          new Set([...allCalledNumbers, ...debouncedWsCalledNumbers])
+        ).sort((a, b) => a - b);
+        
         setAllCalledNumbers(mergedNumbers);
         lastWsCalledNumbersRef.current = debouncedWsCalledNumbers;
         
-        // Update recent called numbers
+        // Update recent called numbers (last 3)
         const recentNumbers = [];
         const totalCalled = mergedNumbers.length;
+        
+        // Always show last 3 called numbers
         for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
           const num = mergedNumbers[i];
           if (num) {
@@ -477,21 +497,24 @@ useEffect(() => {
             });
           }
         }
+        
         setRecentCalledNumbers(recentNumbers);
       }
     }
 
-    // Check if we need to update current number
+    // Update current number from WebSocket
     if (debouncedWsCurrentNumber) {
       const isDifferent = !lastWsCurrentNumberRef.current || 
                          lastWsCurrentNumberRef.current.number !== debouncedWsCurrentNumber.number;
       
       if (isDifferent) {
-        console.log('🎯 WebSocket: New number called');
+        console.log('🎯 WebSocket: New number called:', debouncedWsCurrentNumber.number);
         
-        // Add the new number to allCalledNumbers if not already present
+        // Ensure the current number is in allCalledNumbers
         if (!allCalledNumbers.includes(debouncedWsCurrentNumber.number)) {
-          setAllCalledNumbers(prev => [...prev, debouncedWsCurrentNumber.number]);
+          const updatedNumbers = [...allCalledNumbers, debouncedWsCurrentNumber.number]
+            .sort((a, b) => a - b);
+          setAllCalledNumbers(updatedNumbers);
         }
         
         const newCurrentNumber = {
@@ -518,8 +541,106 @@ useEffect(() => {
     }
   };
 
+  // Initial call
   updateFromWebSocket();
-}, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter, allCalledNumbers]);
+}, [
+  wsConnected, 
+  debouncedWsCalledNumbers, 
+  debouncedWsCurrentNumber, 
+  game, 
+  isDisqualified, 
+  getNumberLetter, 
+  allCalledNumbers  // Added dependency
+]);
+
+useEffect(() => {
+  if (game?.numbersCalled && game.numbersCalled.length > 0 && allCalledNumbers.length === 0) {
+    console.log('📊 Initializing called numbers from game:', game.numbersCalled.length);
+    setAllCalledNumbers([...game.numbersCalled].sort((a, b) => a - b));
+    
+    // Also update recent called numbers
+    const recent = [];
+    const totalCalled = game.numbersCalled.length;
+    for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
+      const num = game.numbersCalled[i];
+      if (num) {
+        recent.push({
+          number: num,
+          letter: getNumberLetter(num),
+          isCurrent: i === totalCalled - 1
+        });
+      }
+    }
+    setRecentCalledNumbers(recent);
+    
+    // Set current number if available
+    if (game.numbersCalled.length > 0) {
+      const lastNumber = game.numbersCalled[game.numbersCalled.length - 1];
+      setCurrentCalledNumber({
+        number: lastNumber,
+        letter: getNumberLetter(lastNumber),
+        isNew: false
+      });
+    }
+  }
+}, [game?.numbersCalled, getNumberLetter]);
+
+// Add this ref to track if we've initialized
+const hasInitializedCalledNumbers = useRef(false);
+
+// FIXED: Ensure we load all called numbers from backend on mount
+useEffect(() => {
+  const loadAllCalledNumbers = async () => {
+    if (!id || hasInitializedCalledNumbers.current) return;
+    
+    try {
+      console.log('📡 Loading all called numbers from backend...');
+      const response = await gameAPI.getGame(id);
+      const gameData = response.data.game;
+      
+      if (gameData?.numbersCalled && gameData.numbersCalled.length > 0) {
+        console.log('✅ Loaded', gameData.numbersCalled.length, 'called numbers from backend');
+        setAllCalledNumbers([...gameData.numbersCalled].sort((a, b) => a - b));
+        
+        // Update recent called numbers
+        const recent = [];
+        const totalCalled = gameData.numbersCalled.length;
+        for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
+          const num = gameData.numbersCalled[i];
+          if (num) {
+            recent.push({
+              number: num,
+              letter: getNumberLetter(num),
+              isCurrent: i === totalCalled - 1
+            });
+          }
+        }
+        setRecentCalledNumbers(recent);
+        
+        hasInitializedCalledNumbers.current = true;
+      }
+    } catch (error) {
+      console.error('Failed to load called numbers:', error);
+    }
+  };
+  
+  loadAllCalledNumbers();
+}, [id, getNumberLetter]);
+
+// Also update when game changes
+useEffect(() => {
+  if (game?.numbersCalled && game.numbersCalled.length > 0) {
+    // Merge with existing numbers
+    const merged = Array.from(
+      new Set([...allCalledNumbers, ...game.numbersCalled])
+    ).sort((a, b) => a - b);
+    
+    if (merged.length > allCalledNumbers.length) {
+      console.log('🔄 Updated called numbers from game:', merged.length);
+      setAllCalledNumbers(merged);
+    }
+  }
+}, [game?.numbersCalled]);
   // Auto-retry card loading
   useEffect(() => {
     if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS && !isDisqualified) {
