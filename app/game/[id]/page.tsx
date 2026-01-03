@@ -108,7 +108,7 @@ export default function GamePage() {
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
   const [initializationAttempted, setInitializationAttempted] = useState(false);
-const initialLoadCompleteRef = useRef(false);
+  const initialLoadCompleteRef = useRef(false);
   const [currentCalledNumber, setCurrentCalledNumber] = useState<{
     number: number;
     letter: string;
@@ -173,6 +173,7 @@ const initialLoadCompleteRef = useRef(false);
   const wsInitializedRef = useRef<boolean>(false);
   const lastWsCalledNumbersRef = useRef<number[]>([]);
   const lastWsCurrentNumberRef = useRef<any>(null);
+  const gameLoadedRef = useRef<boolean>(false);
 
   // Helper function to get BINGO letter
   const getNumberLetter = useCallback((num: number): string => {
@@ -186,6 +187,50 @@ const initialLoadCompleteRef = useRef(false);
   // Debounced WebSocket values to prevent rapid updates
   const debouncedWsCalledNumbers = useDebounce(wsCalledNumbers, 300);
   const debouncedWsCurrentNumber = useDebounce(wsCurrentNumber, 300);
+
+  // FIXED: Initialize game numbers from game data - THIS IS THE KEY FIX
+  useEffect(() => {
+    if (!game || gameLoadedRef.current || isDisqualified) return;
+
+    console.log('🎮 Game loaded, initializing numbers:', {
+      gameId: game._id,
+      status: game.status,
+      numbersCalled: game.numbersCalled?.length || 0
+    });
+
+    // Load called numbers from game data
+    if (game.numbersCalled && Array.isArray(game.numbersCalled)) {
+      console.log('🔢 Loading called numbers from game data:', game.numbersCalled);
+      setAllCalledNumbers(game.numbersCalled);
+      
+      // Set recent called numbers
+      const recentNumbers = [];
+      const totalCalled = game.numbersCalled.length;
+      for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
+        const num = game.numbersCalled[i];
+        if (num) {
+          recentNumbers.push({
+            number: num,
+            letter: getNumberLetter(num),
+            isCurrent: i === totalCalled - 1
+          });
+        }
+      }
+      setRecentCalledNumbers(recentNumbers);
+      
+      // Set current number if available
+      if (game.numbersCalled.length > 0) {
+        const lastNumber = game.numbersCalled[game.numbersCalled.length - 1];
+        setCurrentCalledNumber({
+          number: lastNumber,
+          letter: getNumberLetter(lastNumber),
+          isNew: false
+        });
+      }
+    }
+
+    gameLoadedRef.current = true;
+  }, [game, isDisqualified, getNumberLetter]);
 
   // Helper function to handle disqualification - IMMEDIATELY
   const handleDisqualification = useCallback((errorMessage: string, details?: any) => {
@@ -379,169 +424,115 @@ const initialLoadCompleteRef = useRef(false);
     }
   }, [checkUserHasCard, isSpectatorMode, isDisqualified]);
 
-  // FIXED: Handle WebSocket updates WITHOUT causing page reloads
-useEffect(() => {
-  if (!wsConnected || !game || isDisqualified || !initialLoadCompleteRef.current) return;
+  // FIXED: Handle WebSocket updates - MERGE with existing numbers
+  useEffect(() => {
+    if (!wsConnected || !game || isDisqualified) return;
 
-  // Debounce logic remains but ensure it doesn't trigger isLoading
-  const updateFromWebSocket = () => {
-    // Check if we need to update called numbers
-    if (debouncedWsCalledNumbers && debouncedWsCalledNumbers.length > 0) {
-      const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
-      
-      if (isDifferent) {
-        console.log('🔢 WebSocket: Updating called numbers',allCalledNumbers);
-        setAllCalledNumbers(debouncedWsCalledNumbers);
-        lastWsCalledNumbersRef.current = debouncedWsCalledNumbers;
+    const updateFromWebSocket = () => {
+      // Update called numbers from WebSocket
+      if (debouncedWsCalledNumbers && debouncedWsCalledNumbers.length > 0) {
+        const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
         
-        // Update recent called numbers
-        const recentNumbers = [];
-        const totalCalled = debouncedWsCalledNumbers.length;
-        
-        for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
-          const num = debouncedWsCalledNumbers[i];
-          if (num) {
-            recentNumbers.push({
-              number: num,
-              letter: getNumberLetter(num),
-              isCurrent: i === totalCalled - 1
-            });
+        if (isDifferent) {
+          console.log('🔢 WebSocket: Updating called numbers');
+          
+          // Merge WebSocket numbers with existing numbers (remove duplicates)
+          const mergedNumbers = [...new Set([...allCalledNumbers, ...debouncedWsCalledNumbers])];
+          setAllCalledNumbers(mergedNumbers);
+          lastWsCalledNumbersRef.current = debouncedWsCalledNumbers;
+          
+          // Update recent called numbers
+          const recentNumbers = [];
+          const totalCalled = mergedNumbers.length;
+          for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
+            const num = mergedNumbers[i];
+            if (num) {
+              recentNumbers.push({
+                number: num,
+                letter: getNumberLetter(num),
+                isCurrent: i === totalCalled - 1
+              });
+            }
           }
+          setRecentCalledNumbers(recentNumbers);
         }
-        
-        setRecentCalledNumbers(recentNumbers);
       }
-    }
 
-    // Check if we need to update current number
-    if (debouncedWsCurrentNumber) {
-      const isDifferent = !lastWsCurrentNumberRef.current || 
+      // Update current number from WebSocket
+      if (debouncedWsCurrentNumber) {
+        const isDifferent = !lastWsCurrentNumberRef.current || 
                          lastWsCurrentNumberRef.current.number !== debouncedWsCurrentNumber.number;
-      
-      if (isDifferent) {
-        console.log('🎯 WebSocket: New number called');
-        const newCurrentNumber = {
-          number: debouncedWsCurrentNumber.number,
-          letter: getNumberLetter(debouncedWsCurrentNumber.number),
-          isNew: true
-        };
+        
+        if (isDifferent) {
+          console.log('🎯 WebSocket: New number called');
+          
+          // Add the new number to allCalledNumbers if not already present
+          if (debouncedWsCurrentNumber.number && !allCalledNumbers.includes(debouncedWsCurrentNumber.number)) {
+            setAllCalledNumbers(prev => [...prev, debouncedWsCurrentNumber.number]);
+          }
+          
+          const newCurrentNumber = {
+            number: debouncedWsCurrentNumber.number,
+            letter: getNumberLetter(debouncedWsCurrentNumber.number),
+            isNew: true
+          };
 
-        setCurrentCalledNumber(newCurrentNumber);
-        lastWsCurrentNumberRef.current = debouncedWsCurrentNumber;
+          setCurrentCalledNumber(newCurrentNumber);
+          lastWsCurrentNumberRef.current = debouncedWsCurrentNumber;
 
-        // Clear previous animation timeout
-        if (animationTimeoutRef.current) {
-          clearTimeout(animationTimeoutRef.current);
+          // Clear previous animation timeout
+          if (animationTimeoutRef.current) {
+            clearTimeout(animationTimeoutRef.current);
+          }
+
+          // Remove "new" animation after 1 second
+          animationTimeoutRef.current = setTimeout(() => {
+            setCurrentCalledNumber(prev =>
+              prev ? { ...prev, isNew: false } : null
+            );
+          }, 1000);
         }
-
-        // Remove "new" animation after 1 second
-        animationTimeoutRef.current = setTimeout(() => {
-          setCurrentCalledNumber(prev =>
-            prev ? { ...prev, isNew: false } : null
-          );
-        }, 1000);
       }
-    }
-  };
+    };
 
-  updateFromWebSocket();
-}, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter]);
+    updateFromWebSocket();
+  }, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter, allCalledNumbers]);
 
   // Initialize WebSocket once when connected
-useEffect(() => {
-  if (!wsConnected || !game || isDisqualified) return;
+  useEffect(() => {
+    if (!wsConnected || wsInitializedRef.current || !game || isDisqualified) return;
 
-  // Track if this is the first WebSocket update
-  const isFirstUpdate = !wsInitializedRef.current;
-  
-  // Update initialization flag
-  if (!wsInitializedRef.current) {
-    console.log('🔄 Initializing WebSocket data...');
     wsInitializedRef.current = true;
-  }
 
-  // Process called numbers from WebSocket
-  if (wsCalledNumbers && wsCalledNumbers.length > 0) {
-    const isDifferent = JSON.stringify(wsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
-    
-    if (isDifferent) {
-      console.log('🔢 WebSocket: Updating called numbers', wsCalledNumbers);
+    // Set initial values from WebSocket
+    if (wsCalledNumbers && wsCalledNumbers.length > 0) {
+      lastWsCalledNumbersRef.current = wsCalledNumbers;
       
-      // IMPORTANT: Use WebSocket data as single source of truth
-      // Don't merge, just set it directly
-      setAllCalledNumbers(wsCalledNumbers);
-      lastWsCalledNumbersRef.current = [...wsCalledNumbers]; // Create a copy
-      
-      // Update recent called numbers (show last 3)
-      const recentNumbers = [];
-      const totalCalled = wsCalledNumbers.length;
-      
-      // Get last 3 numbers (or fewer if total is less than 3)
-      const startIndex = Math.max(0, totalCalled - 3);
-      for (let i = startIndex; i < totalCalled; i++) {
-        const num = wsCalledNumbers[i];
-        if (num) {
-          recentNumbers.push({
-            number: num,
-            letter: getNumberLetter(num),
-            isCurrent: i === totalCalled - 1
-          });
-        }
-      }
-      
-      setRecentCalledNumbers(recentNumbers);
-      
-      // On first update, mark the last number as current
-      if (isFirstUpdate && wsCalledNumbers.length > 0) {
-        const lastNumber = wsCalledNumbers[wsCalledNumbers.length - 1];
-        setCurrentCalledNumber({
-          number: lastNumber,
-          letter: getNumberLetter(lastNumber),
-          isNew: false // Don't animate on initial load
-        });
+      // Merge WebSocket numbers with existing game numbers
+      const mergedNumbers = [...new Set([...allCalledNumbers, ...wsCalledNumbers])];
+      if (JSON.stringify(mergedNumbers) !== JSON.stringify(allCalledNumbers)) {
+        setAllCalledNumbers(mergedNumbers);
       }
     }
-  }
-
-  // Process current number from WebSocket
-  if (wsCurrentNumber) {
-    const isDifferent = !lastWsCurrentNumberRef.current || 
-                       lastWsCurrentNumberRef.current.number !== wsCurrentNumber.number;
     
-    if (isDifferent) {
-      console.log('🎯 WebSocket: New number called', wsCurrentNumber);
-      
-      // Add to allCalledNumbers if not already there
-      setAllCalledNumbers(prev => {
-        if (prev.includes(wsCurrentNumber.number)) {
-          return prev;
+    if (wsCurrentNumber) {
+      lastWsCurrentNumberRef.current = wsCurrentNumber;
+      setCurrentCalledNumber(prev => {
+        if (!prev || prev.number !== wsCurrentNumber.number) {
+          return {
+            number: wsCurrentNumber.number,
+            letter: getNumberLetter(wsCurrentNumber.number),
+            isNew: false
+          };
         }
-        return [...prev, wsCurrentNumber.number];
+        return prev;
       });
-      
-      const newCurrentNumber = {
-        number: wsCurrentNumber.number,
-        letter: getNumberLetter(wsCurrentNumber.number),
-        isNew: true
-      };
-
-      setCurrentCalledNumber(newCurrentNumber);
-      lastWsCurrentNumberRef.current = {...wsCurrentNumber};
-
-      // Clear previous animation timeout
-      if (animationTimeoutRef.current) {
-        clearTimeout(animationTimeoutRef.current);
-      }
-
-      // Remove "new" animation after 1 second
-      animationTimeoutRef.current = setTimeout(() => {
-        setCurrentCalledNumber(prev =>
-          prev ? { ...prev, isNew: false } : null
-        );
-      }, 1000);
     }
-  }
-}, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter]);
+    
+    // Mark initial load as complete
+    initialLoadCompleteRef.current = true;
+  }, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter, allCalledNumbers]);
+
   // Auto-retry card loading
   useEffect(() => {
     if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS && !isDisqualified) {
@@ -962,12 +953,14 @@ useEffect(() => {
     setDisqualificationProcessed(false);
     disqualificationCheckRef.current = false;
 
+    // Reset refs
     gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
     updateInProgressRef.current = false;
     lastUpdateTimeRef.current = 0;
     initializationCompleteRef.current = false;
     wsInitializedRef.current = false;
+    gameLoadedRef.current = false;
 
     router.push('/');
   };
@@ -1040,33 +1033,33 @@ useEffect(() => {
   // ==================== RENDER LOGIC ====================
   
   if (isLoading && !game) {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-      <div className="text-white text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-        <p className="text-white font-medium">Loading game data...</p>
-        <p className="text-white/60 text-sm mt-2">Game #{id}</p>
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white font-medium">Loading game data...</p>
+          <p className="text-white/60 text-sm mt-2">Game #{id}</p>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
- if (!game && !isLoading) {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-      <div className="text-white text-center">
-        <h1 className="text-2xl font-bold mb-4">Game Not Found</h1>
-        <p className="text-white/70 mb-6">{gameError || 'The game you are looking for does not exist.'}</p>
-        <button
-          onClick={() => router.push('/')}
-          className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold hover:bg-purple-50 transition-all"
-        >
-          Back to Lobby
-        </button>
+  if (!game && !isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <h1 className="text-2xl font-bold mb-4">Game Not Found</h1>
+          <p className="text-white/70 mb-6">{gameError || 'The game you are looking for does not exist.'}</p>
+          <button
+            onClick={() => router.push('/')}
+            className="bg-white text-purple-600 px-6 py-3 rounded-2xl font-bold hover:bg-purple-50 transition-all"
+          >
+            Back to Lobby
+          </button>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   if (isLoadingCard && !cardError && !isSpectatorMode && !isDisqualified) {
     return (
@@ -1091,6 +1084,11 @@ useEffect(() => {
         </div>
       )}
 
+      {/* Debug info - can be removed in production */}
+      <div className="fixed top-4 right-4 z-10 bg-black/50 text-white text-xs p-2 rounded opacity-70">
+        Called: {allCalledNumbers.length}
+      </div>
+
       {/* Rest of your existing render code remains the same */}
       {/* Disqualification Modal */}
       <AnimatePresence>
@@ -1112,7 +1110,6 @@ useEffect(() => {
               transition={{ type: "spring", stiffness: 100 }}
               className="bg-gradient-to-br from-red-900/90 to-orange-900/90 rounded-2xl p-6 max-w-md w-full border-2 border-red-500 shadow-2xl relative overflow-hidden"
             >
-              {/* Modal content remains the same */}
               <button
                 onClick={handleContinueWatching}
                 className="absolute top-3 right-3 text-white/70 hover:text-white transition-colors"
@@ -1130,7 +1127,52 @@ useEffect(() => {
                 </p>
               </div>
 
-              {/* Rest of modal content... */}
+              <div className="bg-gradient-to-r from-red-800/50 to-orange-800/50 rounded-xl p-4 mb-6 border border-red-500/30">
+                <p className="text-white text-center mb-4">
+                  {disqualificationMessage || 'Your card has been disqualified from the game.'}
+                </p>
+                
+                {disqualificationDetails && (
+                  <div className="space-y-2 text-sm">
+                    {disqualificationDetails.patternClaimed && (
+                      <div className="flex justify-between">
+                        <span className="text-white/70">Pattern Claimed:</span>
+                        <span className="text-white font-medium">
+                          {getPatternName(disqualificationDetails.patternClaimed)}
+                        </span>
+                      </div>
+                    )}
+                    {disqualificationDetails.markedPositions && (
+                      <div className="flex justify-between">
+                        <span className="text-white/70">Marked Positions:</span>
+                        <span className="text-white font-medium">
+                          {disqualificationDetails.markedPositions}/24
+                        </span>
+                      </div>
+                    )}
+                    {disqualificationDetails.calledNumbers && (
+                      <div className="flex justify-between">
+                        <span className="text-white/70">Numbers Called:</span>
+                        <span className="text-white font-medium">
+                          {disqualificationDetails.calledNumbers}/75
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center">
+                <p className="text-white/70 text-sm mb-4">
+                  You can continue watching the game as a spectator.
+                </p>
+                <button
+                  onClick={handleContinueWatching}
+                  className="bg-gradient-to-r from-gray-700 to-gray-900 text-white px-6 py-3 rounded-xl font-medium hover:from-gray-600 hover:to-gray-800 transition-all w-full"
+                >
+                  Continue Watching
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -1412,7 +1454,7 @@ useEffect(() => {
               ))}
             </div>
 
-            {/* Called Numbers Grid */}
+            {/* Called Numbers Grid - Now shows ALL previously called numbers */}
             <div className="grid grid-cols-5 gap-1">
               {[
                 { letter: 'B', range: { start: 1, end: 15 } },
