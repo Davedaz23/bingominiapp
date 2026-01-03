@@ -637,58 +637,75 @@ const checkForWinner = useCallback(async (gameData?: Game, force = false) => {
 
 
   // Handle game status changes - FIXED: Remove ref check that was blocking
-  useEffect(() => {
-    if (!game || isDisqualified) return;
+useEffect(() => {
+  if (!game || isDisqualified) return;
 
-    console.log('🔄 Game status check:', {
-      gameId: game._id,
-      status: game.status,
-      showWinnerModal,
-      lastWinnerCheck: lastWinnerCheckRef.current
-    });
+  console.log('🔄 Game status check:', {
+    gameId: game._id,
+    status: game.status,
+    showWinnerModal,
+    lastWinnerCheck: lastWinnerCheckRef.current
+  });
 
-    // Check for game end conditions
-    if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'COOLDOWN') && !showWinnerModal) {
-      console.log('🎮 Game ended, checking for winner');
-      
-      // Create a unique key for this winner check
-      const checkKey = `${game._id}_${game.status}_${Date.now()}`;
-      
-      // Only check if we haven't already checked for this exact state
-      if (lastWinnerCheckRef.current !== checkKey) {
-        lastWinnerCheckRef.current = checkKey;
-        checkForWinner(game as Game);
-      } else {
-        console.log('✅ Winner check already performed for this game state');
-      }
+  // Check for game end conditions
+  if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'COOLDOWN') && !showWinnerModal) {
+    console.log('🎮 Game ended, checking for winner');
+    
+    // Create a unique key for this winner check
+    const checkKey = `${game._id}_${game.status}_${Date.now()}`;
+    
+    // Only check if we haven't already checked for this exact state
+    if (lastWinnerCheckRef.current !== checkKey) {
+      lastWinnerCheckRef.current = checkKey;
+      checkForWinner(game as Game);
+    } else {
+      console.log('✅ Winner check already performed for this game state');
     }
+  }
 
-    if (game.status === 'CANCELLED') {
-      clearSelectedCard();
-    }
-  }, [game, showWinnerModal, checkForWinner, clearSelectedCard, isDisqualified]);
+  if (game.status === 'CANCELLED') {
+    clearSelectedCard();
+  }
+}, [game, showWinnerModal, checkForWinner, clearSelectedCard, isDisqualified]);
 
   // Listen for WebSocket winner events - FIXED
-  useEffect(() => {
-    if (!wsConnected || !game || isDisqualified) return;
+useEffect(() => {
+  if (!wsConnected || !game || isDisqualified) return;
 
-    // When WebSocket sends WINNER_DECLARED, force a winner check
-    const handleWinnerEvent = () => {
-      console.log('🎯 WebSocket winner event received, forcing winner check');
-      // Reset the last check key to allow checking again
-      lastWinnerCheckRef.current = '';
-      // Force a winner check
-      setTimeout(() => {
-        checkForWinner(game as Game, true);
-      }, 1000);
-    };
-
-    // This is a simplified version - you should integrate with your actual WebSocket
-    // For now, we'll check when game status changes to FINISHED
-    if (game.status === 'FINISHED') {
-      handleWinnerEvent();
+  // When WebSocket sends WINNER_DECLARED, force a game refresh and winner check
+  const handleWinnerEvent = () => {
+    console.log('🎯 WebSocket winner event received, forcing game refresh');
+    
+    // Set flag to force game refresh
+    forceGameRefreshRef.current = true;
+    
+    // Force refresh game data first
+    if (refetchGame) {
+      refetchGame().then(() => {
+        console.log('✅ Game data refreshed after WebSocket event');
+        
+        // Reset the last check key to allow checking again
+        lastWinnerCheckRef.current = '';
+        
+        // Force a winner check after refresh
+        setTimeout(() => {
+          if (game?.status === 'FINISHED') {
+            console.log('🏆 Forcing winner check after game refresh');
+            checkForWinner(game as Game, true);
+          }
+        }, 1000);
+      }).catch(error => {
+        console.error('❌ Failed to refresh game data after WebSocket event:', error);
+      });
     }
-  }, [wsConnected, game, checkForWinner, isDisqualified]);
+  };
+
+  // This would be triggered by your WebSocket handler
+  // For now, we'll simulate it when we detect game should be finished
+  if (game.status === 'FINISHED') {
+    handleWinnerEvent();
+  }
+}, [wsConnected, game, checkForWinner, isDisqualified, refetchGame]);
 
   // Initialize game
   useEffect(() => {
