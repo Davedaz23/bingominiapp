@@ -148,6 +148,39 @@ export default function GamePage() {
   const lastWinnerCheckRef = useRef<string>(''); // Track last winner check
   const calledNumbersInitializedRef = useRef(false);
 
+
+  const gameStatusPollingRef = useRef<NodeJS.Timeout | null>(null);
+const forceGameRefreshRef = useRef(false);
+
+// Add this useEffect to poll for game status changes
+useEffect(() => {
+  if (!game || isDisqualified || showWinnerModal) return;
+
+  // Clear any existing polling
+  if (gameStatusPollingRef.current) {
+    clearInterval(gameStatusPollingRef.current);
+  }
+
+  // Start polling for game status updates
+  gameStatusPollingRef.current = setInterval(() => {
+    console.log('🔄 Polling game status...');
+    
+    // Force a refresh of game data
+    if (refetchGame) {
+      refetchGame().then(() => {
+        console.log('✅ Game data refreshed via polling');
+      }).catch(error => {
+        console.error('❌ Failed to refresh game data:', error);
+      });
+    }
+  }, 3000); // Poll every 3 seconds
+
+  return () => {
+    if (gameStatusPollingRef.current) {
+      clearInterval(gameStatusPollingRef.current);
+    }
+  };
+}, [game, isDisqualified, showWinnerModal, refetchGame]);
   // Helper function to get BINGO letter
   const getNumberLetter = useCallback((num: number): string => {
     if (num <= 15) return 'B';
@@ -418,108 +451,190 @@ export default function GamePage() {
   }, [checkUserHasCard, isSpectatorMode, isDisqualified]);
 
   // Check for winner - FIXED VERSION
-  const checkForWinner = useCallback(async (gameData?: Game, force = false) => {
-    if (!gameData || abortControllerRef.current) return;
+const checkForWinner = useCallback(async (gameData?: Game, force = false) => {
+  console.log('🏆 checkForWinner called:', {
+    gameId: gameData?._id,
+    status: gameData?.status,
+    showWinnerModal,
+    force
+  });
+
+  if (!gameData) {
+    console.log('❌ No game data provided');
+    return;
+  }
+
+  // Check if game is actually finished
+  const isGameFinished = gameData.status === 'FINISHED' || 
+                        gameData.status === 'NO_WINNER' ||
+                        gameData.status === 'COOLDOWN';
+  
+  // If not forced and game is not finished, skip
+  if (!force && !isGameFinished) {
+    console.log('❌ Game is not finished, status:', gameData.status);
+    return;
+  }
+
+  if (abortControllerRef.current) {
+    console.log('⏸️ Previous winner check still in progress');
+    return;
+  }
+
+  if (showWinnerModal) {
+    console.log('✅ Winner modal already showing');
+    return;
+  }
+
+  try {
+    setIsWinnerLoading(true);
+    abortControllerRef.current = new AbortController();
     
-    // Only check if game is finished or if forced
-    if (!force && gameData.status !== 'FINISHED' && gameData.status !== 'NO_WINNER') {
-      return;
-    }
+    console.log('📞 Fetching winner info...');
+    const winnerData = await getWinnerInfo();
 
-    // Skip if already showing modal
-    if (showWinnerModal) return;
-
-    try {
-      setIsWinnerLoading(true);
-      abortControllerRef.current = new AbortController();
-      const winnerData = await getWinnerInfo();
-
-      if (winnerData) {
-        console.log('🎯 Winner data received:', winnerData);
-        setWinnerInfo(winnerData as unknown as WinnerInfo);
+    console.log('🎯 Winner data received:', winnerData);
+    
+    if (winnerData) {
+      setWinnerInfo(winnerData as unknown as WinnerInfo);
+      
+      const hasWinner = !!winnerData.winner?._id;
+      
+      if (hasWinner) {
+        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
         
-        const hasWinner = !!winnerData.winner?._id;
-        
-        if (hasWinner) {
-          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-          if (userId) {
-            const winner = winnerData.winner;
-            const isWinner = !!winner && (
-              winner.telegramId === userId ||
-              winner._id?.toString() === userId
-            );
-            setIsUserWinner(!!isWinner);
-            console.log('🏅 Is current user winner?', isWinner);
+        console.log('👤 User ID check:', {
+          userId,
+          winnerId: winnerData.winner?._id,
+          winnerTelegramId: winnerData.winner?.telegramId,
+          gameWinnerId: gameData.winnerId
+        });
 
-            const totalPot = (gameData.currentPlayers || 0) * 10;
-            const platformFee = totalPot * 0.2;
-            const winnerPrize = totalPot - platformFee;
-            setWinningAmount(winnerPrize);
-          }
-        } else {
-          setIsUserWinner(false);
-          setWinningAmount(0);
+        // Check if current user is the winner
+        let isWinner = false;
+        if (userId) {
+          const winner = winnerData.winner;
           
+          // Convert all IDs to strings for comparison (safe access)
+          const userIdStr = String(userId).trim();
+          const winnerIdStr = winner?._id ? String(winner._id).trim() : '';
+          const winnerTelegramIdStr = winner?.telegramId ? String(winner.telegramId).trim() : '';
+          
+          isWinner = (
+            winnerIdStr === userIdStr ||
+            winnerTelegramIdStr === userIdStr
+          );
+          
+          console.log('🏅 Is current user winner?', isWinner);
+        }
+
+        setIsUserWinner(isWinner);
+
+        // Calculate prize amount
+        const totalPot = (gameData.currentPlayers || 0) * 10;
+        const platformFee = totalPot * 0.2;
+        const winnerPrize = totalPot - platformFee;
+        setWinningAmount(winnerPrize);
+        
+        console.log('💰 Prize calculation:', { totalPot, platformFee, winnerPrize });
+      } else {
+        // No winner scenario
+        setIsUserWinner(false);
+        setWinningAmount(0);
+        
+        console.log('📭 No winner in game data');
+        setWinnerInfo({
+          ...winnerData,
+          winner: {
+            _id: 'no-winner',
+            username: 'No Winner',
+            firstName: 'Game Ended',
+            telegramId: 'no-winner'
+          },
+          message: 'Game ended without a winner'
+        });
+      }
+
+      clearSelectedCard();
+
+      // Show modal immediately
+      setTimeout(() => {
+        console.log('🎉 Showing winner modal');
+        setShowWinnerModal(true);
+        setIsWinnerLoading(false);
+      }, 500);
+      
+    } else {
+      console.log('⚠️ No winner data from API');
+      
+      // If game is finished but no winner data, show no winner modal
+      if (gameData.status === 'FINISHED' || gameData.status === 'NO_WINNER') {
+        const hasNoWinner = gameData.status === 'NO_WINNER' || gameData.noWinner;
+        
+        if (hasNoWinner) {
+          console.log('📭 Game ended with no winner');
           setWinnerInfo({
-            ...winnerData,
             winner: {
               _id: 'no-winner',
               username: 'No Winner',
               firstName: 'Game Ended',
               telegramId: 'no-winner'
             },
-            message: 'Game ended without a winner'
+            gameCode: gameData.code || 'N/A',
+            endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
+            totalPlayers: gameData.currentPlayers || 0,
+            numbersCalled: gameData.numbersCalled?.length || 0,
           });
+          
+          setIsUserWinner(false);
+          setWinningAmount(0);
+          
+          clearSelectedCard();
+
+          setTimeout(() => {
+            console.log('📭 Showing no winner modal');
+            setShowWinnerModal(true);
+            setIsWinnerLoading(false);
+          }, 500);
         }
-
-        clearSelectedCard();
-
-        // Show modal immediately
+      }
+    }
+  } catch (error: any) {
+    console.error('❌ Failed to fetch winner info:', error);
+    
+    if (error.name !== 'AbortError') {
+      setIsWinnerLoading(false);
+      
+      // If game is finished, try to show something anyway
+      if (gameData?.status === 'FINISHED') {
+        console.log('⚠️ Error but game is finished, showing generic modal');
+        setWinnerInfo({
+          winner: {
+            _id: 'unknown',
+            username: 'Unknown Winner',
+            firstName: 'Game Completed',
+            telegramId: 'unknown'
+          },
+          gameCode: gameData.code || 'N/A',
+          endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
+          totalPlayers: gameData.currentPlayers || 0,
+          numbersCalled: gameData.numbersCalled?.length || 0,
+          message: 'Game completed successfully'
+        });
+        
+        setIsUserWinner(false);
+        setWinningAmount(0);
+        
         setTimeout(() => {
           setShowWinnerModal(true);
           setIsWinnerLoading(false);
         }, 500);
-        
-      } else {
-        // Handle no winner data
-        if (gameData.status === 'FINISHED' || gameData.status === 'NO_WINNER') {
-          const hasNoWinner = gameData.status === 'NO_WINNER' || gameData.noWinner;
-          
-          if (hasNoWinner) {
-            setWinnerInfo({
-              winner: {
-                _id: 'no-winner',
-                username: 'No Winner',
-                firstName: 'Game Ended',
-                telegramId: 'no-winner'
-              },
-              gameCode: gameData.code || 'N/A',
-              endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
-              totalPlayers: gameData.currentPlayers || 0,
-              numbersCalled: gameData.numbersCalled?.length || 0,
-            });
-            
-            setIsUserWinner(false);
-            setWinningAmount(0);
-            
-            clearSelectedCard();
-
-            setTimeout(() => {
-              setShowWinnerModal(true);
-              setIsWinnerLoading(false);
-            }, 500);
-          }
-        }
       }
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        console.error('Failed to fetch winner info:', error);
-        setIsWinnerLoading(false);
-      }
-    } finally {
-      abortControllerRef.current = null;
     }
-  }, [getWinnerInfo, showWinnerModal, clearSelectedCard]);
+  } finally {
+    abortControllerRef.current = null;
+  }
+}, [getWinnerInfo, showWinnerModal, clearSelectedCard]);
+
 
   // Handle game status changes - FIXED: Remove ref check that was blocking
   useEffect(() => {
