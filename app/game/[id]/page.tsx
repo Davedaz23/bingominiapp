@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// app/game/[id]/page.tsx - FIXED VERSION (No page reload)
+// app/game/[id]/page.tsx - FIXED VERSION
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
@@ -59,23 +59,6 @@ interface Game {
   noWinner?: boolean;
 }
 
-// Custom debounce hook
-const useDebounce = <T,>(value: T, delay: number): T => {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-};
-
 export default function GamePage() {
   const params = useParams();
   const router = useRouter();
@@ -108,7 +91,6 @@ export default function GamePage() {
   const [cardError, setCardError] = useState<string>('');
   const [isMarking, setIsMarking] = useState<boolean>(false);
   const [initializationAttempted, setInitializationAttempted] = useState(false);
-  const initialLoadCompleteRef = useRef(false);
   const [currentCalledNumber, setCurrentCalledNumber] = useState<{
     number: number;
     letter: string;
@@ -155,25 +137,16 @@ export default function GamePage() {
     timestamp?: Date;
   } | null>(null);
 
-  // NEW: Track if disqualification has been processed
-  const [disqualificationProcessed, setDisqualificationProcessed] = useState<boolean>(false);
-
   // Refs
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const gameEndedCheckRef = useRef(false);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
-  const lastGameStateRef = useRef<any>(null);
   const hasCardCheckedRef = useRef(false);
   const updateInProgressRef = useRef(false);
-  const lastUpdateTimeRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const cardUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const disqualificationCheckRef = useRef<boolean>(false);
   const initializationCompleteRef = useRef<boolean>(false);
-  const wsInitializedRef = useRef<boolean>(false);
-  const lastWsCalledNumbersRef = useRef<number[]>([]);
-  const lastWsCurrentNumberRef = useRef<any>(null);
-  const gameLoadedRef = useRef<boolean>(false);
+  const lastWinnerCheckRef = useRef<string>(''); // Track last winner check
+  const calledNumbersInitializedRef = useRef(false);
 
   // Helper function to get BINGO letter
   const getNumberLetter = useCallback((num: number): string => {
@@ -184,19 +157,9 @@ export default function GamePage() {
     return 'O';
   }, []);
 
-  // Debounced WebSocket values to prevent rapid updates
-  const debouncedWsCalledNumbers = useDebounce(wsCalledNumbers, 300);
-  const debouncedWsCurrentNumber = useDebounce(wsCurrentNumber, 300);
-
-  // FIXED: Initialize game numbers from game data - THIS IS THE KEY FIX
+  // Initialize called numbers from game
   useEffect(() => {
-    if (!game || gameLoadedRef.current || isDisqualified) return;
-
-    console.log('🎮 Game loaded, initializing numbers:', {
-      gameId: game._id,
-      status: game.status,
-      numbersCalled: game.numbersCalled?.length || 0
-    });
+    if (!game || calledNumbersInitializedRef.current || isDisqualified) return;
 
     // Load called numbers from game data
     if (game.numbersCalled && Array.isArray(game.numbersCalled)) {
@@ -229,34 +192,73 @@ export default function GamePage() {
       }
     }
 
-    gameLoadedRef.current = true;
+    calledNumbersInitializedRef.current = true;
   }, [game, isDisqualified, getNumberLetter]);
 
-  // Helper function to handle disqualification - IMMEDIATELY
+  // Update called numbers from WebSocket
+  useEffect(() => {
+    if (!wsConnected || !game || isDisqualified) return;
+
+    // Update called numbers from WebSocket
+    if (wsCalledNumbers && wsCalledNumbers.length > 0) {
+      const mergedNumbers = [...new Set([...allCalledNumbers, ...wsCalledNumbers])];
+      if (JSON.stringify(mergedNumbers) !== JSON.stringify(allCalledNumbers)) {
+        setAllCalledNumbers(mergedNumbers);
+        
+        // Update recent called numbers
+        const recentNumbers = [];
+        const totalCalled = mergedNumbers.length;
+        for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
+          const num = mergedNumbers[i];
+          if (num) {
+            recentNumbers.push({
+              number: num,
+              letter: getNumberLetter(num),
+              isCurrent: i === totalCalled - 1
+            });
+          }
+        }
+        setRecentCalledNumbers(recentNumbers);
+      }
+    }
+
+    // Update current number from WebSocket
+    if (wsCurrentNumber) {
+      // Add to all called numbers if not already present
+      if (!allCalledNumbers.includes(wsCurrentNumber.number)) {
+        setAllCalledNumbers(prev => [...prev, wsCurrentNumber.number]);
+      }
+      
+      const newCurrentNumber = {
+        number: wsCurrentNumber.number,
+        letter: getNumberLetter(wsCurrentNumber.number),
+        isNew: true
+      };
+
+      setCurrentCalledNumber(newCurrentNumber);
+
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+
+      animationTimeoutRef.current = setTimeout(() => {
+        setCurrentCalledNumber(prev =>
+          prev ? { ...prev, isNew: false } : null
+        );
+      }, 1000);
+    }
+  }, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter, allCalledNumbers]);
+
+  // Helper function to handle disqualification
   const handleDisqualification = useCallback((errorMessage: string, details?: any) => {
     if (disqualificationCheckRef.current) return;
     
-    console.log('🚨 User disqualified:', errorMessage);
-    
     disqualificationCheckRef.current = true;
-    
-    // IMMEDIATE state updates
     setIsDisqualified(true);
     setDisqualificationMessage(errorMessage);
-    
-    // Update local card with disqualification status
-    if (localBingoCard) {
-      setLocalBingoCard({
-        ...localBingoCard,
-        isDisqualified: true,
-      });
-    }
-    
-    // Set spectator mode IMMEDIATELY
     setIsSpectatorMode(true);
     setSpectatorMessage('You have been disqualified. Watching as spectator.');
     
-    // Set disqualification details
     setDisqualificationDetails({
       message: errorMessage,
       patternClaimed: details?.patternClaimed,
@@ -265,17 +267,12 @@ export default function GamePage() {
       timestamp: new Date()
     });
     
-    // Show disqualification modal IMMEDIATELY
     setTimeout(() => {
       setShowDisqualificationModal(true);
     }, 500);
-    
-    setDisqualificationProcessed(true);
-    
-    console.log('✅ Disqualification processed immediately');
   }, [localBingoCard, allCalledNumbers]);
 
-  // FIXED: Check if user has a bingo card with IMMEDIATE disqualification detection
+  // Check if user has a bingo card
   const checkUserHasCard = useCallback(async (forceCheck = false, isRetry = false): Promise<boolean> => {
     if (autoRetryInProgress && !isRetry) return false;
 
@@ -297,9 +294,8 @@ export default function GamePage() {
       if (cardResponse.data.success && cardResponse.data.bingoCard) {
         const apiCard = cardResponse.data.bingoCard;
         
-        // IMMEDIATE DISQUALIFICATION CHECK
+        // Check for disqualification
         if (apiCard.isDisqualified) {
-          console.log('🚨 API returned disqualified card');
           const disqualificationReason = apiCard.disqualificationReason || 'Your card has been disqualified';
           
           handleDisqualification(disqualificationReason, {
@@ -328,7 +324,6 @@ export default function GamePage() {
 
         setLocalBingoCard(newCard);
         setIsDisqualified(false);
-        setDisqualificationProcessed(false);
         disqualificationCheckRef.current = false;
         setIsSpectatorMode(false);
         setSpectatorMessage('');
@@ -344,8 +339,6 @@ export default function GamePage() {
       return false;
 
     } catch (error: any) {
-      console.error('Error checking user card:', error);
-
       if (error.response?.status === 404) {
         setIsSpectatorMode(true);
         setSpectatorMessage('You do not have a card for this game. Watching as spectator.');
@@ -360,7 +353,7 @@ export default function GamePage() {
     }
   }, [id, localBingoCard, autoRetryInProgress, handleDisqualification]);
 
-  // FIXED: Initialize user card with better state management
+  // Initialize user card
   const initializeUserCard = useCallback(async (forceCheck = false) => {
     if (updateInProgressRef.current && !forceCheck) return;
 
@@ -424,378 +417,163 @@ export default function GamePage() {
     }
   }, [checkUserHasCard, isSpectatorMode, isDisqualified]);
 
-  // FIXED: Handle WebSocket updates - MERGE with existing numbers
-  useEffect(() => {
-    if (!wsConnected || !game || isDisqualified) return;
+  // Check for winner - FIXED VERSION
+  const checkForWinner = useCallback(async (gameData?: Game, force = false) => {
+    if (!gameData || abortControllerRef.current) return;
+    
+    // Only check if game is finished or if forced
+    if (!force && gameData.status !== 'FINISHED' && gameData.status !== 'NO_WINNER') {
+      return;
+    }
 
-    const updateFromWebSocket = () => {
-      // Update called numbers from WebSocket
-      if (debouncedWsCalledNumbers && debouncedWsCalledNumbers.length > 0) {
-        const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
+    // Skip if already showing modal
+    if (showWinnerModal) return;
+
+    try {
+      setIsWinnerLoading(true);
+      abortControllerRef.current = new AbortController();
+      const winnerData = await getWinnerInfo();
+
+      if (winnerData) {
+        console.log('🎯 Winner data received:', winnerData);
+        setWinnerInfo(winnerData as unknown as WinnerInfo);
         
-        if (isDifferent) {
-          console.log('🔢 WebSocket: Updating called numbers');
-          
-          // Merge WebSocket numbers with existing numbers (remove duplicates)
-          const mergedNumbers = [...new Set([...allCalledNumbers, ...debouncedWsCalledNumbers])];
-          setAllCalledNumbers(mergedNumbers);
-          lastWsCalledNumbersRef.current = debouncedWsCalledNumbers;
-          
-          // Update recent called numbers
-          const recentNumbers = [];
-          const totalCalled = mergedNumbers.length;
-          for (let i = Math.max(totalCalled - 3, 0); i < totalCalled; i++) {
-            const num = mergedNumbers[i];
-            if (num) {
-              recentNumbers.push({
-                number: num,
-                letter: getNumberLetter(num),
-                isCurrent: i === totalCalled - 1
-              });
-            }
-          }
-          setRecentCalledNumbers(recentNumbers);
-        }
-      }
-
-      // Update current number from WebSocket
-      if (debouncedWsCurrentNumber) {
-        const isDifferent = !lastWsCurrentNumberRef.current || 
-                         lastWsCurrentNumberRef.current.number !== debouncedWsCurrentNumber.number;
+        const hasWinner = !!winnerData.winner?._id;
         
-        if (isDifferent) {
-          console.log('🎯 WebSocket: New number called');
-          
-          // Add the new number to allCalledNumbers if not already present
-          if (debouncedWsCurrentNumber.number && !allCalledNumbers.includes(debouncedWsCurrentNumber.number)) {
-            setAllCalledNumbers(prev => [...prev, debouncedWsCurrentNumber.number]);
-          }
-          
-          const newCurrentNumber = {
-            number: debouncedWsCurrentNumber.number,
-            letter: getNumberLetter(debouncedWsCurrentNumber.number),
-            isNew: true
-          };
-
-          setCurrentCalledNumber(newCurrentNumber);
-          lastWsCurrentNumberRef.current = debouncedWsCurrentNumber;
-
-          // Clear previous animation timeout
-          if (animationTimeoutRef.current) {
-            clearTimeout(animationTimeoutRef.current);
-          }
-
-          // Remove "new" animation after 1 second
-          animationTimeoutRef.current = setTimeout(() => {
-            setCurrentCalledNumber(prev =>
-              prev ? { ...prev, isNew: false } : null
+        if (hasWinner) {
+          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+          if (userId) {
+            const winner = winnerData.winner;
+            const isWinner = !!winner && (
+              winner.telegramId === userId ||
+              winner._id?.toString() === userId
             );
-          }, 1000);
-        }
-      }
-    };
+            setIsUserWinner(!!isWinner);
+            console.log('🏅 Is current user winner?', isWinner);
 
-    updateFromWebSocket();
-  }, [wsConnected, debouncedWsCalledNumbers, debouncedWsCurrentNumber, game, isDisqualified, getNumberLetter, allCalledNumbers]);
-
-  // Initialize WebSocket once when connected
-  useEffect(() => {
-    if (!wsConnected || wsInitializedRef.current || !game || isDisqualified) return;
-
-    wsInitializedRef.current = true;
-
-    // Set initial values from WebSocket
-    if (wsCalledNumbers && wsCalledNumbers.length > 0) {
-      lastWsCalledNumbersRef.current = wsCalledNumbers;
-      
-      // Merge WebSocket numbers with existing game numbers
-      const mergedNumbers = [...new Set([...allCalledNumbers, ...wsCalledNumbers])];
-      if (JSON.stringify(mergedNumbers) !== JSON.stringify(allCalledNumbers)) {
-        setAllCalledNumbers(mergedNumbers);
-      }
-    }
-    
-    if (wsCurrentNumber) {
-      lastWsCurrentNumberRef.current = wsCurrentNumber;
-      setCurrentCalledNumber(prev => {
-        if (!prev || prev.number !== wsCurrentNumber.number) {
-          return {
-            number: wsCurrentNumber.number,
-            letter: getNumberLetter(wsCurrentNumber.number),
-            isNew: false
-          };
-        }
-        return prev;
-      });
-    }
-    
-    // Mark initial load as complete
-    initialLoadCompleteRef.current = true;
-  }, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter, allCalledNumbers]);
-
-  // Auto-retry card loading
-  useEffect(() => {
-    if (cardError && !localBingoCard && !isLoadingCard && retryCount < MAX_RETRY_ATTEMPTS && !isDisqualified) {
-      const timer = setTimeout(() => {
-        setIsLoadingCard(true);
-        setCardError('');
-        hasCardCheckedRef.current = false;
-        initializeUserCard(true);
-      }, 2000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [cardError, localBingoCard, isLoadingCard, retryCount, initializeUserCard, isDisqualified]);
-
-  // Check if user was previously disqualified on page load
-  useEffect(() => {
-    const checkStoredDisqualification = () => {
-      const storedDisqualification = localStorage.getItem(`disqualified_${id}`);
-      if (storedDisqualification) {
-        try {
-          const disqualificationData = JSON.parse(storedDisqualification);
-          
-          handleDisqualification(disqualificationData.message, {
-            patternClaimed: disqualificationData.patternClaimed,
-            markedPositions: disqualificationData.markedPositions,
-            calledNumbers: disqualificationData.calledNumbers
-          });
-        } catch (error) {
-          console.error('Error parsing stored disqualification:', error);
-        }
-      }
-    };
-
-    if (!initializationCompleteRef.current && !isLoading && game) {
-      checkStoredDisqualification();
-    }
-  }, [id, isLoading, game, handleDisqualification]);
-
-  // Store disqualification in localStorage when it happens
-  useEffect(() => {
-    if (isDisqualified && disqualificationDetails) {
-      const disqualificationData = {
-        message: disqualificationMessage,
-        patternClaimed: disqualificationDetails.patternClaimed,
-        markedPositions: disqualificationDetails.markedPositions,
-        calledNumbers: disqualificationDetails.calledNumbers,
-        timestamp: new Date().toISOString(),
-        gameId: id
-      };
-      
-      localStorage.setItem(`disqualified_${id}`, JSON.stringify(disqualificationData));
-    }
-  }, [isDisqualified, disqualificationDetails, disqualificationMessage, id]);
-
-  // FIXED: Check for winner
-// FIXED: Check for winner
-const checkForWinner = useCallback(async (gameData?: Game) => {
-  if (!gameData || abortControllerRef.current || showWinnerModal) return;
-
-  try {
-    setIsWinnerLoading(true);
-    abortControllerRef.current = new AbortController();
-    const winnerData = await getWinnerInfo();
-
-    if (winnerData) {
-      setWinnerInfo(winnerData as unknown as WinnerInfo);
-      
-      const hasWinner = !!winnerData.winner?._id;
-      
-      if (hasWinner) {
-        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-        
-       
-
-        // FIXED: Better user ID comparison
-        let isWinner = false;
-        
-        if (userId) {
-          const winner = winnerData.winner;
-          
-          // Convert all IDs to strings for consistent comparison (use safe guards)
-          const userIdStr = String(userId).trim();
-          const winnerIdStr = winner && winner._id ? String(winner._id).trim() : '';
-          const winnerTelegramIdStr = winner && winner.telegramId ? String(winner.telegramId).trim() : '';
-          const gameWinnerIdStr = gameData.winnerId ? String(gameData.winnerId).trim() : '';
-          
-          // Check multiple possible matches
-          isWinner = (
-            winnerIdStr === userIdStr ||
-            winnerTelegramIdStr === userIdStr ||
-            gameWinnerIdStr === userIdStr
-          );
-
-          // Also check if the game has a winner ID that matches
-          if (!isWinner && gameData.winnerId) {
-            const gameWinnerIdStr = String(gameData.winnerId).trim();
-            isWinner = gameWinnerIdStr === userIdStr;
+            const totalPot = (gameData.currentPlayers || 0) * 10;
+            const platformFee = totalPot * 0.2;
+            const winnerPrize = totalPot - platformFee;
+            setWinningAmount(winnerPrize);
           }
-
-          console.log('🎯 Is current user winner?', isWinner, {
-            userId: userIdStr,
-            winnerId: winnerIdStr,
-            telegramMatch: winnerTelegramIdStr === userIdStr,
-            gameWinnerMatch: gameWinnerIdStr === userIdStr
-          });
-        }
-
-        setIsUserWinner(isWinner);
-
-        // Calculate prize amount
-        const totalPot = (gameData.currentPlayers || 0) * 10;
-        const platformFee = totalPot * 0.2;
-        const winnerPrize = totalPot - platformFee;
-        setWinningAmount(winnerPrize);
-
-        // If user is the winner, show celebration immediately
-        if (isWinner) {
-          console.log('🎉 Current user is the winner!');
-        }
-      } else {
-        // No winner scenario
-        setIsUserWinner(false);
-        setWinningAmount(0);
-        
-        setWinnerInfo({
-          ...winnerData,
-          winner: {
-            _id: 'no-winner',
-            username: 'No Winner',
-            firstName: 'Game Ended',
-            telegramId: 'no-winner'
-          },
-          message: 'Game ended without a winner'
-        });
-      }
-
-      clearSelectedCard();
-
-      // Show modal with a small delay for better UX
-      setTimeout(() => {
-        setShowWinnerModal(true);
-        setIsWinnerLoading(false);
-        
-        // DEBUG: Log final state
-        console.log('🏁 Winner modal shown:', {
-          winnerInfo: winnerData,
-          isUserWinner: isUserWinner,
-          winningAmount
-        });
-      }, 1000);
-      
-    } else {
-      // Handle game ended without winner data
-      if (gameData.status === 'FINISHED' || gameData.status === 'NO_WINNER') {
-        const hasNoWinner = gameData.status === 'NO_WINNER' || gameData.noWinner;
-        
-        if (hasNoWinner) {
+        } else {
+          setIsUserWinner(false);
+          setWinningAmount(0);
+          
           setWinnerInfo({
+            ...winnerData,
             winner: {
               _id: 'no-winner',
               username: 'No Winner',
               firstName: 'Game Ended',
               telegramId: 'no-winner'
             },
-            gameCode: gameData.code || 'N/A',
-            endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
-            totalPlayers: gameData.currentPlayers || 0,
-            numbersCalled: gameData.numbersCalled?.length || 0,
+            message: 'Game ended without a winner'
           });
-          
-          setIsUserWinner(false);
-          setWinningAmount(0);
-          
-          clearSelectedCard();
-
-          setTimeout(() => {
-            setShowWinnerModal(true);
-            setIsWinnerLoading(false);
-          }, 1000);
-        } else if (gameData.status === 'FINISHED') {
-          console.log('Game finished but no winner data, fetching...');
-          
-          // Try to get winner info one more time
-          try {
-            const retryWinnerData = await getWinnerInfo();
-            if (retryWinnerData) {
-              setWinnerInfo(retryWinnerData as unknown as WinnerInfo);
-              
-              // Check if current user is winner
-              const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-              if (userId && retryWinnerData.winner) {
-                const isWinner = String(retryWinnerData.winner._id) === String(userId) ||
-                               String(retryWinnerData.winner.telegramId) === String(userId);
-                setIsUserWinner(isWinner);
-                
-                if (isWinner) {
-                  const totalPot = (gameData.currentPlayers || 0) * 10;
-                  const winnerPrize = totalPot - (totalPot * 0.2);
-                  setWinningAmount(winnerPrize);
-                }
-              }
-              
-              setTimeout(() => {
-                setShowWinnerModal(true);
-                setIsWinnerLoading(false);
-              }, 1000);
-            }
-          } catch (retryError) {
-            console.error('Failed to fetch winner info on retry:', retryError);
-            setIsWinnerLoading(false);
-          }
         }
-      }
-    }
-  } catch (error: any) {
-    if (error.name !== 'AbortError') {
-      console.error('Failed to fetch winner info:', error);
-      setIsWinnerLoading(false);
-      
-      // If there's an error but game is finished, show generic end modal
-      if (gameData?.status === 'FINISHED') {
-        setWinnerInfo({
-          winner: {
-            _id: 'unknown',
-            username: 'Unknown Winner',
-            firstName: 'Game Completed',
-            telegramId: 'unknown'
-          },
-          gameCode: gameData.code || 'N/A',
-          endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
-          totalPlayers: gameData.currentPlayers || 0,
-          numbersCalled: gameData.numbersCalled?.length || 0,
-          message: 'Game completed successfully'
-        });
-        
-        setIsUserWinner(false);
-        setWinningAmount(0);
-        
+
+        clearSelectedCard();
+
+        // Show modal immediately
         setTimeout(() => {
           setShowWinnerModal(true);
           setIsWinnerLoading(false);
-        }, 1000);
-      }
-    }
-  } finally {
-    abortControllerRef.current = null;
-  }
-}, [getWinnerInfo, showWinnerModal, clearSelectedCard]);
+        }, 500);
+        
+      } else {
+        // Handle no winner data
+        if (gameData.status === 'FINISHED' || gameData.status === 'NO_WINNER') {
+          const hasNoWinner = gameData.status === 'NO_WINNER' || gameData.noWinner;
+          
+          if (hasNoWinner) {
+            setWinnerInfo({
+              winner: {
+                _id: 'no-winner',
+                username: 'No Winner',
+                firstName: 'Game Ended',
+                telegramId: 'no-winner'
+              },
+              gameCode: gameData.code || 'N/A',
+              endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
+              totalPlayers: gameData.currentPlayers || 0,
+              numbersCalled: gameData.numbersCalled?.length || 0,
+            });
+            
+            setIsUserWinner(false);
+            setWinningAmount(0);
+            
+            clearSelectedCard();
 
-  // Handle game status changes - SKIP if disqualified
+            setTimeout(() => {
+              setShowWinnerModal(true);
+              setIsWinnerLoading(false);
+            }, 500);
+          }
+        }
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error('Failed to fetch winner info:', error);
+        setIsWinnerLoading(false);
+      }
+    } finally {
+      abortControllerRef.current = null;
+    }
+  }, [getWinnerInfo, showWinnerModal, clearSelectedCard]);
+
+  // Handle game status changes - FIXED: Remove ref check that was blocking
   useEffect(() => {
     if (!game || isDisqualified) return;
 
+    console.log('🔄 Game status check:', {
+      gameId: game._id,
+      status: game.status,
+      showWinnerModal,
+      lastWinnerCheck: lastWinnerCheckRef.current
+    });
+
     // Check for game end conditions
-    if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'CANCELLED' || game.status === 'COOLDOWN') && !showWinnerModal && !gameEndedCheckRef.current) {
-      gameEndedCheckRef.current = true;
-      checkForWinner(game as Game);
+    if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'COOLDOWN') && !showWinnerModal) {
+      console.log('🎮 Game ended, checking for winner');
+      
+      // Create a unique key for this winner check
+      const checkKey = `${game._id}_${game.status}_${Date.now()}`;
+      
+      // Only check if we haven't already checked for this exact state
+      if (lastWinnerCheckRef.current !== checkKey) {
+        lastWinnerCheckRef.current = checkKey;
+        checkForWinner(game as Game);
+      } else {
+        console.log('✅ Winner check already performed for this game state');
+      }
     }
 
     if (game.status === 'CANCELLED') {
       clearSelectedCard();
     }
   }, [game, showWinnerModal, checkForWinner, clearSelectedCard, isDisqualified]);
+
+  // Listen for WebSocket winner events - FIXED
+  useEffect(() => {
+    if (!wsConnected || !game || isDisqualified) return;
+
+    // When WebSocket sends WINNER_DECLARED, force a winner check
+    const handleWinnerEvent = () => {
+      console.log('🎯 WebSocket winner event received, forcing winner check');
+      // Reset the last check key to allow checking again
+      lastWinnerCheckRef.current = '';
+      // Force a winner check
+      setTimeout(() => {
+        checkForWinner(game as Game, true);
+      }, 1000);
+    };
+
+    // This is a simplified version - you should integrate with your actual WebSocket
+    // For now, we'll check when game status changes to FINISHED
+    if (game.status === 'FINISHED') {
+      handleWinnerEvent();
+    }
+  }, [wsConnected, game, checkForWinner, isDisqualified]);
 
   // Initialize game
   useEffect(() => {
@@ -831,28 +609,6 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
     }
   }, [game, isLoading, initializeUserCard, initializationAttempted, isDisqualified]);
 
-useEffect(() => {
-  if (!wsConnected || !game || isDisqualified) return;
-
-  // This would be handled in your useGame hook
-  // Add WebSocket event listener for GAME_ENDED or similar
-}, [wsConnected, game, isDisqualified]);
-
-// Fallback polling for game status (as backup to WebSocket)
-
-useEffect(() => {
-  if (!game || game.status !== 'ACTIVE' || isDisqualified) return;
-
-  const interval = setInterval(() => {
-    if (game?.status === 'FINISHED' && !showWinnerModal && !gameEndedCheckRef.current) {
-      console.log('⏰ Polling detected game finished');
-      gameEndedCheckRef.current = true;
-      checkForWinner(game as Game);
-    }
-  }, 5000); // Check every 5 seconds
-
-  return () => clearInterval(interval);
-}, [game, showWinnerModal, checkForWinner, isDisqualified]);
   // Countdown for winner modal
   useEffect(() => {
     if (showWinnerModal && winnerInfo) {
@@ -877,7 +633,7 @@ useEffect(() => {
     };
   }, [showWinnerModal, winnerInfo]);
 
-  // Safety timeout to exit loading state
+  // Safety timeout
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
       if (isLoadingCard && !isDisqualified) {
@@ -889,14 +645,23 @@ useEffect(() => {
     return () => clearTimeout(safetyTimeout);
   }, [isLoadingCard, isDisqualified]);
 
-  // Hide disqualification modal when game ends
+  // Store disqualification in localStorage
   useEffect(() => {
-    if (showDisqualificationModal && game?.status === 'FINISHED') {
-      setShowDisqualificationModal(false);
+    if (isDisqualified && disqualificationDetails) {
+      const disqualificationData = {
+        message: disqualificationMessage,
+        patternClaimed: disqualificationDetails.patternClaimed,
+        markedPositions: disqualificationDetails.markedPositions,
+        calledNumbers: disqualificationDetails.calledNumbers,
+        timestamp: new Date().toISOString(),
+        gameId: id
+      };
+      
+      localStorage.setItem(`disqualified_${id}`, JSON.stringify(disqualificationData));
     }
-  }, [game?.status, showDisqualificationModal]);
+  }, [isDisqualified, disqualificationDetails, disqualificationMessage, id]);
 
-  // FIXED: Handle manual number marking - SKIP if disqualified
+  // Handle manual number marking
   const handleMarkNumber = async (number: number) => {
     if (isMarking || !allCalledNumbers.includes(number) || game?.status !== 'ACTIVE' || isDisqualified) return;
 
@@ -905,7 +670,7 @@ useEffect(() => {
       const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
       if (!userId) throw new Error('User ID not found');
 
-      // IMMEDIATE UI UPDATE: Mark the number locally first
+      // Update UI first
       if (localBingoCard) {
         const numbers = localBingoCard.numbers.flat();
         const position = numbers.indexOf(number);
@@ -919,30 +684,25 @@ useEffect(() => {
         }
       }
 
-      // Then send to backend (fire-and-forget)
+      // Send to backend
       gameAPI.markNumber(id, userId, number)
         .then(response => {
-          if (response.data.success) {
-            console.log(`✅ Successfully marked number: ${number}`);
-          } else {
-            // If backend fails, revert the UI change
-            if (localBingoCard) {
-              const numbers = localBingoCard.numbers.flat();
-              const position = numbers.indexOf(number);
-              
-              if (position !== -1) {
-                const updatedMarkedPositions = localBingoCard.markedPositions?.filter(pos => pos !== position) || [];
-                setLocalBingoCard({
-                  ...localBingoCard,
-                  markedPositions: updatedMarkedPositions
-                });
-              }
+          if (!response.data.success && localBingoCard) {
+            // Revert on failure
+            const numbers = localBingoCard.numbers.flat();
+            const position = numbers.indexOf(number);
+            
+            if (position !== -1) {
+              const updatedMarkedPositions = localBingoCard.markedPositions?.filter(pos => pos !== position) || [];
+              setLocalBingoCard({
+                ...localBingoCard,
+                markedPositions: updatedMarkedPositions
+              });
             }
           }
         })
-        .catch(error => {
-          console.error('Failed to mark number on backend:', error);
-          // Revert UI change on error
+        .catch(() => {
+          // Revert on error
           if (localBingoCard) {
             const numbers = localBingoCard.numbers.flat();
             const position = numbers.indexOf(number);
@@ -955,27 +715,16 @@ useEffect(() => {
               });
             }
           }
-          
-          setClaimResult({
-            success: false,
-            message: error.response?.data?.message || 'Failed to save mark'
-          });
-          setTimeout(() => setClaimResult(null), 3000);
         });
 
     } catch (error: any) {
       console.error('Failed to mark number:', error);
-      setClaimResult({
-        success: false,
-        message: error.response?.data?.message || 'Failed to mark number'
-      });
-      setTimeout(() => setClaimResult(null), 3000);
     } finally {
       setIsMarking(false);
     }
   };
 
-  // FIXED: Handle manual Bingo claim - SKIP if disqualified
+  // Handle manual Bingo claim
   const handleClaimBingo = async () => {
     if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard || isDisqualified) return;
 
@@ -1051,7 +800,7 @@ useEffect(() => {
     }
   };
 
-  // Handle returning to lobby - CLEAR disqualification data
+  // Handle returning to lobby
   const handleReturnToLobby = () => {
     localStorage.removeItem(`disqualified_${id}`);
     
@@ -1070,26 +819,23 @@ useEffect(() => {
     setCountdown(10);
     setShowDisqualificationModal(false);
 
-    // Reset disqualification states
+    // Reset states
     setIsDisqualified(false);
     setDisqualificationMessage('');
     setDisqualificationDetails(null);
-    setDisqualificationProcessed(false);
     disqualificationCheckRef.current = false;
 
     // Reset refs
-    gameEndedCheckRef.current = false;
     hasCardCheckedRef.current = false;
     updateInProgressRef.current = false;
-    lastUpdateTimeRef.current = 0;
     initializationCompleteRef.current = false;
-    wsInitializedRef.current = false;
-    gameLoadedRef.current = false;
+    lastWinnerCheckRef.current = '';
+    calledNumbersInitializedRef.current = false;
 
     router.push('/');
   };
 
-  // Handle continue watching (close modal but stay in game)
+  // Handle continue watching
   const handleContinueWatching = () => {
     setShowDisqualificationModal(false);
   };
@@ -1098,29 +844,6 @@ useEffect(() => {
   const displayBingoCard = useMemo(() => {
     return localBingoCard || gameBingoCard;
   }, [localBingoCard, gameBingoCard]);
-
-  // Get selected number from multiple sources
-  const getSelectedCardNumber = useMemo(() => {
-    // Priority 1: From useCardSelection hook
-    if (selectedNumber) return selectedNumber;
-    
-    // Priority 2: From local storage
-    const storedCard = localStorage.getItem(`selected_card_${id}`);
-    if (storedCard) {
-      try {
-        const cardData = JSON.parse(storedCard);
-        return cardData.cardNumber;
-      } catch (e) {
-        return null;
-      }
-    }
-    
-    // Priority 3: From bingo card
-    if (localBingoCard?.cardNumber) return localBingoCard.cardNumber;
-    if (gameBingoCard?.cardNumber) return gameBingoCard.cardNumber;
-    
-    return null;
-  }, [selectedNumber, id, localBingoCard, gameBingoCard]);
 
   // Helper function to check if a position is in winning pattern
   const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
@@ -1198,7 +921,7 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4 relative">
-      {/* WebSocket Connection Status - Simplified */}
+      {/* WebSocket Connection Status */}
       {!wsConnected && (
         <div className="fixed top-4 left-4 z-20 bg-gradient-to-r from-yellow-600/90 to-orange-600/90 text-white px-4 py-2 rounded-xl shadow-lg backdrop-blur-sm border border-yellow-400/50">
           <div className="flex items-center gap-2">
@@ -1208,12 +931,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Debug info - can be removed in production */}
-      <div className="fixed top-4 right-4 z-10 bg-black/50 text-white text-xs p-2 rounded opacity-70">
-        Called: {allCalledNumbers.length}
-      </div>
-
-      {/* Rest of your existing render code remains the same */}
       {/* Disqualification Modal */}
       <AnimatePresence>
         {showDisqualificationModal && (
@@ -1255,35 +972,6 @@ useEffect(() => {
                 <p className="text-white text-center mb-4">
                   {disqualificationMessage || 'Your card has been disqualified from the game.'}
                 </p>
-                
-                {disqualificationDetails && (
-                  <div className="space-y-2 text-sm">
-                    {disqualificationDetails.patternClaimed && (
-                      <div className="flex justify-between">
-                        <span className="text-white/70">Pattern Claimed:</span>
-                        <span className="text-white font-medium">
-                          {getPatternName(disqualificationDetails.patternClaimed)}
-                        </span>
-                      </div>
-                    )}
-                    {disqualificationDetails.markedPositions && (
-                      <div className="flex justify-between">
-                        <span className="text-white/70">Marked Positions:</span>
-                        <span className="text-white font-medium">
-                          {disqualificationDetails.markedPositions}/24
-                        </span>
-                      </div>
-                    )}
-                    {disqualificationDetails.calledNumbers && (
-                      <div className="flex justify-between">
-                        <span className="text-white/70">Numbers Called:</span>
-                        <span className="text-white font-medium">
-                          {disqualificationDetails.calledNumbers}/75
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               <div className="text-center">
@@ -1327,7 +1015,7 @@ useEffect(() => {
                 </p>
               </div>
 
-              {/* Winner Profile - Compact */}
+              {/* Winner Profile */}
               {winnerInfo.winner._id === 'no-winner' ? (
                 <div className="bg-gradient-to-r from-purple-800/50 to-blue-800/50 rounded-xl p-4 mb-4 border border-white/20">
                   <div className="flex flex-col items-center">
@@ -1363,7 +1051,7 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  {/* Prize Amount - Compact */}
+                  {/* Prize Amount */}
                   <div className="text-center py-2 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-lg">
                     <p className="text-white/80 text-xs mb-1">Prize Amount</p>
                     <p className="text-2xl font-bold text-yellow-300">
@@ -1378,7 +1066,7 @@ useEffect(() => {
                 </div>
               )}
 
-              {/* Game Stats - Compact */}
+              {/* Game Stats */}
               <div className="bg-gradient-to-r from-gray-900 to-black rounded-xl p-3 mb-4 border border-white/10">
                 <div className="grid grid-cols-2 gap-3 text-center">
                   <div>
@@ -1400,74 +1088,7 @@ useEffect(() => {
                 )}
               </div>
 
-              {/* Winning Card - Compact (if exists) */}
-              {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-white font-bold text-sm">
-                      Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
-                    </h3>
-                    <div className="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-1 rounded-full">
-                      Winner
-                    </div>
-                  </div>
-
-                  {/* Mini Bingo Card */}
-                  <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
-                    {/* Mini BINGO Header */}
-                    <div className="grid grid-cols-5 gap-1 mb-2">
-                      {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                        <div
-                          key={letter}
-                          className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
-                        >
-                          {letter}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Mini Card Numbers */}
-                    <div className="grid grid-cols-5 gap-1">
-                      {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                        row.map((number: number | string, colIndex: number) => {
-                          const flatIndex = rowIndex * 5 + colIndex;
-                          const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
-                          const isWinningPos = isWinningPosition(rowIndex, colIndex);
-                          const isFreeSpace = rowIndex === 2 && colIndex === 2;
-
-                          return (
-                            <div
-                              key={`${rowIndex}-${colIndex}`}
-                              className={`
-                                h-8 rounded flex items-center justify-center 
-                                font-bold text-xs relative
-                                ${isWinningPos
-                                  ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white'
-                                  : isMarked
-                                    ? 'bg-green-600 text-white'
-                                    : isFreeSpace
-                                      ? 'bg-purple-700 text-white'
-                                      : 'bg-gray-800 text-white/70'
-                                }
-                              `}
-                            >
-                              {isFreeSpace ? (
-                                <span className="text-[10px] font-bold">FREE</span>
-                              ) : (
-                                <span className={`${isMarked ? 'line-through' : ''}`}>
-                                  {number}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Countdown Only */}
+              {/* Countdown */}
               <div className="mt-4 pt-4 border-t border-white/20">
                 <div className="text-center">
                   <p className="text-white/70 text-sm mb-1">
@@ -1500,7 +1121,7 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Disqualification Warning Banner - SHOW IMMEDIATELY if disqualified */}
+      {/* Disqualification Warning Banner */}
       {isDisqualified && !showDisqualificationModal && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -1514,11 +1135,6 @@ useEffect(() => {
               <div>
                 <h3 className="text-white font-bold text-lg">DISQUALIFIED</h3>
                 <p className="text-white/80 text-sm">Click for details</p>
-                {disqualificationDetails?.timestamp && (
-                  <p className="text-white/60 text-xs mt-1">
-                    Disqualified at {new Date(disqualificationDetails.timestamp).toLocaleTimeString()}
-                  </p>
-                )}
               </div>
             </div>
             <div className="text-white/60">
@@ -1563,7 +1179,7 @@ useEffect(() => {
       </div>
 
       <div className="grid grid-cols-5 gap-1">
-        {/* Left: Called Numbers - ALWAYS SHOW EVEN FOR DISQUALIFIED */}
+        {/* Left: Called Numbers */}
         <div className="col-span-2">
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
             {/* BINGO Header */}
@@ -1578,7 +1194,7 @@ useEffect(() => {
               ))}
             </div>
 
-            {/* Called Numbers Grid - Now shows ALL previously called numbers */}
+            {/* Called Numbers Grid */}
             <div className="grid grid-cols-5 gap-1">
               {[
                 { letter: 'B', range: { start: 1, end: 15 } },
@@ -1619,7 +1235,6 @@ useEffect(() => {
                             }
                           `}
                           onClick={() => isCalled && game?.status === 'ACTIVE' && !isDisqualified && handleMarkNumber(number)}
-                          title={`${column.letter}${number} ${isCurrent ? '(Current)' : isCalled ? '(Called)' : ''}`}
                         >
                           <span className={`
                             text-xs font-bold
@@ -1647,7 +1262,7 @@ useEffect(() => {
 
         {/* Right: Bingo Card */}
         <div className="col-span-3">
-          {/* Permanent Current Called Number Display */}
+          {/* Current Called Number Display */}
           {currentCalledNumber && (
             <div className="mb-3 sm:mb-4">
               <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-4 py-3 rounded-2xl shadow-lg font-bold text-center">
@@ -1664,6 +1279,7 @@ useEffect(() => {
             </div>
           )}
           
+          {/* Recent Called Numbers */}
           {recentCalledNumbers.length > 0 && (
             <div className="mb-3 sm:mb-4">
               <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-lg rounded-xl border border-white/20 p-3">
@@ -1705,28 +1321,12 @@ useEffect(() => {
                       )}
                     </motion.div>
                   ))}
-                  
-                  {/* If we have less than 3 recent numbers, show placeholder */}
-                  {recentCalledNumbers.length < 3 &&
-                    Array.from({ length: 3 - recentCalledNumbers.length }).map((_, index) => (
-                      <div
-                        key={`placeholder-${index}`}
-                        className="flex-1 max-w-[80px] aspect-square rounded-lg bg-gradient-to-br from-gray-800/20 to-gray-900/20 border border-white/5 flex flex-col items-center justify-center"
-                      >
-                        <div className="text-xs text-white/30 font-bold mb-0.5">
-                          ?
-                        </div>
-                        <div className="text-lg text-white/20 font-bold">
-                          -
-                        </div>
-                      </div>
-                    ))
-                  }
                 </div>
               </div>
             </div>
           )}
           
+          {/* Bingo Card Display */}
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20">
             <div className="flex justify-between items-center mb-3 sm:mb-4">
               <div className="flex items-center gap-2 sm:gap-3">
@@ -1762,7 +1362,7 @@ useEffect(() => {
               </div>
             ) : displayBingoCard ? (
               <div className="mb-3 sm:mb-4">
-                {/* BINGO Header - Responsive text sizes */}
+                {/* BINGO Header */}
                 <div className="grid grid-cols-5 gap-0.5 sm:gap-1 mb-1 sm:mb-2">
                   {['B', 'I', 'N', 'G', 'O'].map((letter) => (
                     <div
@@ -1774,7 +1374,7 @@ useEffect(() => {
                   ))}
                 </div>
 
-                {/* Card Numbers - Responsive grid with adjustable gap */}
+                {/* Card Numbers */}
                 <div className="grid grid-cols-5 gap-0.5 sm:gap-1">
                   {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
                     row.map((number: number | string, colIndex: number) => {
@@ -1791,10 +1391,6 @@ useEffect(() => {
                           animate={{
                             scale: isCalled && !isMarked && game?.status === 'ACTIVE' ? 1.02 : 1,
                           }}
-                          whileHover={isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE' ? {
-                            scale: 1.05,
-                            backgroundColor: 'rgba(255, 255, 255, 0.25)'
-                          } : {}}
                           className={`
                             aspect-square rounded-sm flex items-center justify-center 
                             font-bold transition-all duration-200 relative
@@ -1814,17 +1410,10 @@ useEffect(() => {
                               handleMarkNumber(number as number);
                             }
                           }}
-                          title={
-                            isFreeSpace ? 'FREE SPACE (Always marked)' :
-                              isMarked ? `Marked: ${number}` :
-                                isCalled ? `Click to mark ${number}` :
-                                  `${number} (Not called yet)`
-                          }
                         >
                           {isFreeSpace ? (
                             <div className="flex flex-col items-center justify-center w-full h-full p-0.5 sm:p-1">
                               <span className="text-[10px] xs:text-xs sm:text-sm font-bold">FREE</span>
-                              <div className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-[8px] sm:text-[10px] opacity-90">✓</div>
                             </div>
                           ) : (
                             <div className="flex flex-col items-center justify-center w-full h-full p-0.5 sm:p-1 relative">
@@ -1873,7 +1462,7 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* Claim Bingo Button - Fixed Position - HIDDEN FOR DISQUALIFIED */}
+      {/* Claim Bingo Button */}
       {game?.status === 'ACTIVE' && displayBingoCard && !isSpectatorMode && !isDisqualified && allCalledNumbers.length > 0 && (
         <div className="fixed bottom-4 right-2 sm:right-4 md:right-6 z-10">
           <div className="flex flex-col items-end">
@@ -1908,8 +1497,7 @@ useEffect(() => {
               )}
             </button>
 
-            {/* Optional: Compact result message for mobile */}
-            {/* {claimResult && (
+            {claimResult && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1923,7 +1511,7 @@ useEffect(() => {
               >
                 {claimResult.message}
               </motion.div>
-            )} */}
+            )}
           </div>
         </div>
       )}
