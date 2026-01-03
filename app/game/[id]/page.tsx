@@ -605,13 +605,7 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
       if (hasWinner) {
         const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
         
-        // DEBUG: Log all IDs for troubleshooting
-        // console.log('🔍 Winner check debugging:', {
-        //   userId,
-        //   winnerId: winnerData.winner._id,
-        //   winnerTelegramId: winnerData.winner.telegramId,
-        //   gameWinnerId: gameData.winnerId
-        // });
+       
 
         // FIXED: Better user ID comparison
         let isWinner = false;
@@ -837,6 +831,12 @@ const checkForWinner = useCallback(async (gameData?: Game) => {
     }
   }, [game, isLoading, initializeUserCard, initializationAttempted, isDisqualified]);
 
+useEffect(() => {
+  if (!wsConnected || !game || isDisqualified) return;
+
+  // This would be handled in your useGame hook
+  // Add WebSocket event listener for GAME_ENDED or similar
+}, [wsConnected, game, isDisqualified]);
   // Countdown for winner modal
   useEffect(() => {
     if (showWinnerModal && winnerInfo) {
