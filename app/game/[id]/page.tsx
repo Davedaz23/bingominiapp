@@ -227,7 +227,7 @@ const initialLoadCompleteRef = useRef(false);
     
     setDisqualificationProcessed(true);
     
-    console.log('✅ Disqualification processed immediately',allCalledNumbers);
+    console.log('✅ Disqualification processed immediately');
   }, [localBingoCard, allCalledNumbers]);
 
   // FIXED: Check if user has a bingo card with IMMEDIATE disqualification detection
@@ -390,7 +390,7 @@ useEffect(() => {
       const isDifferent = JSON.stringify(debouncedWsCalledNumbers) !== JSON.stringify(lastWsCalledNumbersRef.current);
       
       if (isDifferent) {
-        console.log('🔢 WebSocket: Updating called numbers');
+        console.log('🔢 WebSocket: Updating called numbers',allCalledNumbers);
         setAllCalledNumbers(debouncedWsCalledNumbers);
         lastWsCalledNumbersRef.current = debouncedWsCalledNumbers;
         
