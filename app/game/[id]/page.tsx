@@ -837,6 +837,22 @@ useEffect(() => {
   // This would be handled in your useGame hook
   // Add WebSocket event listener for GAME_ENDED or similar
 }, [wsConnected, game, isDisqualified]);
+
+// Fallback polling for game status (as backup to WebSocket)
+
+useEffect(() => {
+  if (!game || game.status !== 'ACTIVE' || isDisqualified) return;
+
+  const interval = setInterval(() => {
+    if (game?.status === 'FINISHED' && !showWinnerModal && !gameEndedCheckRef.current) {
+      console.log('⏰ Polling detected game finished');
+      gameEndedCheckRef.current = true;
+      checkForWinner(game as Game);
+    }
+  }, 5000); // Check every 5 seconds
+
+  return () => clearInterval(interval);
+}, [game, showWinnerModal, checkForWinner, isDisqualified]);
   // Countdown for winner modal
   useEffect(() => {
     if (showWinnerModal && winnerInfo) {
