@@ -459,16 +459,7 @@ const getCombinedTakenCards = useCallback(() => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
-      {/* WebSocket Connection Status */}
-      {!wsConnected && showCardSelection && (
-        <div className="fixed top-4 right-4 bg-yellow-500/20 backdrop-blur-lg rounded-lg p-2 border border-yellow-500/30 z-50">
-          <div className="flex items-center gap-2 text-white text-xs">
-            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-            <span>Connecting to real-time updates...</span>
-          </div>
-        </div>
-      )}
-
+     
       {/* Real-time Notifications */}
       <div className="fixed top-20 right-4 space-y-2 z-50 max-w-xs">
         {notifications.map(notification => (
