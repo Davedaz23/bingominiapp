@@ -1437,7 +1437,9 @@ useEffect(() => {
                   </div>
                 )}
               </div>
-  {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
+{/* Mini Card Section */}
+
+{winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
   <div className="mb-4">
     <div className="flex items-center justify-between mb-2">
       <h3 className="text-white font-bold text-sm">
@@ -1462,7 +1464,7 @@ useEffect(() => {
         ))}
       </div>
 
-      {/* Mini Card Numbers - FIXED VERSION */}
+      {/* Mini Card Numbers - FIXED VERSION with correct priority */}
       <div className="grid grid-cols-5 gap-1">
         {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
           row.map((number: number | string, colIndex: number) => {
@@ -1471,16 +1473,16 @@ useEffect(() => {
             const isWinningPos = isWinningPosition(rowIndex, colIndex);
             const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
-            // CRITICAL FIX: Check winning position FIRST, then marked
+            // FIXED: Check isWinningPos FIRST before isMarked
             let bgClass = 'bg-gray-800 text-white/70'; // Default
             
             if (isFreeSpace) {
               bgClass = 'bg-purple-700 text-white';
             } else if (isWinningPos) {
-              // Winning position gets yellow - HIGHEST PRIORITY
+              // Winning position gets yellow - HIGHEST PRIORITY (after free space)
               bgClass = 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
             } else if (isMarked) {
-              // Marked but not winning gets green - LOWER PRIORITY
+              // Marked but NOT winning gets green - LOWER PRIORITY
               bgClass = 'bg-green-600 text-white';
             }
 
@@ -1491,15 +1493,13 @@ useEffect(() => {
                   h-8 rounded flex items-center justify-center 
                   font-bold text-xs relative transition-all duration-300
                   ${bgClass}
+                  ${isMarked && !isWinningPos ? 'line-through' : ''}
                 `}
               >
                 {isFreeSpace ? (
                   <span className="text-[10px] font-bold">FREE</span>
                 ) : (
-                  <span className={`
-                    ${isMarked && !isWinningPos ? 'line-through' : ''}
-                    ${isWinningPos ? 'font-extrabold' : ''}
-                  `}>
+                  <span className={isWinningPos ? 'font-extrabold' : 'font-bold'}>
                     {number}
                   </span>
                 )}
@@ -1533,7 +1533,7 @@ useEffect(() => {
         )}
       </div>
       
-      {/* Legend for colors - Updated */}
+      {/* Legend for colors - Updated with clear distinction */}
       <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/20">
         <div className="flex items-center justify-center gap-3">
           <div className="flex items-center gap-1">
@@ -1542,7 +1542,7 @@ useEffect(() => {
           </div>
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded-sm bg-green-600"></div>
-            <span className="text-[10px] text-white/70">Marked Numbers</span>
+            <span className="text-[10px] text-white/70">Other Marked Numbers</span>
           </div>
         </div>
         <div className="flex items-center justify-center gap-1">
