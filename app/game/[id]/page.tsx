@@ -108,6 +108,7 @@ export default function GamePage() {
   const [isUserWinner, setIsUserWinner] = useState(false);
   const [winningAmount, setWinningAmount] = useState(0);
   const [countdown, setCountdown] = useState<number>(10);
+const [winningPatternPositions, setWinningPatternPositions] = useState<number[]>([]);
 
   // Retry states
   const [retryCount, setRetryCount] = useState(0);
@@ -1196,11 +1197,24 @@ useEffect(() => {
   }, [localBingoCard, gameBingoCard]);
 
   // Helper function to check if a position is in winning pattern
-  const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
-    if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
-    const flatIndex = rowIndex * 5 + colIndex;
-    return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
-  }, [winnerInfo]);
+const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
+  const flatIndex = rowIndex * 5 + colIndex;
+  // First check local state, then fall back to winnerInfo
+  if (winningPatternPositions.length > 0) {
+    return winningPatternPositions.includes(flatIndex);
+  }
+  
+  if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
+  return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
+}, [winnerInfo, winningPatternPositions]);
+
+// Update the useEffect that handles winner info to store the positions
+useEffect(() => {
+  if (winnerInfo?.winningCard?.winningPatternPositions) {
+    console.log('💛 Storing winning pattern positions:', winnerInfo.winningCard.winningPatternPositions);
+    setWinningPatternPositions(winnerInfo.winningCard.winningPatternPositions);
+  }
+}, [winnerInfo]);
 
   // Function to get winning pattern type name
   const getPatternName = useCallback((patternType?: string): string => {
@@ -1464,27 +1478,37 @@ useEffect(() => {
         ))}
       </div>
 
-      {/* Mini Card Numbers - ONLY WINNING POSITIONS IN GREEN */}
+      {/* Mini Card Numbers - SIMPLIFIED AND ROBUST */}
       <div className="grid grid-cols-5 gap-1">
         {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
           row.map((number: number | string, colIndex: number) => {
             const flatIndex = rowIndex * 5 + colIndex;
+            const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
             const isWinningPos = isWinningPosition(rowIndex, colIndex);
             const isFreeSpace = rowIndex === 2 && colIndex === 2;
+            
+            // Always log to debug
+            console.log(`Cell [${rowIndex},${colIndex}] (${flatIndex}):`, {
+              number,
+              isMarked,
+              isWinningPos,
+              winningPositions: winningPatternPositions,
+              winnerPositions: winnerInfo.winningCard?.winningPatternPositions
+            });
 
-            // Determine background color - ONLY winning positions get green
-            let bgClass = '';
+            // Determine colors with clear priority
+            let bgClass = 'bg-gray-800 text-white/70'; // Default
             
             if (isFreeSpace) {
               bgClass = 'bg-purple-700 text-white';
             } 
             else if (isWinningPos) {
-              // Winning positions get green
-              bgClass = 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-[0_0_8px_rgba(34,197,94,0.6)]';
+              // ALWAYS YELLOW if winning position - highest priority
+              bgClass = 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
             }
-            else {
-              // Everything else is normal
-              bgClass = 'bg-gray-800 text-white/70';
+            else if (isMarked) {
+              // Green only if marked AND NOT winning
+              bgClass = 'bg-green-600 text-white';
             }
 
             return (
@@ -1494,38 +1518,50 @@ useEffect(() => {
                   h-8 rounded flex items-center justify-center 
                   font-bold text-xs relative transition-all duration-300
                   ${bgClass}
+                  ${isMarked && !isWinningPos ? 'line-through' : ''}
                 `}
               >
                 {isFreeSpace ? (
                   <span className="text-[10px] font-bold">FREE</span>
                 ) : (
-                  <span className={isWinningPos ? 'font-extrabold' : 'font-bold'}>
+                  <span className={`font-bold ${isWinningPos ? 'text-white' : ''}`}>
                     {number}
                   </span>
                 )}
                 
-                {/* Winning position indicator */}
+                {/* WINNING POSITION INDICATOR - Always show if winning */}
                 {isWinningPos && (
                   <>
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: 0.2 }}
-                      className="absolute -top-1 -right-1 w-3 h-3 bg-green-300 rounded-full shadow-[0_0_4px_rgba(34,197,94,0.8)] z-10"
+                      className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)] z-10"
                     />
                     <motion.div
                       animate={{ 
                         scale: [1, 1.2, 1],
-                        opacity: [0.7, 0.9, 0.7]
+                        opacity: [0.5, 0.8, 0.5]
                       }}
                       transition={{ 
                         repeat: Infinity, 
                         duration: 2,
                         ease: "easeInOut"
                       }}
-                      className="absolute inset-0 rounded bg-gradient-to-br from-green-400/30 to-emerald-400/20"
+                      className="absolute inset-0 rounded bg-gradient-to-br from-yellow-400/40 to-orange-400/30"
                     />
                   </>
+                )}
+                
+                {/* Checkmark for marked positions (only if not winning position) */}
+                {isMarked && !isWinningPos && !isFreeSpace && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute top-0 right-0 text-[8px] text-white bg-green-500 rounded-full w-3 h-3 flex items-center justify-center"
+                  >
+                    ✓
+                  </motion.div>
                 )}
               </div>
             );
@@ -1533,12 +1569,26 @@ useEffect(() => {
         )}
       </div>
       
+      {/* Debug info (optional, remove in production) */}
+      <div className="mt-2 text-center">
+        <p className="text-[10px] text-white/50">
+          Winning positions: {winningPatternPositions.length > 0 ? 
+            winningPatternPositions.join(', ') : 
+            winnerInfo.winningCard?.winningPatternPositions?.join(', ') || 'none'
+          }
+        </p>
+      </div>
+      
       {/* Legend for colors */}
       <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/20">
         <div className="flex items-center justify-center gap-3">
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-green-500 to-emerald-600 shadow-[0_0_4px_rgba(34,197,94,0.6)]"></div>
+            <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500 shadow-[0_0_4px_rgba(251,191,36,0.6)]"></div>
             <span className="text-[10px] text-white/70">Winning Pattern</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm bg-green-600"></div>
+            <span className="text-[10px] text-white/70">Other Marked Numbers</span>
           </div>
         </div>
         <div className="flex items-center justify-center gap-1">
