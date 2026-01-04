@@ -1464,7 +1464,7 @@ useEffect(() => {
         ))}
       </div>
 
-      {/* Mini Card Numbers - FIXED VERSION with correct priority */}
+      {/* Mini Card Numbers - FIXED with proper && conditions */}
       <div className="grid grid-cols-5 gap-1">
         {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
           row.map((number: number | string, colIndex: number) => {
@@ -1473,26 +1473,20 @@ useEffect(() => {
             const isWinningPos = isWinningPosition(rowIndex, colIndex);
             const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
-            // FIXED: Check isWinningPos FIRST before isMarked
-            let bgClass = 'bg-gray-800 text-white/70'; // Default
-            
-            if (isFreeSpace) {
-              bgClass = 'bg-purple-700 text-white';
-            } else if (isWinningPos) {
-              // Winning position gets yellow - HIGHEST PRIORITY (after free space)
-              bgClass = 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
-            } else if (isMarked) {
-              // Marked but NOT winning gets green - LOWER PRIORITY
-              bgClass = 'bg-green-600 text-white';
-            }
-
             return (
               <div
                 key={`${rowIndex}-${colIndex}`}
                 className={`
                   h-8 rounded flex items-center justify-center 
                   font-bold text-xs relative transition-all duration-300
-                  ${bgClass}
+                  ${isFreeSpace 
+                    ? 'bg-purple-700 text-white' 
+                    : isWinningPos 
+                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]' 
+                      : isMarked 
+                        ? 'bg-green-600 text-white' 
+                        : 'bg-gray-800 text-white/70'
+                  }
                   ${isMarked && !isWinningPos ? 'line-through' : ''}
                 `}
               >
@@ -1504,7 +1498,7 @@ useEffect(() => {
                   </span>
                 )}
                 
-                {/* Add special animation for winning positions */}
+                {/* Add special animation ONLY for winning positions */}
                 {isWinningPos && (
                   <>
                     <motion.div
@@ -1527,13 +1521,24 @@ useEffect(() => {
                     />
                   </>
                 )}
+                
+                {/* Checkmark for marked positions (only if not winning position) */}
+                {isMarked && !isWinningPos && !isFreeSpace && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute top-0 right-0 text-[8px] text-white bg-green-500 rounded-full w-3 h-3 flex items-center justify-center"
+                  >
+                    ✓
+                  </motion.div>
+                )}
               </div>
             );
           })
         )}
       </div>
       
-      {/* Legend for colors - Updated with clear distinction */}
+      {/* Legend for colors */}
       <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/20">
         <div className="flex items-center justify-center gap-3">
           <div className="flex items-center gap-1">
@@ -1542,7 +1547,7 @@ useEffect(() => {
           </div>
           <div className="flex items-center gap-1">
             <div className="w-3 h-3 rounded-sm bg-green-600"></div>
-            <span className="text-[10px] text-white/70">Other Marked Numbers</span>
+            <span className="text-[10px] text-white/70">Marked Numbers</span>
           </div>
         </div>
         <div className="flex items-center justify-center gap-1">
