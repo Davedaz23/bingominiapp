@@ -134,13 +134,13 @@ export const authAPI = {
   telegramLogin: (initData: string) => 
     api.post('/auth/telegram', { initData }),
 
-  // // Quick authentication
-  // quickAuth: (telegramId: string) =>
-  //   api.post('/auth/quick-auth', { telegramId }),
+  // Quick authentication
+  quickAuth: (telegramId: string) =>
+    api.post('/auth/quick-auth', { telegramId }),
 
-  // // Play endpoint - for auto user creation
-  // play: (telegramId: string, initData?: string) =>
-  //   api.post('/auth/play', { telegramId, initData }),
+  // Play endpoint - for auto user creation
+  play: (telegramId: string, initData?: string) =>
+    api.post('/auth/play', { telegramId, initData }),
 
   // Get user profile by ID (accepts both MongoDB ID and Telegram ID)
   getProfile: (userId: string) => 
