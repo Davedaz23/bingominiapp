@@ -1486,7 +1486,7 @@ useEffect(() => {
               // If it's a winning position, ALWAYS show as yellow
               bgClass = 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
             }
-            else if (isMarked) {
+            else if (isMarked &&!isWinningPos) {
               // Only show as green if marked AND NOT winning
               bgClass = 'bg-green-600 text-white';
             }
