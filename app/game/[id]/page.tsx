@@ -1463,82 +1463,92 @@ useEffect(() => {
               </div>
 
               {/* Mini Card Numbers */}
-             <div className="grid grid-cols-5 gap-0.5 sm:gap-1">
-  {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-    row.map((number: number | string, colIndex: number) => {
-      const flatIndex = rowIndex * 5 + colIndex;
-      const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
-      const isCalled = allCalledNumbers.includes(number as number);
-      const isFreeSpace = rowIndex === 2 && colIndex === 2;
-      const isWinningPos = isWinningPosition(rowIndex, colIndex);
+             {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
+  <div className="mb-4">
+    <div className="flex items-center justify-between mb-2">
+      <h3 className="text-white font-bold text-sm">
+        Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
+      </h3>
+      <div className="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-1 rounded-full">
+        Winner
+      </div>
+    </div>
 
-      return (
-        <motion.div
-          key={`${rowIndex}-${colIndex}`}
-          layout
-          initial={false}
-          animate={{
-            scale: isCalled && !isMarked && game?.status === 'ACTIVE' ? 1.02 : 1,
-          }}
-          className={`
-            aspect-square rounded-sm flex items-center justify-center 
-            font-bold transition-all duration-200 relative
-            ${isWinningPos
-              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border-2 border-yellow-400'
-              : isMarked
-                ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'
-                : isFreeSpace
-                  ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white border-2 border-purple-400'
-                  : 'bg-white/15 text-white'
-            }
-            ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE'
-              ? 'cursor-pointer'
-              : 'cursor-default'
-            }
-          `}
-          onClick={() => {
-            if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
-              handleMarkNumber(number as number);
-            }
-          }}
-        >
-          {isFreeSpace ? (
-            <div className="flex flex-col items-center justify-center w-full h-full p-0.5 sm:p-1">
-              <span className="text-[10px] xs:text-xs sm:text-sm font-bold">FREE</span>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center w-full h-full p-0.5 sm:p-1 relative">
-              <span className={`
-                text-xs xs:text-sm sm:text-base md:text-lg lg:text-xl
-                ${isMarked ? 'line-through' : ''}
-              `}>
-                {number}
-              </span>
-              {isMarked && !isWinningPos && (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-[8px] sm:text-[10px] opacity-90"
-                >
-                  ✓
-                </motion.div>
-              )}
-              {isWinningPos && (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-[8px] sm:text-[10px] opacity-90 text-yellow-300"
-                >
-                  ★
-                </motion.div>
-              )}
-            </div>
-          )}
-        </motion.div>
-      );
-    })
-  )}
-</div>
+    {/* Mini Bingo Card */}
+    <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
+      {/* Mini BINGO Header */}
+      <div className="grid grid-cols-5 gap-1 mb-2">
+        {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+          <div
+            key={letter}
+            className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
+          >
+            {letter}
+          </div>
+        ))}
+      </div>
+
+      {/* Mini Card Numbers */}
+      <div className="grid grid-cols-5 gap-1">
+        {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+          row.map((number: number | string, colIndex: number) => {
+            const flatIndex = rowIndex * 5 + colIndex;
+            const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
+            const isWinningPos = isWinningPosition(rowIndex, colIndex);
+            const isFreeSpace = rowIndex === 2 && colIndex === 2;
+
+            return (
+              <div
+                key={`${rowIndex}-${colIndex}`}
+                className={`
+                  h-8 rounded flex items-center justify-center 
+                  font-bold text-xs relative
+                  ${isFreeSpace
+                    ? 'bg-purple-700 text-white'
+                    : isWinningPos
+                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]'
+                      : isMarked
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-800 text-white/70'
+                  }
+                `}
+              >
+                {isFreeSpace ? (
+                  <span className="text-[10px] font-bold">FREE</span>
+                ) : (
+                  <span className={`${isMarked && !isWinningPos ? 'line-through' : ''}`}>
+                    {number}
+                  </span>
+                )}
+                
+                {/* Add a special indicator for winning positions */}
+                {isWinningPos && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)]"
+                  />
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+      
+      {/* Legend for colors */}
+      <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-white/20">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500"></div>
+          <span className="text-[10px] text-white/70">Winning Pattern</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded-sm bg-green-600"></div>
+          <span className="text-[10px] text-white/70">Marked</span>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
             </div>
           </div>
         )}
