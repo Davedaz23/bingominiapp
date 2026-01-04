@@ -464,17 +464,22 @@ const checkForWinner = useCallback(async (gameData?: Game, force = false) => {
     return;
   }
 
-  // Check if game is actually finished
-  const isGameFinished = gameData.status === 'FINISHED' || 
-                        gameData.status === 'NO_WINNER' ||
-                        gameData.status === 'COOLDOWN';
-  
-  // If not forced and game is not finished, skip
-  if (!force && !isGameFinished) {
-    console.log('❌ Game is not finished, status:', gameData.status);
+  // CRITICAL FIX: Remove the status check that blocks winner checking
+  // Allow winner check in more scenarios
+  const shouldCheckForWinner = 
+    force || 
+    gameData.status === 'FINISHED' || 
+    gameData.status === 'NO_WINNER' ||
+    gameData.status === 'COOLDOWN' ||
+    !!gameData.winnerId ||
+    gameData.noWinner;
+
+  if (!shouldCheckForWinner && !force) {
+    console.log('⚠️ Skipping winner check - game still active:', gameData.status);
     return;
   }
 
+  // Prevent duplicate calls
   if (abortControllerRef.current) {
     console.log('⏸️ Previous winner check still in progress');
     return;
@@ -514,7 +519,7 @@ const checkForWinner = useCallback(async (gameData?: Game, force = false) => {
         if (userId) {
           const winner = winnerData.winner;
           
-          // Convert all IDs to strings for comparison (safe access)
+          // Convert all IDs to strings for comparison
           const userIdStr = String(userId).trim();
           const winnerIdStr = winner?._id ? String(winner._id).trim() : '';
           const winnerTelegramIdStr = winner?.telegramId ? String(winner.telegramId).trim() : '';
@@ -566,8 +571,36 @@ const checkForWinner = useCallback(async (gameData?: Game, force = false) => {
     } else {
       console.log('⚠️ No winner data from API');
       
+      // If game has winnerId but no winner data, show generic winner modal
+      if (gameData.winnerId) {
+        console.log('👑 Game has winnerId but no winner data from API');
+        setWinnerInfo({
+          winner: {
+            _id: gameData.winnerId,
+            username: 'Winner',
+            firstName: 'Bingo Winner',
+            telegramId: 'winner'
+          },
+          gameCode: gameData.code || 'N/A',
+          endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
+          totalPlayers: gameData.currentPlayers || 0,
+          numbersCalled: gameData.numbersCalled?.length || 0,
+          message: 'Congratulations to the winner!'
+        });
+        
+        setIsUserWinner(false);
+        setWinningAmount(0);
+        
+        clearSelectedCard();
+
+        setTimeout(() => {
+          console.log('🎉 Showing generic winner modal');
+          setShowWinnerModal(true);
+          setIsWinnerLoading(false);
+        }, 500);
+      }
       // If game is finished but no winner data, show no winner modal
-      if (gameData.status === 'FINISHED' || gameData.status === 'NO_WINNER') {
+      else if (gameData.status === 'FINISHED' || gameData.status === 'NO_WINNER') {
         const hasNoWinner = gameData.status === 'NO_WINNER' || gameData.noWinner;
         
         if (hasNoWinner) {
@@ -604,21 +637,21 @@ const checkForWinner = useCallback(async (gameData?: Game, force = false) => {
     if (error.name !== 'AbortError') {
       setIsWinnerLoading(false);
       
-      // If game is finished, try to show something anyway
-      if (gameData?.status === 'FINISHED') {
-        console.log('⚠️ Error but game is finished, showing generic modal');
+      // If game has winnerId or is finished, show generic modal anyway
+      if (gameData?.winnerId || gameData?.status === 'FINISHED') {
+        console.log('⚠️ Error but game has winner or is finished, showing modal');
         setWinnerInfo({
           winner: {
-            _id: 'unknown',
-            username: 'Unknown Winner',
-            firstName: 'Game Completed',
-            telegramId: 'unknown'
+            _id: gameData.winnerId || 'unknown',
+            username: gameData.winnerId ? 'Winner' : 'Unknown Winner',
+            firstName: gameData.winnerId ? 'Bingo Winner' : 'Game Completed',
+            telegramId: gameData.winnerId || 'unknown'
           },
           gameCode: gameData.code || 'N/A',
           endedAt: gameData.endedAt?.toString() || new Date().toISOString(),
           totalPlayers: gameData.currentPlayers || 0,
           numbersCalled: gameData.numbersCalled?.length || 0,
-          message: 'Game completed successfully'
+          message: gameData.winnerId ? 'Congratulations to the winner!' : 'Game completed successfully'
         });
         
         setIsUserWinner(false);
