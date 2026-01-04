@@ -1464,33 +1464,26 @@ useEffect(() => {
         ))}
       </div>
 
-      {/* Mini Card Numbers - SIMPLIFIED LOGIC */}
+      {/* Mini Card Numbers - ONLY WINNING POSITIONS IN GREEN */}
       <div className="grid grid-cols-5 gap-1">
         {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
           row.map((number: number | string, colIndex: number) => {
             const flatIndex = rowIndex * 5 + colIndex;
-            const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
             const isWinningPos = isWinningPosition(rowIndex, colIndex);
             const isFreeSpace = rowIndex === 2 && colIndex === 2;
-            
-            // Debug logging
-            console.log(`Cell [${rowIndex},${colIndex}] - num: ${number}, marked: ${isMarked}, winning: ${isWinningPos}, free: ${isFreeSpace}`);
 
-            // Determine background color - SIMPLIFIED
+            // Determine background color - ONLY winning positions get green
             let bgClass = '';
             
             if (isFreeSpace) {
               bgClass = 'bg-purple-700 text-white';
             } 
-            else if (isWinningPos &&isMarked) {
-              // If it's a winning position, ALWAYS show as yellow
-              bgClass = 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
-            }
-            else if (isMarked &&!isWinningPos) {
-              // Only show as green if marked AND NOT winning
-              bgClass = 'bg-green-600 text-white';
+            else if (isWinningPos) {
+              // Winning positions get green
+              bgClass = 'bg-gradient-to-br from-green-500 to-emerald-600 text-white shadow-[0_0_8px_rgba(34,197,94,0.6)]';
             }
             else {
+              // Everything else is normal
               bgClass = 'bg-gray-800 text-white/70';
             }
 
@@ -1501,7 +1494,6 @@ useEffect(() => {
                   h-8 rounded flex items-center justify-center 
                   font-bold text-xs relative transition-all duration-300
                   ${bgClass}
-                  ${isMarked && !isWinningPos ? 'line-through' : ''}
                 `}
               >
                 {isFreeSpace ? (
@@ -1519,7 +1511,7 @@ useEffect(() => {
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: 0.2 }}
-                      className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)] z-10"
+                      className="absolute -top-1 -right-1 w-3 h-3 bg-green-300 rounded-full shadow-[0_0_4px_rgba(34,197,94,0.8)] z-10"
                     />
                     <motion.div
                       animate={{ 
@@ -1531,20 +1523,9 @@ useEffect(() => {
                         duration: 2,
                         ease: "easeInOut"
                       }}
-                      className="absolute inset-0 rounded bg-gradient-to-br from-yellow-400/30 to-orange-400/20"
+                      className="absolute inset-0 rounded bg-gradient-to-br from-green-400/30 to-emerald-400/20"
                     />
                   </>
-                )}
-                
-                {/* Checkmark for marked positions (only if not winning position) */}
-                {isMarked && !isWinningPos && !isFreeSpace && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute top-0 right-0 text-[8px] text-white bg-green-500 rounded-full w-3 h-3 flex items-center justify-center"
-                  >
-                    ✓
-                  </motion.div>
                 )}
               </div>
             );
@@ -1556,12 +1537,8 @@ useEffect(() => {
       <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/20">
         <div className="flex items-center justify-center gap-3">
           <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500 shadow-[0_0_4px_rgba(251,191,36,0.6)]"></div>
+            <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-green-500 to-emerald-600 shadow-[0_0_4px_rgba(34,197,94,0.6)]"></div>
             <span className="text-[10px] text-white/70">Winning Pattern</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm bg-green-600"></div>
-            <span className="text-[10px] text-white/70">Other Marked Numbers</span>
           </div>
         </div>
         <div className="flex items-center justify-center gap-1">
