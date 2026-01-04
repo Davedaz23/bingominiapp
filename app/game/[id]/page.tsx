@@ -1475,6 +1475,18 @@ useEffect(() => {
     </div>
 
     {/* Mini Bingo Card */}
+    {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
+  <div className="mb-4">
+    <div className="flex items-center justify-between mb-2">
+      <h3 className="text-white font-bold text-sm">
+        Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
+      </h3>
+      <div className="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-1 rounded-full">
+        Winner
+      </div>
+    </div>
+
+    {/* Mini Bingo Card */}
     <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
       {/* Mini BINGO Header */}
       <div className="grid grid-cols-5 gap-1 mb-2">
@@ -1488,7 +1500,7 @@ useEffect(() => {
         ))}
       </div>
 
-      {/* Mini Card Numbers */}
+      {/* Mini Card Numbers - FIXED VERSION */}
       <div className="grid grid-cols-5 gap-1">
         {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
           row.map((number: number | string, colIndex: number) => {
@@ -1497,37 +1509,61 @@ useEffect(() => {
             const isWinningPos = isWinningPosition(rowIndex, colIndex);
             const isFreeSpace = rowIndex === 2 && colIndex === 2;
 
+            // CRITICAL FIX: Check winning position FIRST, then marked
+            let bgClass = 'bg-gray-800 text-white/70'; // Default
+            
+            if (isFreeSpace) {
+              bgClass = 'bg-purple-700 text-white';
+            } else if (isWinningPos) {
+              // Winning position gets yellow - HIGHEST PRIORITY
+              bgClass = 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
+            } else if (isMarked) {
+              // Marked but not winning gets green - LOWER PRIORITY
+              bgClass = 'bg-green-600 text-white';
+            }
+
             return (
               <div
                 key={`${rowIndex}-${colIndex}`}
                 className={`
                   h-8 rounded flex items-center justify-center 
-                  font-bold text-xs relative
-                  ${isFreeSpace
-                    ? 'bg-purple-700 text-white'
-                    : isWinningPos
-                      ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]'
-                      : isMarked
-                        ? 'bg-green-600 text-white'
-                        : 'bg-gray-800 text-white/70'
-                  }
+                  font-bold text-xs relative transition-all duration-300
+                  ${bgClass}
                 `}
               >
                 {isFreeSpace ? (
                   <span className="text-[10px] font-bold">FREE</span>
                 ) : (
-                  <span className={`${isMarked && !isWinningPos ? 'line-through' : ''}`}>
+                  <span className={`
+                    ${isMarked && !isWinningPos ? 'line-through' : ''}
+                    ${isWinningPos ? 'font-extrabold' : ''}
+                  `}>
                     {number}
                   </span>
                 )}
                 
-                {/* Add a special indicator for winning positions */}
+                {/* Add special animation for winning positions */}
                 {isWinningPos && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)]"
-                  />
+                  <>
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.2 }}
+                      className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)] z-10"
+                    />
+                    <motion.div
+                      animate={{ 
+                        scale: [1, 1.2, 1],
+                        opacity: [0.7, 0.9, 0.7]
+                      }}
+                      transition={{ 
+                        repeat: Infinity, 
+                        duration: 2,
+                        ease: "easeInOut"
+                      }}
+                      className="absolute inset-0 rounded bg-gradient-to-br from-yellow-400/30 to-orange-400/20"
+                    />
+                  </>
                 )}
               </div>
             );
@@ -1535,18 +1571,26 @@ useEffect(() => {
         )}
       </div>
       
-      {/* Legend for colors */}
-      <div className="flex items-center justify-center gap-3 mt-3 pt-3 border-t border-white/20">
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500"></div>
-          <span className="text-[10px] text-white/70">Winning Pattern</span>
+      {/* Legend for colors - Updated */}
+      <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/20">
+        <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500 shadow-[0_0_4px_rgba(251,191,36,0.6)]"></div>
+            <span className="text-[10px] text-white/70">Winning Pattern</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded-sm bg-green-600"></div>
+            <span className="text-[10px] text-white/70">Marked Numbers</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          <div className="w-3 h-3 rounded-sm bg-green-600"></div>
-          <span className="text-[10px] text-white/70">Marked</span>
+        <div className="flex items-center justify-center gap-1">
+          <div className="w-3 h-3 rounded-sm bg-purple-700"></div>
+          <span className="text-[10px] text-white/70">Free Space</span>
         </div>
       </div>
     </div>
+  </div>
+)}
   </div>
 )}
             </div>
