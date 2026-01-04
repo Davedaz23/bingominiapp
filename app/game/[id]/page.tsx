@@ -882,7 +882,7 @@ const handleClaimBingo = async () => {
           _id: userId || 'current-user',
           username: currentUsername,
           firstName: currentFirstName,
-          // telegramId: userId
+          telegramId: userId ?? undefined
         },
         gameCode: game?.code || 'N/A',
         endedAt: new Date().toISOString(),
