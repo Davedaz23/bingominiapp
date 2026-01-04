@@ -1428,20 +1428,80 @@ useEffect(() => {
                     <p className="text-white text-lg font-bold">{winnerInfo.numbersCalled}/75</p>
                   </div>
                 </div>
-                {winnerInfo.winner._id !== 'no-winner' && (
-    <div className="mt-3 pt-3 border-t border-white/20 text-center">
-      <p className="text-white/70 text-xs mb-1">Winning Pattern</p>
-      <p className="text-green-300 text-sm font-medium">
-        {getPatternName(winnerInfo.winningPattern)}
-      </p>
-      
-      {/* Add this for debugging - remove in production */}
-      <p className="text-white/50 text-xs mt-1">
-        Raw pattern: {winnerInfo.winningPattern || 'Not available'}
-      </p>
-    </div>
-  )}
+                {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningPattern && (
+                  <div className="mt-3 pt-3 border-t border-white/20 text-center">
+                    <p className="text-white/70 text-xs mb-1">Winning Pattern</p>
+                    <p className="text-green-300 text-sm font-medium">
+                      {getPatternName(winnerInfo.winningPattern)}
+                    </p>
+                  </div>
+                )}
               </div>
+   {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-white font-bold text-sm">
+                Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
+              </h3>
+              <div className="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-1 rounded-full">
+                Winner
+              </div>
+            </div>
+
+            {/* Mini Bingo Card */}
+            <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
+              {/* Mini BINGO Header */}
+              <div className="grid grid-cols-5 gap-1 mb-2">
+                {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+                  <div
+                    key={letter}
+                    className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
+                  >
+                    {letter}
+                  </div>
+                ))}
+              </div>
+
+              {/* Mini Card Numbers */}
+              <div className="grid grid-cols-5 gap-1">
+                {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+                  row.map((number: number | string, colIndex: number) => {
+                    const flatIndex = rowIndex * 5 + colIndex;
+                    const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
+                    const isWinningPos = isWinningPosition(rowIndex, colIndex);
+                    const isFreeSpace = rowIndex === 2 && colIndex === 2;
+
+                    return (
+                      <div
+                        key={`${rowIndex}-${colIndex}`}
+                        className={`
+                          h-8 rounded flex items-center justify-center 
+                          font-bold text-xs relative
+                          ${isWinningPos
+                            ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white'
+                            : isMarked
+                              ? 'bg-green-600 text-white'
+                              : isFreeSpace
+                                ? 'bg-purple-700 text-white'
+                                : 'bg-gray-800 text-white/70'
+                          }
+                        `}
+                      >
+                        {isFreeSpace ? (
+                          <span className="text-[10px] font-bold">FREE</span>
+                        ) : (
+                          <span className={`${isMarked ? 'line-through' : ''}`}>
+                            {number}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
               {/* Countdown */}
               <div className="mt-4 pt-4 border-t border-white/20">
