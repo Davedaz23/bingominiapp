@@ -1428,14 +1428,19 @@ useEffect(() => {
                     <p className="text-white text-lg font-bold">{winnerInfo.numbersCalled}/75</p>
                   </div>
                 </div>
-                {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningPattern && (
-                  <div className="mt-3 pt-3 border-t border-white/20 text-center">
-                    <p className="text-white/70 text-xs mb-1">Winning Pattern</p>
-                    <p className="text-green-300 text-sm font-medium">
-                      {getPatternName(winnerInfo.winningPattern)}
-                    </p>
-                  </div>
-                )}
+                {winnerInfo.winner._id !== 'no-winner' && (
+    <div className="mt-3 pt-3 border-t border-white/20 text-center">
+      <p className="text-white/70 text-xs mb-1">Winning Pattern</p>
+      <p className="text-green-300 text-sm font-medium">
+        {getPatternName(winnerInfo.winningPattern)}
+      </p>
+      
+      {/* Add this for debugging - remove in production */}
+      <p className="text-white/50 text-xs mt-1">
+        Raw pattern: {winnerInfo.winningPattern || 'Not available'}
+      </p>
+    </div>
+  )}
               </div>
 
               {/* Countdown */}
