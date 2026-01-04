@@ -1437,45 +1437,7 @@ useEffect(() => {
                   </div>
                 )}
               </div>
-   {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-white font-bold text-sm">
-                Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
-              </h3>
-              <div className="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-1 rounded-full">
-                Winner
-              </div>
-            </div>
-
-            {/* Mini Bingo Card */}
-            <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
-              {/* Mini BINGO Header */}
-              <div className="grid grid-cols-5 gap-1 mb-2">
-                {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                  <div
-                    key={letter}
-                    className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
-                  >
-                    {letter}
-                  </div>
-                ))}
-              </div>
-
-              {/* Mini Card Numbers */}
-             {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
-  <div className="mb-4">
-    <div className="flex items-center justify-between mb-2">
-      <h3 className="text-white font-bold text-sm">
-        Winning Card #{winnerInfo.winningCard?.cardNumber || 'N/A'}
-      </h3>
-      <div className="text-yellow-300 text-xs bg-yellow-500/20 px-2 py-1 rounded-full">
-        Winner
-      </div>
-    </div>
-
-    {/* Mini Bingo Card */}
-    {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
+  {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
   <div className="mb-4">
     <div className="flex items-center justify-between mb-2">
       <h3 className="text-white font-bold text-sm">
@@ -1591,11 +1553,6 @@ useEffect(() => {
     </div>
   </div>
 )}
-  </div>
-)}
-            </div>
-          </div>
-        )}
 
               {/* Countdown */}
               <div className="mt-4 pt-4 border-t border-white/20">
