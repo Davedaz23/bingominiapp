@@ -1463,42 +1463,82 @@ useEffect(() => {
               </div>
 
               {/* Mini Card Numbers */}
-              <div className="grid grid-cols-5 gap-1">
-                {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                  row.map((number: number | string, colIndex: number) => {
-                    const flatIndex = rowIndex * 5 + colIndex;
-                    const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
-                    const isWinningPos = isWinningPosition(rowIndex, colIndex);
-                    const isFreeSpace = rowIndex === 2 && colIndex === 2;
+             <div className="grid grid-cols-5 gap-0.5 sm:gap-1">
+  {displayBingoCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+    row.map((number: number | string, colIndex: number) => {
+      const flatIndex = rowIndex * 5 + colIndex;
+      const isMarked = displayBingoCard.markedPositions?.includes(flatIndex);
+      const isCalled = allCalledNumbers.includes(number as number);
+      const isFreeSpace = rowIndex === 2 && colIndex === 2;
+      const isWinningPos = isWinningPosition(rowIndex, colIndex);
 
-                    return (
-                      <div
-                        key={`${rowIndex}-${colIndex}`}
-                        className={`
-                          h-8 rounded flex items-center justify-center 
-                          font-bold text-xs relative
-                          ${isWinningPos
-                            ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white'
-                            : isMarked
-                              ? 'bg-green-600 text-white'
-                              : isFreeSpace
-                                ? 'bg-purple-700 text-white'
-                                : 'bg-gray-800 text-white/70'
-                          }
-                        `}
-                      >
-                        {isFreeSpace ? (
-                          <span className="text-[10px] font-bold">FREE</span>
-                        ) : (
-                          <span className={`${isMarked ? 'line-through' : ''}`}>
-                            {number}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+      return (
+        <motion.div
+          key={`${rowIndex}-${colIndex}`}
+          layout
+          initial={false}
+          animate={{
+            scale: isCalled && !isMarked && game?.status === 'ACTIVE' ? 1.02 : 1,
+          }}
+          className={`
+            aspect-square rounded-sm flex items-center justify-center 
+            font-bold transition-all duration-200 relative
+            ${isWinningPos
+              ? 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white border-2 border-yellow-400'
+              : isMarked
+                ? 'bg-gradient-to-br from-green-600 to-emerald-700 text-white border-2 border-green-400'
+                : isFreeSpace
+                  ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white border-2 border-purple-400'
+                  : 'bg-white/15 text-white'
+            }
+            ${isCalled && !isMarked && !isFreeSpace && game?.status === 'ACTIVE'
+              ? 'cursor-pointer'
+              : 'cursor-default'
+            }
+          `}
+          onClick={() => {
+            if (game?.status === 'ACTIVE' && !isFreeSpace && isCalled && !isMarked) {
+              handleMarkNumber(number as number);
+            }
+          }}
+        >
+          {isFreeSpace ? (
+            <div className="flex flex-col items-center justify-center w-full h-full p-0.5 sm:p-1">
+              <span className="text-[10px] xs:text-xs sm:text-sm font-bold">FREE</span>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center w-full h-full p-0.5 sm:p-1 relative">
+              <span className={`
+                text-xs xs:text-sm sm:text-base md:text-lg lg:text-xl
+                ${isMarked ? 'line-through' : ''}
+              `}>
+                {number}
+              </span>
+              {isMarked && !isWinningPos && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-[8px] sm:text-[10px] opacity-90"
+                >
+                  ✓
+                </motion.div>
+              )}
+              {isWinningPos && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-[8px] sm:text-[10px] opacity-90 text-yellow-300"
+                >
+                  ★
+                </motion.div>
+              )}
+            </div>
+          )}
+        </motion.div>
+      );
+    })
+  )}
+</div>
             </div>
           </div>
         )}
