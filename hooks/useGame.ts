@@ -1,6 +1,6 @@
-// hooks/useGame.ts - FIXED VERSION
+// hooks/useGame.ts - FIXED VERSION WITH WALLET BALANCE
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { gameAPI } from '../services/api';
+import { gameAPI, walletAPIAuto } from '../services/api'; // Add walletAPIAuto import
 import { useWebSocket } from './useWebSocket';
 
 export const useGame = (gameId: string) => {
@@ -10,6 +10,7 @@ export const useGame = (gameId: string) => {
   const [error, setError] = useState<string>('');
   const [winnerInfo, setWinnerInfo] = useState<any>(null);
   const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number>(0); // Add wallet balance state
   
   // Get user ID from localStorage
   const userId = typeof window !== 'undefined' ? 
@@ -26,6 +27,19 @@ export const useGame = (gameId: string) => {
     sendMessage,
     onMessage
   } = useWebSocket(gameId, userId || undefined);
+
+  // Add wallet balance refresh function
+  const refreshWalletBalance = useCallback(async () => {
+    try {
+      const walletResponse = await walletAPIAuto.getBalance();
+      if (walletResponse.data.success) {
+        setWalletBalance(walletResponse.data.balance);
+        console.log('💰 Wallet balance refreshed:', walletResponse.data.balance);
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not refresh wallet balance:', error);
+    }
+  }, []);
 
   // Fetch initial game data
   const fetchGame = useCallback(async (force = false) => {
@@ -159,6 +173,9 @@ export const useGame = (gameId: string) => {
       // Fetch winner info
       await fetchWinnerInfo();
       
+      // Refresh wallet balance when winner is declared
+      await refreshWalletBalance();
+      
       // Set flag to trigger UI updates
       setNeedsRefresh(true);
     });
@@ -175,22 +192,31 @@ export const useGame = (gameId: string) => {
       fetchGame(true);
     });
 
+    // Listen for wallet updates
+    const cleanupWallet = onMessage('WALLET_UPDATED', (data) => {
+      console.log('💰 Wallet updated via WebSocket:', data.balance);
+      setWalletBalance(data.balance);
+    });
+
     return () => {
       cleanupStatus();
       cleanupNumber();
       cleanupWinner();
       cleanupBingoClaimed();
       cleanupStart();
+      cleanupWallet();
     };
-  }, [gameId, isConnected, onMessage, fetchGame, fetchWinnerInfo]);
+  }, [gameId, isConnected, onMessage, fetchGame, fetchWinnerInfo, refreshWalletBalance]);
 
   // Initial fetch
   useEffect(() => {
     if (gameId) {
       fetchGame();
       fetchBingoCard();
+      // Load initial wallet balance
+      refreshWalletBalance();
     }
-  }, [gameId, fetchGame, fetchBingoCard]);
+  }, [gameId, fetchGame, fetchBingoCard, refreshWalletBalance]);
 
   // Auto-refresh when needsRefresh is true
   useEffect(() => {
@@ -201,15 +227,30 @@ export const useGame = (gameId: string) => {
     }
   }, [needsRefresh, gameId, fetchGame]);
 
-  // Get wallet balance (simplified)
-  const walletBalance = 0; // You'll need to implement this based on your auth context
+  // Poll wallet balance during active games
+  useEffect(() => {
+    if (game?.status === 'ACTIVE') {
+      console.log('💰 Starting wallet balance polling during active game...');
+      
+      // Set up polling every 5 seconds
+      const walletPollingInterval = setInterval(() => {
+        refreshWalletBalance();
+      }, 5000);
+      
+      return () => {
+        clearInterval(walletPollingInterval);
+        console.log('💰 Stopped wallet balance polling');
+      };
+    }
+  }, [game?.status, refreshWalletBalance]);
 
   return {
     game,
     bingoCard,
     isLoading,
     error,
-    walletBalance,
+    walletBalance, // Return wallet balance
+    refreshWalletBalance, // Add wallet refresh function
     getWinnerInfo: fetchWinnerInfo,
     winnerInfo,
     refetchGame: () => fetchGame(true),
