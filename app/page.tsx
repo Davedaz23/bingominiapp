@@ -92,7 +92,25 @@ export default function Home() {
       }
     }
   }, [gameStatus, wsGameStatus?.status, effectiveGameStatus]);
+// Listen for card released events
+useEffect(() => {
+  const cleanup = wsOnMessage('CARD_RELEASED', (data) => {
+    console.log('🗑️ WebSocket: CARD_RELEASED event received:', data.cardNumber);
+    
+    if (gameData?._id === data.gameId) {
+      // Remove from locally taken cards if it's not our card
+      if (data.userId !== user?.id) {
+        setLocallyTakenCards(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(data.cardNumber);
+          return newSet;
+        });
+      }
+    }
+  });
 
+  return cleanup;
+}, [wsOnMessage, gameData?._id, user?.id]);
   // Card selection - Use the hook's handleCardSelect
   const {
     selectedNumber,
