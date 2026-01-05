@@ -1,9 +1,9 @@
-// app/hooks/useCardSelection.ts - WEB SOCKET VERSION
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { gameAPI } from '../services/api';
 import { useAuth } from '@/app/contexts/AuthContext';
 import { useAccountStorage } from './useAccountStorage';
-import { useWebSocket } from './useWebSocket'; // Import the new hook
+import { useWebSocket } from './useWebSocket';
 
 export const useCardSelection = (gameData: any, gameStatus: string) => {
   const { user, walletBalance } = useAuth();
@@ -16,7 +16,8 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     gameStatus: wsGameStatus,
     error: wsError,
     sendMessage,
-    onMessage
+    onMessage,
+    requestCardAvailability,
   } = useWebSocket(gameData?._id || gameData?.id, user?.id);
   
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
@@ -24,6 +25,10 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
   const [availableCards, setAvailableCards] = useState<any[]>([]);
   const [cardSelectionError, setCardSelectionError] = useState<string>('');
   const [isLoadingCards, setIsLoadingCards] = useState<boolean>(false);
+  const [hasBroadcastedSelection, setHasBroadcastedSelection] = useState<boolean>(false);
+  
+  // Track if we've notified about loaded card
+  const hasNotifiedLoadedCardRef = useRef<boolean>(false);
 
   // Memoize the condition to check if card selection should be enabled
   const shouldEnableCardSelection = useMemo(() => {
@@ -50,10 +55,63 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     if (savedSelectedNumber) {
       setSelectedNumber(savedSelectedNumber);
       console.log('✅ Loaded saved card selection:', savedSelectedNumber);
+      
+      // Reset notification flag when we load a saved card
+      hasNotifiedLoadedCardRef.current = false;
     } else {
       console.log('ℹ️ No saved card selection found for user');
+      hasNotifiedLoadedCardRef.current = true; // No card to notify about
     }
   }, [user, getAccountData]);
+
+  // CRITICAL FIX: When we have a selected card AND WebSocket is connected,
+  // broadcast our card selection to other players
+  useEffect(() => {
+    if (
+      selectedNumber && 
+      isConnected && 
+      gameData?._id && 
+      user?.id &&
+      !hasBroadcastedSelection &&
+      !hasNotifiedLoadedCardRef.current
+    ) {
+      console.log(`📤 Broadcasting loaded card selection to others: Card #${selectedNumber}`);
+      
+      // Send card selected message via WebSocket
+      sendMessage({
+        type: 'CARD_SELECTED',
+        gameId: gameData._id,
+        userId: user.id,
+        cardNumber: selectedNumber,
+        isLoadedFromStorage: true,
+        timestamp: Date.now()
+      });
+      
+      setHasBroadcastedSelection(true);
+      hasNotifiedLoadedCardRef.current = true;
+      
+      // Also request card availability update
+      setTimeout(() => {
+        requestCardAvailability();
+      }, 500);
+    }
+  }, [
+    selectedNumber, 
+    isConnected, 
+    gameData?._id, 
+    user?.id, 
+    sendMessage, 
+    hasBroadcastedSelection,
+    requestCardAvailability
+  ]);
+
+  // Reset broadcast flag when game changes
+  useEffect(() => {
+    if (gameData?._id) {
+      setHasBroadcastedSelection(false);
+      hasNotifiedLoadedCardRef.current = false;
+    }
+  }, [gameData?._id]);
 
   // When availableCards loads and user has a selected card
   useEffect(() => {
@@ -68,6 +126,8 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
         setSelectedNumber(null);
         removeAccountData('selected_number');
         setBingoCard(null);
+        setHasBroadcastedSelection(false);
+        hasNotifiedLoadedCardRef.current = true;
       }
     }
   }, [availableCards, selectedNumber, removeAccountData]);
@@ -76,6 +136,8 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     setSelectedNumber(null);
     setBingoCard(null);
     removeAccountData('selected_number');
+    setHasBroadcastedSelection(false);
+    hasNotifiedLoadedCardRef.current = true;
     console.log('✅ Cleared selected card from storage');
   }, [removeAccountData]);
 
@@ -174,16 +236,32 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
         setSelectedNumber(cardNumber);
         setBingoCard(selectedCardData.numbers);
         setAccountData('selected_number', cardNumber);
+        setHasBroadcastedSelection(false); // Reset to allow broadcasting
+        hasNotifiedLoadedCardRef.current = false;
         
         console.log('🎯 Card #' + cardNumber + ' selected successfully!');
         
-        // Notify other players via WebSocket (backend will handle this)
-        // The backend will broadcast the CARD_SELECTED event
+        // Notify other players via WebSocket immediately
+        if (isConnected) {
+          console.log(`📤 Broadcasting card selection via WebSocket: Card #${cardNumber}`);
+          sendMessage({
+            type: 'CARD_SELECTED',
+            gameId,
+            userId: user.id,
+            cardNumber,
+            timestamp: Date.now()
+          });
+          
+          // Also send a card availability update request
+          sendMessage({
+            type: 'GET_CARD_AVAILABILITY',
+            gameId
+          });
+        }
         
+        return true;
       } else {
-        const errorMsg = response.data.error || 'Failed to select card';
-        setCardSelectionError(errorMsg);
-        console.error('❌ Backend error:', errorMsg);
+        return false;
       }
     } catch (error: any) {
       console.error('❌ Card selection API error:', error);
@@ -198,6 +276,7 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
       } else {
         setCardSelectionError('Failed to select card. Please try again.');
       }
+      return false;
     } finally {
       setIsLoadingCards(false);
     }
@@ -209,13 +288,25 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     try {
       console.log('🔄 Releasing card:', selectedNumber);
       
-      // Note: The backend doesn't have a release card endpoint yet
-      // For now, we'll just clear the local state
+      // Send release notification via WebSocket
+      if (isConnected) {
+        sendMessage({
+          type: 'CARD_RELEASED',
+          gameId: gameData._id,
+          userId: user.id,
+          cardNumber: selectedNumber,
+          timestamp: Date.now()
+        });
+      }
+      
+      // Clear the local state
       setSelectedNumber(null);
       removeAccountData('selected_number');
       setBingoCard(null);
+      setHasBroadcastedSelection(false);
+      hasNotifiedLoadedCardRef.current = true;
       
-      console.log('✅ Card released successfully (local state only)');
+      console.log('✅ Card released successfully');
       
     } catch (error: any) {
       console.error('❌ Card release error:', error);
@@ -263,19 +354,54 @@ export const useCardSelection = (gameData: any, gameStatus: string) => {
     if (!user?.id) return;
     
     // Listen for CARD_SELECTED events (when other players select cards)
-    const cleanup = onMessage('CARD_SELECTED', (data) => {
+    const cleanup1 = onMessage('CARD_SELECTED', (data) => {
       console.log('🎯 Another player selected card:', data.cardNumber);
-      // You could update UI or show notification here
+      // Update UI or show notification here
+      
+      // If this is our own card selection from another session, update state
+      if (data.userId === user.id && data.cardNumber !== selectedNumber) {
+        console.log('🔄 Syncing our card selection from another session:', data.cardNumber);
+        setSelectedNumber(data.cardNumber);
+        setAccountData('selected_number', data.cardNumber);
+      }
     });
     
-    return cleanup;
-  }, [user?.id, onMessage]);
+    // Listen for CARD_RELEASED events
+    const cleanup2 = onMessage('CARD_RELEASED', (data) => {
+      console.log('🗑️ Another player released card:', data.cardNumber);
+      // This card is now available again
+    });
+    
+    // Listen for TAKEN_CARDS_UPDATE events
+    const cleanup3 = onMessage('TAKEN_CARDS_UPDATE', (data) => {
+      console.log('🔄 Taken cards updated:', data.takenCards?.length, 'cards');
+      
+      // Check if our selected card is still valid
+      if (selectedNumber && data.takenCards) {
+        const isOurCardStillValid = data.takenCards.some(
+          (card: any) => card.cardNumber === selectedNumber && card.userId === user.id
+        );
+        
+        if (!isOurCardStillValid) {
+          console.log('⚠️ Our selected card is no longer in taken cards list');
+          // Card might have been released or taken by someone else
+          // We should verify with the backend
+        }
+      }
+    });
+    
+    return () => {
+      cleanup1();
+      cleanup2();
+      cleanup3();
+    };
+  }, [user?.id, onMessage, selectedNumber, setAccountData]);
 
   return {
     selectedNumber,
     bingoCard,
     availableCards,
-    takenCards: wsTakenCards, // Use WebSocket taken cards
+    takenCards: wsTakenCards,
     cardSelectionStatus: {
       isSelectionActive: gameStatus === 'WAITING_FOR_PLAYERS' || gameStatus === 'CARD_SELECTION',
       selectionEndTime: null,
