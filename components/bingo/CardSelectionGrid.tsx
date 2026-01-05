@@ -14,7 +14,7 @@ interface CardSelectionGridProps {
   processingCards: Set<number>;
   locallyTakenCards: Set<number>;
   wsConnected: boolean;
-  currentUserId?: string; // Add this prop
+  currentUserId?: string;
 }
 
 export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
@@ -27,17 +27,15 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   processingCards,
   locallyTakenCards,
   wsConnected,
-  currentUserId = '' // Default to empty string
+  currentUserId = ''
 }) => {
   // State for recently taken cards animation
   const [recentlyTakenCards, setRecentlyTakenCards] = useState<Set<number>>(new Set());
   const [lastTakenTimestamp, setLastTakenTimestamp] = useState<Map<number, number>>(new Map());
   
-  // Track user's own selections
-  const [userSelectedCards, setUserSelectedCards] = useState<Set<number>>(new Set());
-  
   // Prevent multiple clicks
   const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isProcessingRef = useRef<boolean>(false);
 
   // Create a map of taken cards for quick lookup
   const takenCardMap = useMemo(() => {
@@ -62,26 +60,25 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
     const takenCard = takenCardMap.get(cardNumber);
     const isServerTaken = !!takenCard;
     const isTakenByCurrentUser = takenCard?.userId === currentUserId;
-    const isLocalTaken = locallyTakenCards.has(cardNumber) && !userSelectedCards.has(cardNumber);
     
-    // If it's taken by current user (successfully selected), it's NOT "taken by others"
-    if (isTakenByCurrentUser || userSelectedCards.has(cardNumber)) {
+    // IMPORTANT: If server confirms it's taken by current user, it's NOT "taken by others"
+    if (isTakenByCurrentUser) {
       return false;
     }
     
-    return isServerTaken || isLocalTaken || processingCards.has(cardNumber);
+    // Check if it's locally taken (but only if not by current user)
+    const isLocalTaken = locallyTakenCards.has(cardNumber);
+    
+    return isServerTaken || (isLocalTaken && !isTakenByCurrentUser);
   };
 
-  // Check if card is selected by current user
+  // Check if card is selected by current user (confirmed by server)
   const isCardSelectedByUser = (cardNumber: number): boolean => {
     const takenCard = takenCardMap.get(cardNumber);
     const isTakenByCurrentUser = takenCard?.userId === currentUserId;
     
-    return (
-      selectedNumber === cardNumber || 
-      userSelectedCards.has(cardNumber) || 
-      isTakenByCurrentUser
-    );
+    // Only consider it selected if server confirms OR it's the currently selected number
+    return selectedNumber === cardNumber || isTakenByCurrentUser;
   };
 
   // Check if card is available for selection
@@ -99,10 +96,8 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
 
   // Check if user can select this card
   const canUserSelect = (cardNumber: number): boolean => {
-    // Clear previous timeout if exists
-    if (clickTimeoutRef.current) {
-      clearTimeout(clickTimeoutRef.current);
-    }
+    // Prevent multiple clicks
+    if (isProcessingRef.current) return false;
 
     const hasBalance = walletBalance >= 10;
     const isTakenByOthers = isCardTakenByOthers(cardNumber);
@@ -124,25 +119,16 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
 
   // Handle card selection with proper state management
   const handleCardSelect = async (cardNumber: number) => {
-    if (!canUserSelect(cardNumber)) return;
+    if (!canUserSelect(cardNumber) || isProcessingRef.current) return;
 
-    // Clear any existing user selections
-    if (selectedNumber && selectedNumber !== cardNumber) {
-      setUserSelectedCards(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(selectedNumber);
-        return newSet;
-      });
-    }
-
-    // Add to processing
-    setUserSelectedCards(prev => new Set(prev).add(cardNumber));
+    // Set processing flag
+    isProcessingRef.current = true;
 
     try {
       const success = await onCardSelect(cardNumber);
       
       if (success) {
-        // If successful, mark as taken by user
+        // If successful, mark as recently taken for animation
         setRecentlyTakenCards(prev => {
           const newSet = new Set(prev);
           newSet.add(cardNumber);
@@ -155,21 +141,17 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           newMap.set(cardNumber, Date.now());
           return newMap;
         });
-      } else {
-        // If failed, remove from user selections
-        setUserSelectedCards(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(cardNumber);
-          return newSet;
-        });
       }
+      
+      return success;
     } catch (error) {
-      // If error, remove from user selections
-      setUserSelectedCards(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(cardNumber);
-        return newSet;
-      });
+      console.error('Card selection failed:', error);
+      return false;
+    } finally {
+      // Reset processing flag after a short delay
+      setTimeout(() => {
+        isProcessingRef.current = false;
+      }, 1000);
     }
   };
 
@@ -195,21 +177,21 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
     return () => clearInterval(interval);
   }, [lastTakenTimestamp]);
 
-  // Effect to sync selectedNumber with userSelectedCards
-  useEffect(() => {
-    if (selectedNumber) {
-      setUserSelectedCards(new Set([selectedNumber]));
-    } else {
-      setUserSelectedCards(new Set());
-    }
-  }, [selectedNumber]);
-
   // Calculate statistics
   const cardStats = useMemo(() => {
     const totalAvailable = availableCards.length;
-    const takenByOthers = takenCards.filter(card => card.userId !== currentUserId).length;
+    
+    // Count cards taken by current user (confirmed by server)
     const takenByUser = takenCards.filter(card => card.userId === currentUserId).length;
-    const totalProcessing = processingCards.size - takenByUser; // Exclude user's own processing
+    
+    // Count cards taken by others
+    const takenByOthers = takenCards.filter(card => card.userId !== currentUserId).length;
+    
+    // Count cards being processed (excluding user's confirmed cards)
+    const totalProcessing = Array.from(processingCards).filter(card => 
+      !takenCards.find(t => t.cardNumber === card && t.userId === currentUserId)
+    ).length;
+    
     const totalInactive = 400 - totalAvailable - takenByOthers - takenByUser;
     
     return { 
@@ -219,7 +201,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
       totalProcessing, 
       totalInactive 
     };
-  }, [availableCards.length, takenCards, currentUserId, processingCards.size]);
+  }, [availableCards.length, takenCards, currentUserId, processingCards]);
 
   return (
     <div className="mb-4">
@@ -242,12 +224,6 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           <span className="text-white/60 text-sm">
             {wsConnected ? 'Real-time' : 'Manual Refresh'}
           </span>
-          <button
-            onClick={() => window.location.reload()}
-            className="text-blue-400 text-sm hover:text-blue-300 transition-colors"
-          >
-            Refresh
-          </button>
         </div>
       </div>
 
@@ -443,12 +419,9 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
                 </p>
               </div>
             </div>
-            
           </div>
         </motion.div>
       )}
-
-      
     </div>
   );
 };
