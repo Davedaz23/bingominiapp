@@ -1478,38 +1478,25 @@ useEffect(() => {
         ))}
       </div>
 
-      {/* Mini Card Numbers - SIMPLIFIED AND ROBUST */}
+      {/* Mini Card Numbers - ONLY SHOW WINNING POSITIONS */}
       <div className="grid grid-cols-5 gap-1">
         {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
           row.map((number: number | string, colIndex: number) => {
             const flatIndex = rowIndex * 5 + colIndex;
-            const isMarked = winnerInfo.winningCard?.markedPositions?.includes(flatIndex);
             const isWinningPos = isWinningPosition(rowIndex, colIndex);
             const isFreeSpace = rowIndex === 2 && colIndex === 2;
             
-            // Always log to debug
-            console.log(`Cell [${rowIndex},${colIndex}] (${flatIndex}):`, {
-              number,
-              isMarked,
-              isWinningPos,
-              winningPositions: winningPatternPositions,
-              winnerPositions: winnerInfo.winningCard?.winningPatternPositions
-            });
-
-            // Determine colors with clear priority
-            let bgClass = 'bg-gray-800 text-white/70'; // Default
+            // Determine colors - ONLY highlight winning positions
+            let bgClass = 'bg-gray-800 text-white/70'; // Default for non-winning
             
             if (isFreeSpace) {
               bgClass = 'bg-purple-700 text-white';
             } 
             else if (isWinningPos) {
-              // ALWAYS YELLOW if winning position - highest priority
+              // ONLY yellow for winning positions
               bgClass = 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
             }
-            else if (isMarked) {
-              // Green only if marked AND NOT winning
-              bgClass = 'bg-green-600 text-white';
-            }
+            // REMOVED the green background for marked positions - only show winning positions
 
             return (
               <div
@@ -1518,18 +1505,17 @@ useEffect(() => {
                   h-8 rounded flex items-center justify-center 
                   font-bold text-xs relative transition-all duration-300
                   ${bgClass}
-                  ${isMarked && !isWinningPos ? 'line-through' : ''}
                 `}
               >
                 {isFreeSpace ? (
                   <span className="text-[10px] font-bold">FREE</span>
                 ) : (
-                  <span className={`font-bold ${isWinningPos ? 'text-white' : ''}`}>
+                  <span className={`font-bold ${isWinningPos ? 'text-white' : 'text-white/70'}`}>
                     {number}
                   </span>
                 )}
                 
-                {/* WINNING POSITION INDICATOR - Always show if winning */}
+                {/* WINNING POSITION INDICATOR - Only show if winning */}
                 {isWinningPos && (
                   <>
                     <motion.div
@@ -1553,47 +1539,25 @@ useEffect(() => {
                   </>
                 )}
                 
-                {/* Checkmark for marked positions (only if not winning position) */}
-                {isMarked && !isWinningPos && !isFreeSpace && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className="absolute top-0 right-0 text-[8px] text-white bg-green-500 rounded-full w-3 h-3 flex items-center justify-center"
-                  >
-                    ✓
-                  </motion.div>
-                )}
+                {/* REMOVED checkmark for marked positions - we only care about winning positions */}
               </div>
             );
           })
         )}
       </div>
       
-      {/* Debug info (optional, remove in production) */}
-      <div className="mt-2 text-center">
-        <p className="text-[10px] text-white/50">
-          Winning positions: {winningPatternPositions.length > 0 ? 
-            winningPatternPositions.join(', ') : 
-            winnerInfo.winningCard?.winningPatternPositions?.join(', ') || 'none'
-          }
-        </p>
-      </div>
-      
-      {/* Legend for colors */}
-      <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-white/20">
-        <div className="flex items-center justify-center gap-3">
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500 shadow-[0_0_4px_rgba(251,191,36,0.6)]"></div>
-            <span className="text-[10px] text-white/70">Winning Pattern</span>
+      {/* Info message about what's being shown */}
+      <div className="mt-3 pt-3 border-t border-white/20">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500 shadow-[0_0_4px_rgba(251,191,36,0.6)]"></div>
+              <span className="text-[10px] text-white/70">Winning Pattern Positions</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded-sm bg-green-600"></div>
-            <span className="text-[10px] text-white/70">Other Marked Numbers</span>
-          </div>
-        </div>
-        <div className="flex items-center justify-center gap-1">
-          <div className="w-3 h-3 rounded-sm bg-purple-700"></div>
-          <span className="text-[10px] text-white/70">Free Space</span>
+          <p className="text-center text-white/50 text-[10px]">
+            Only showing winning pattern positions (not all marked numbers)
+          </p>
         </div>
       </div>
     </div>
