@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+//* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -92,25 +92,27 @@ export default function Home() {
       }
     }
   }, [gameStatus, wsGameStatus?.status, effectiveGameStatus]);
-// Listen for card released events
-useEffect(() => {
-  const cleanup = wsOnMessage('CARD_RELEASED', (data) => {
-    console.log('🗑️ WebSocket: CARD_RELEASED event received:', data.cardNumber);
-    
-    if (gameData?._id === data.gameId) {
-      // Remove from locally taken cards if it's not our card
-      if (data.userId !== user?.id) {
-        setLocallyTakenCards(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(data.cardNumber);
-          return newSet;
-        });
-      }
-    }
-  });
 
-  return cleanup;
-}, [wsOnMessage, gameData?._id, user?.id]);
+  // Listen for card released events
+  useEffect(() => {
+    const cleanup = wsOnMessage('CARD_RELEASED', (data) => {
+      console.log('🗑️ WebSocket: CARD_RELEASED event received:', data.cardNumber);
+      
+      if (gameData?._id === data.gameId) {
+        // Remove from locally taken cards if it's not our card
+        if (data.userId !== user?.id) {
+          setLocallyTakenCards(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(data.cardNumber);
+            return newSet;
+          });
+        }
+      }
+    });
+
+    return cleanup;
+  }, [wsOnMessage, gameData?._id, user?.id]);
+
   // Card selection - Use the hook's handleCardSelect
   const {
     selectedNumber,
@@ -149,7 +151,7 @@ useEffect(() => {
   const lastCardSyncRef = useRef<number>(0);
   const cardSyncCooldownRef = useRef<boolean>(false);
 
-  // Listen for game started events - with improved handling
+  // CRITICAL: Listen for game started events
   useEffect(() => {
     const cleanup = wsOnMessage('GAME_STARTED', (data) => {
       console.log('🚀 WebSocket: GAME_STARTED event received:', data);
@@ -158,41 +160,33 @@ useEffect(() => {
         setEffectiveGameStatus('ACTIVE');
         lastValidStatusRef.current = 'ACTIVE';
         
-        // Set a small delay before redirect to ensure state is updated
-        setTimeout(() => {
-          if (!redirectAttemptedRef.current) {
-            console.log('🎮 Game is now ACTIVE via WebSocket - redirecting');
-            handleImmediateRedirect();
-          }
-        }, 500);
+        // Force immediate redirect for ALL users
+        console.log('🎮 Game just started - forcing redirect for all users');
+        handleImmediateRedirect();
       }
     });
 
     return cleanup;
   }, [wsOnMessage, gameData?._id]);
 
-  // Listen for number called events (to show game is active)
+  // CRITICAL: Listen for number called events (to show game is active)
   useEffect(() => {
     const cleanup = wsOnMessage('NUMBER_CALLED', (data) => {
       console.log('🔢 WebSocket: NUMBER_CALLED event received:', data.number);
       
       // If we receive a number called event, the game is definitely active
-      if (gameData?._id === data.gameId && effectiveGameStatus !== 'ACTIVE') {
+      if (gameData?._id === data.gameId) {
         console.log('🎮 Number called - updating game status to ACTIVE');
         setEffectiveGameStatus('ACTIVE');
         lastValidStatusRef.current = 'ACTIVE';
         
-        if (!redirectAttemptedRef.current && selectedNumber) {
-          setTimeout(() => {
-            console.log('🎮 Number called - game is active, redirecting');
-            handleImmediateRedirect();
-          }, 500);
-        }
+        // Force immediate redirect
+        handleImmediateRedirect();
       }
     });
 
     return cleanup;
-  }, [wsOnMessage, gameData?._id, effectiveGameStatus, selectedNumber]);
+  }, [wsOnMessage, gameData?._id]);
 
   // Listen for card selection started
   useEffect(() => {
@@ -208,7 +202,7 @@ useEffect(() => {
     return cleanup;
   }, [wsOnMessage, gameData?._id]);
 
-  // Listen for card availability updates - CRITICAL FIX
+  // Listen for card availability updates
   useEffect(() => {
     const cleanup = wsOnMessage('TAKEN_CARDS_UPDATE', (data) => {
       console.log('🔄 WebSocket: TAKEN_CARDS_UPDATE received:', data.takenCards?.length, 'cards');
@@ -245,7 +239,7 @@ useEffect(() => {
     return cleanup;
   }, [wsOnMessage, gameData?._id, user?.id]);
 
-  // Combine all sources of taken cards - FIXED VERSION
+  // Combine all sources of taken cards
   const getCombinedTakenCards = useCallback(() => {
     const allTakenCards = [
       ...realtimeTakenCards,
@@ -275,7 +269,7 @@ useEffect(() => {
     return Array.from(cardMap.values());
   }, [realtimeTakenCards, wsTakenCards, apiTakenCards, locallyTakenCards, user?.id]);
 
-  // Get combined available cards - FIXED VERSION
+  // Get combined available cards
   const getCombinedAvailableCards = useCallback(() => {
     const allCards = Array.from({ length: 400 }, (_, i) => i + 1);
     const takenCards = getCombinedTakenCards();
@@ -293,7 +287,7 @@ useEffect(() => {
     return available;
   }, [getCombinedTakenCards, realtimeAvailableCards]);
 
-  // Calculate statistics - FIXED VERSION
+  // Calculate statistics
   const cardStats = useMemo(() => {
     const takenCards = getCombinedTakenCards();
     const availableCards = getCombinedAvailableCards();
@@ -324,7 +318,7 @@ useEffect(() => {
     return totalPlayers >= 2;
   }, [totalPlayers]);
 
-  // Immediate redirect function with improved handling
+  // CRITICAL: Immediate redirect function - ALWAYS redirect if game is ACTIVE
   const handleImmediateRedirect = useCallback(() => {
     if (redirectAttemptedRef.current || isRedirecting) return;
 
@@ -334,25 +328,7 @@ useEffect(() => {
       return;
     }
 
-    // Check if user has selected a card for this game
-    if (!selectedNumber && effectiveGameStatus === 'ACTIVE') {
-      console.log('⏸️ Cannot redirect - no card selected for active game');
-      
-      // Show notification
-      setNotifications(prev => [...prev, {
-        id: Date.now().toString(),
-        message: 'Please select a card before joining the game'
-      }]);
-      
-      // Remove notification after 5 seconds
-      setTimeout(() => {
-        setNotifications(prev => prev.filter(n => n.id !== Date.now().toString()));
-      }, 5000);
-      
-      return;
-    }
-
-    console.log(`🚀 IMMEDIATE REDIRECT to game: ${gameId}, status: ${effectiveGameStatus}`);
+    console.log(`🚀 FORCE REDIRECT to game: ${gameId}, status: ${effectiveGameStatus}`);
     redirectAttemptedRef.current = true;
     setIsRedirecting(true);
     
@@ -360,7 +336,7 @@ useEffect(() => {
     setTimeout(() => {
       router.replace(`/game/${gameId}`);
     }, REDIRECT_DEBOUNCE);
-  }, [gameData, router, isRedirecting, selectedNumber, effectiveGameStatus]);
+  }, [gameData, router, isRedirecting, effectiveGameStatus]);
 
   // Wrapper function for card selection with immediate UI feedback
   const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
@@ -405,12 +381,12 @@ useEffect(() => {
           });
         }
 
-        // If game is ACTIVE, redirect IMMEDIATELY with small delay
+        // CRITICAL: If game is ACTIVE, redirect IMMEDIATELY
         if (effectiveGameStatus === 'ACTIVE') {
-          console.log('Game is ACTIVE - Redirecting after card selection');
+          console.log('Game is ACTIVE - Immediate redirect after card selection');
           setTimeout(() => {
             handleImmediateRedirect();
-          }, 800);
+          }, 500);
         }
 
         return true;
@@ -500,9 +476,9 @@ useEffect(() => {
               setPlayerCardNumber(playerParticipant.cardNumber || 0);
               setPlayerGameStatus(game.status);
               
-              // If game is ACTIVE, redirect IMMEDIATELY
+              // CRITICAL: If game is ACTIVE, redirect IMMEDIATELY
               if (game.status === 'ACTIVE' && !redirectAttemptedRef.current) {
-                console.log('Player has card in ACTIVE game - Immediate redirect');
+                console.log('Player has card in ACTIVE game - Force redirect');
                 handleImmediateRedirect();
               }
               
@@ -525,18 +501,13 @@ useEffect(() => {
     }
   }, [user?.id, hasCardInActiveGame, handleImmediateRedirect]);
 
-  // Handle manual redirect
-  const handleManualRedirect = useCallback(() => {
-    handleImmediateRedirect();
-  }, [handleImmediateRedirect]);
-
-  // Auto-redirect when game is ACTIVE - FIXED VERSION
+  // CRITICAL: Auto-redirect when game is ACTIVE - NO CONDITIONS
   useEffect(() => {
     if (authLoading || pageLoading || redirectAttemptedRef.current || isRedirecting) return;
     
-    // If game is ACTIVE and user has a card, redirect immediately
-    if (effectiveGameStatus === 'ACTIVE' && selectedNumber && !redirectAttemptedRef.current) {
-      console.log('🚀 Game is ACTIVE and user has card - Immediate auto-redirect');
+    // FORCE REDIRECT if game is ACTIVE - no card required, no conditions
+    if (effectiveGameStatus === 'ACTIVE') {
+      console.log('🚀 Game is ACTIVE - FORCING immediate redirect for everyone');
       
       // Small delay to ensure state is consistent
       const redirectTimer = setTimeout(() => {
@@ -545,7 +516,7 @@ useEffect(() => {
       
       return () => clearTimeout(redirectTimer);
     }
-  }, [effectiveGameStatus, authLoading, pageLoading, handleImmediateRedirect, isRedirecting, selectedNumber]);
+  }, [effectiveGameStatus, authLoading, pageLoading, handleImmediateRedirect, isRedirecting]);
 
   // Update total players when game data changes
   useEffect(() => {
@@ -554,7 +525,7 @@ useEffect(() => {
     }
   }, [gameData?.currentPlayers]);
 
-  // Initialize - FIXED VERSION
+  // Initialize
   useEffect(() => {
     if (authLoading || isInitializedRef.current) return;
 
@@ -566,6 +537,14 @@ useEffect(() => {
 
       if (gameData?.hasRestartCooldown) {
         setHasRestartCooldown(true);
+      }
+
+      // CRITICAL: Check if game is already ACTIVE on initialization
+      if (gameData?.status === 'ACTIVE' && !redirectAttemptedRef.current) {
+        console.log('Game is already ACTIVE on initialization - Force redirect');
+        setTimeout(() => {
+          handleImmediateRedirect();
+        }, 500);
       }
 
       if (isAuthenticated && user) {
@@ -617,21 +596,30 @@ useEffect(() => {
     };
   }, []);
 
-  // Show loading
-  if (authLoading || pageLoading || isRedirecting) {
+  // CRITICAL: Show loading or redirect - if game is ACTIVE, show redirecting message
+  if (authLoading || pageLoading || isRedirecting || effectiveGameStatus === 'ACTIVE') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
           <p className="mt-4">
-            {isRedirecting ? 'Redirecting to game...' : 'Loading...'}
+            {effectiveGameStatus === 'ACTIVE' 
+              ? 'Game is active - Redirecting to game...' 
+              : isRedirecting 
+                ? 'Redirecting to game...' 
+                : 'Loading...'}
           </p>
+          {effectiveGameStatus === 'ACTIVE' && (
+            <p className="text-white/60 text-sm mt-2">
+              You will be redirected automatically
+            </p>
+          )}
         </div>
       </div>
     );
   }
 
-  // Get status message - FIXED VERSION
+  // Get status message
   const getStatusMessage = () => {
     if (hasCardInActiveGame) {
       return `You have card #${playerCardNumber}`;
@@ -651,10 +639,6 @@ useEffect(() => {
       return `Select your card to play (${takenCount} taken, ${needed} more players needed)`;
     }
 
-    if (effectiveGameStatus === 'ACTIVE') {
-      return 'Game is active - Join now!';
-    }
-
     if (effectiveGameStatus === 'NO_WINNER') {
       return 'No winner - Next game soon';
     }
@@ -662,7 +646,7 @@ useEffect(() => {
     return 'Loading game...';
   };
 
-  // Show card selection logic - FIXED VERSION
+  // CRITICAL: Show card selection ONLY when NOT ACTIVE
   const showCardSelection = (
     (effectiveGameStatus === 'WAITING_FOR_PLAYERS' || 
      effectiveGameStatus === 'CARD_SELECTION' || 
@@ -759,8 +743,6 @@ useEffect(() => {
                   ? 'Card Selection Phase' 
                   : effectiveGameStatus === 'WAITING_FOR_PLAYERS'
                   ? 'Waiting for Players'
-                  : effectiveGameStatus === 'ACTIVE'
-                  ? 'Game is Active'
                   : 'Game Status'}
               </p>
               <p className="text-blue-200 text-xs">
@@ -770,8 +752,6 @@ useEffect(() => {
                   ? hasMinimumPlayers()
                     ? `Ready to start (${totalPlayers}/2 players)`
                     : `Need ${2 - totalPlayers} more players to start`
-                  : effectiveGameStatus === 'ACTIVE'
-                  ? 'Game is in progress - Join now!'
                   : getStatusMessage()}
               </p>
             </div>
@@ -852,7 +832,7 @@ useEffect(() => {
             </div>
             {playerGameStatus === 'ACTIVE' && (
               <button
-                onClick={handleManualRedirect}
+                onClick={handleImmediateRedirect}
                 className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-lg text-xs hover:from-green-600 hover:to-emerald-700 transition-all"
               >
                 Join Game Now
@@ -881,7 +861,7 @@ useEffect(() => {
         </motion.div>
       )}
 
-      {/* Card selection grid */}
+      {/* Card selection grid - ONLY show when NOT ACTIVE */}
       {showCardSelection && (
         <>
           <CardSelectionGrid
@@ -962,35 +942,7 @@ useEffect(() => {
         </>
       )}
 
-      {/* Redirect button for ACTIVE game without card */}
-      {effectiveGameStatus === 'ACTIVE' && !selectedNumber && !hasCardInActiveGame && (
-        <motion.div
-          className="backdrop-blur-lg rounded-2xl p-4 mb-4 border border-yellow-500/30 bg-gradient-to-r from-yellow-500/20 to-amber-600/20"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-yellow-300" />
-              <div>
-                <p className="text-yellow-300 font-bold text-sm">Game is Active!</p>
-                <p className="text-yellow-200 text-xs">
-                  Select a card to join the game
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                // Scroll to card selection grid
-                document.querySelector('.grid')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-4 py-2 rounded-lg text-xs hover:from-yellow-600 hover:to-amber-700 transition-all"
-            >
-              Select Card
-            </button>
-          </div>
-        </motion.div>
-      )}
+      {/* NO "Select Card" button for ACTIVE game - Users are redirected automatically */}
 
       {/* Footer info */}
       {effectiveGameStatus === 'FINISHED' && !showCardSelection && (
