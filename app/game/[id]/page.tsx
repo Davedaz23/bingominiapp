@@ -76,7 +76,8 @@ export default function GamePage() {
     wsRecentCalledNumbers,
     wsCalledNumbers,
     refetchGame,
-    onMessage
+      registerMessageHandler // Add this
+
   } = useGame(id);
   
   const { gameStatus, gameData } = useGameState();
@@ -970,7 +971,7 @@ export default function GamePage() {
   // Add this useEffect after the other useEffects in GamePage
 // Update the WebSocket useEffect in GamePage
 useEffect(() => {
-  if (!wsConnected || !game) return;
+  if (!wsConnected || !game || !registerMessageHandler) return;
 
   console.log('🎯 Setting up WebSocket winner listener');
   
@@ -1056,14 +1057,14 @@ useEffect(() => {
   };
   
   // Listen for both WINNER_INFO and WINNER_DECLARED messages
-  const cleanupWinnerInfo = onMessage('WINNER_INFO', handleWinnerInfo);
-  const cleanupWinnerDeclared = onMessage('WINNER_DECLARED', handleWinnerInfo);
+  const cleanupWinnerInfo = registerMessageHandler('WINNER_INFO', handleWinnerInfo);
+  const cleanupWinnerDeclared = registerMessageHandler('WINNER_DECLARED', handleWinnerInfo);
   
   return () => {
     cleanupWinnerInfo?.();
     cleanupWinnerDeclared?.();
   };
-}, [wsConnected, game, allCalledNumbers, clearSelectedCard, onMessage]);
+}, [wsConnected, game, allCalledNumbers, clearSelectedCard, registerMessageHandler]);
   // Function to get winning pattern type name
   const getPatternName = useCallback((patternType?: string): string => {
     if (!patternType) return 'BINGO Line';

@@ -259,8 +259,8 @@ export const useGame = (gameId: string) => {
     wsCurrentNumber,
     wsRecentCalledNumbers,
     wsCalledNumbers,
-    onMessage // EXPOSE onMessage if still needed
-
+registerMessageHandler: onMessage, // Rename to be clearer - THIS IS THE KEY CHANGE
+    sendMessage, // Add this if you need to send messages
 
   };
 };
