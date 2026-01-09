@@ -209,6 +209,43 @@ export const useWebSocket = (
                     case 'CARD_SELECTED_WITH_NUMBER':
                         console.log(`🎯 ${data.type}: User ${data.userId} selected card`);
                         break;
+                        
+
+
+                        //new
+
+                         case 'WINNER_INFO':
+        console.log('🏆 WINNER_INFO received via WebSocket:', data);
+        // Store winner info
+        // setWinnerInfo(data);
+        // Signal that game has ended
+        setGameStatus((prev: any) => ({
+            ...prev,
+            status: 'FINISHED',
+            winnerId: data.winner?._id,
+            endedAt: data.endedAt || new Date().toISOString()
+        }));
+        break;
+
+    case 'WINNER_DECLARED':
+        console.log('🏆 WINNER_DECLARED received via WebSocket:', data);
+        // Set immediate game status
+        setGameStatus((prev: any) => ({
+            ...prev,
+            status: 'FINISHED',
+            winnerId: data.winnerId
+        }));
+        break;
+
+    case 'NO_WINNER':
+        console.log('🏁 NO_WINNER received via WebSocket');
+        setGameStatus((prev: any) => ({
+            ...prev,
+            status: 'NO_WINNER',
+            noWinner: true,
+            endedAt: data.endedAt || new Date().toISOString()
+        }));
+        break;
 
                     case 'GAME_STATUS_UPDATE':
                         console.log('📊 GAME_STATUS_UPDATE:', data.status);
@@ -496,7 +533,13 @@ export const useWebSocket = (
             disconnect();
         };
     }, [disconnect]);
-
+const registerMessageHandler = useCallback((type: string, handler: (data: any) => void) => {
+        messageHandlers.current.set(type, handler);
+        
+        return () => {
+            messageHandlers.current.delete(type);
+        };
+    }, []);
     return {
         isConnected,
         takenCards,
@@ -507,7 +550,7 @@ export const useWebSocket = (
         recentCalledNumbers,
         error,
         sendMessage,
-        onMessage: onMessageHandler,
+        onMessage: registerMessageHandler, // Expose this function
         requestCardAvailability,
         requestGameStatus,
         reconnect: () => {
@@ -516,6 +559,7 @@ export const useWebSocket = (
             connect();
         },
         disconnect,
+        
         syncState,
         connectionStatus: wsRef.current?.readyState || 3
     };

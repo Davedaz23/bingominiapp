@@ -966,6 +966,127 @@ export default function GamePage() {
     }
   }, [winnerInfo]);
 
+  // Add this useEffect after the other useEffects in GamePage
+useEffect(() => {
+  if (!wsConnected || !game) return;
+
+  console.log('🎯 Setting up WebSocket winner listener');
+  
+  // Listen for winner info from WebSocket
+  const handleWinnerInfo = (data: any) => {
+    console.log('🏆 WebSocket winner info received:', data);
+    
+    // Parse winner info from WebSocket
+    const winnerInfoFromWs: WinnerInfo = {
+      winner: data.winner || { 
+        _id: data.winnerId || 'unknown', 
+        username: 'Winner', 
+        firstName: 'Bingo Winner' 
+      },
+      gameCode: data.gameCode || game?.code || 'N/A',
+      endedAt: data.endedAt || new Date().toISOString(),
+      totalPlayers: data.totalPlayers || game?.currentPlayers || 0,
+      numbersCalled: data.numbersCalled || allCalledNumbers.length,
+      winningPattern: data.winningPattern || data.patternType || 'BINGO',
+      winningCard: data.winningCard ? {
+        cardNumber: data.winningCard.cardNumber || 0,
+        numbers: data.winningCard.numbers || [],
+        markedPositions: data.winningCard.markedPositions || [],
+        winningPatternPositions: data.winningCard.winningPatternPositions || data.winningPositions || []
+      } : undefined,
+      message: data.message || 'Game finished!'
+    };
+    
+    console.log('📊 Processed winner info:', winnerInfoFromWs);
+    
+    // Set winner info immediately
+    setWinnerInfo(winnerInfoFromWs);
+    
+    // Store winning pattern positions
+    if (data.winningCard?.winningPatternPositions || data.winningPositions) {
+      const positions = data.winningCard?.winningPatternPositions || data.winningPositions || [];
+      console.log('💛 Storing winning pattern positions from WebSocket:', positions);
+      setWinningPatternPositions(positions);
+    }
+    
+    // Check if current user is the winner
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    let isWinner = false;
+    
+    if (userId && winnerInfoFromWs.winner) {
+      const winner = winnerInfoFromWs.winner;
+      const userIdStr = String(userId).trim();
+      const winnerIdStr = winner._id ? String(winner._id).trim() : '';
+      const winnerTelegramIdStr = winner.telegramId ? String(winner.telegramId).trim() : '';
+      
+      isWinner = (
+        winnerIdStr === userIdStr ||
+        winnerTelegramIdStr === userIdStr
+      );
+    }
+    
+    console.log('👑 Is user winner?', isWinner);
+    setIsUserWinner(isWinner);
+    
+    // Calculate prize amount (only for actual winners)
+    if (isWinner || winnerInfoFromWs.winner._id !== 'no-winner') {
+      const totalPot = (winnerInfoFromWs.totalPlayers || 0) * 10;
+      const platformFee = totalPot * 0.2;
+      const winnerPrize = totalPot - platformFee;
+      setWinningAmount(winnerPrize);
+    } else {
+      setWinningAmount(0);
+    }
+    
+    clearSelectedCard();
+    
+    // Show winner modal for ALL players with a delay
+    setTimeout(() => {
+      console.log('🎉 Showing winner modal for ALL players from WebSocket');
+      setShowWinnerModal(true);
+      setIsWinnerLoading(false);
+    }, 1000);
+  };
+  
+  // You need to integrate with your WebSocket connection
+  // If using useWebSocket hook's onMessage:
+  // const cleanupWinner = onMessage?.('WINNER_INFO', handleWinnerInfo);
+  // const cleanupWinnerDeclared = onMessage?.('WINNER_DECLARED', handleWinnerInfo);
+  // const cleanupNoWinner = onMessage?.('NO_WINNER', (data) => {
+  //   console.log('🏁 NO_WINNER from WebSocket');
+    
+  //   const noWinnerInfo: WinnerInfo = {
+  //     winner: { 
+  //       _id: 'no-winner', 
+  //       username: 'No Winner', 
+  //       firstName: 'No Winner' 
+  //     },
+  //     gameCode: game?.code || 'N/A',
+  //     endedAt: new Date().toISOString(),
+  //     totalPlayers: game?.currentPlayers || 0,
+  //     numbersCalled: allCalledNumbers.length,
+  //     message: 'All 75 numbers called - No winner'
+  //   };
+    
+  //   setWinnerInfo(noWinnerInfo);
+  //   setIsUserWinner(false);
+  //   setWinningAmount(0);
+  //   setWinningPatternPositions([]);
+  //   clearSelectedCard();
+    
+  //   setTimeout(() => {
+  //     console.log('🎉 Showing no-winner modal for ALL players');
+  //     setShowWinnerModal(true);
+  //     setIsWinnerLoading(false);
+  //   }, 1000);
+  // });
+  
+  // return () => {
+  //   cleanupWinner?.();
+  //   cleanupWinnerDeclared?.();
+  //   cleanupNoWinner?.();
+  // };
+}, [wsConnected, game, allCalledNumbers, clearSelectedCard]);
   // Function to get winning pattern type name
   const getPatternName = useCallback((patternType?: string): string => {
     if (!patternType) return 'BINGO Line';
