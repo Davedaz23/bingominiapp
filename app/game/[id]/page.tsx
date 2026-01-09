@@ -40,6 +40,8 @@ interface WinnerInfo {
     numbers: (number | string)[][];
     markedPositions: number[];
     winningPatternPositions?: number[];
+        winningPositionIndex?: number;
+
   };
   message?: string;
 }
@@ -950,15 +952,35 @@ export default function GamePage() {
 
   // Helper function to check if a position is in winning pattern
   const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
-    const flatIndex = rowIndex * 5 + colIndex;
-    // First check local state, then fall back to winnerInfo
-    if (winningPatternPositions.length > 0) {
-      return winningPatternPositions.includes(flatIndex);
-    }
-    
-    if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
-    return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
-  }, [winnerInfo, winningPatternPositions]);
+  const flatIndex = rowIndex * 5 + colIndex;
+  
+  // First check local state, then fall back to winnerInfo
+  if (winningPatternPositions.length > 0) {
+    return winningPatternPositions.includes(flatIndex);
+  }
+  
+  if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
+  return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
+}, [winnerInfo, winningPatternPositions]);
+
+// NEW: Function to check if position is the LAST winning position
+const isLastWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
+  const flatIndex = rowIndex * 5 + colIndex;
+  
+  // Check if this is the position that completed the win
+  if (winnerInfo?.winningCard?.winningPositionIndex !== undefined) {
+    return winnerInfo.winningCard.winningPositionIndex === flatIndex;
+  }
+  
+  // Fallback: If we don't have specific index, check if it's the last in the pattern
+  if (winnerInfo?.winningCard?.winningPatternPositions) {
+    const positions = winnerInfo.winningCard.winningPatternPositions;
+    return positions.length > 0 && positions[positions.length - 1] === flatIndex;
+  }
+  
+  return false;
+}, [winnerInfo]);
+
 
   // Update the useEffect that handles winner info to store the positions
   useEffect(() => {
@@ -983,7 +1005,9 @@ useEffect(() => {
     const winningPositions = data.winningPositions || 
                            data.winningCard?.winningPatternPositions || 
                            [];
-    
+     const winningPositionIndex = data.winningPositionIndex || 
+                             data.winningCard?.winningPositionIndex || 
+                             null;
     console.log('💛 Winning positions from WebSocket:', winningPositions);
     
     // Parse winner info from WebSocket
@@ -1002,7 +1026,8 @@ useEffect(() => {
         cardNumber: data.winningCard.cardNumber || 0,
         numbers: data.winningCard.numbers || [],
         markedPositions: data.winningCard.markedPositions || [],
-        winningPatternPositions: winningPositions // Use the positions we extracted
+        winningPatternPositions: winningPositions ,// Use the positions we extracted
+        winningPositionIndex: winningPositionIndex // Use the positions we extracted
       } : undefined,
       message: data.message || 'Game finished!'
     };
@@ -1336,69 +1361,103 @@ useEffect(() => {
 
                     {/* Mini Card Numbers - SHOW ONLY WINNING POSITIONS */}
                     <div className="grid grid-cols-5 gap-1">
-                      {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                        row.map((number: number | string, colIndex: number) => {
-                          const flatIndex = rowIndex * 5 + colIndex;
-                          const isWinningPos = isWinningPosition(rowIndex, colIndex);
-                          const isFreeSpace = rowIndex === 2 && colIndex === 2;
-                          
-                          // Only show winning positions - all others are gray/unmarked
-                          let bgClass = 'bg-gray-800 text-white/70'; // Default for non-winning
-                          
-                          if (isFreeSpace) {
-                            bgClass = 'bg-purple-700 text-white';
-                          } 
-                          else if (isWinningPos) {
-                            // Winning pattern positions in YELLOW
-                            bgClass = 'bg-gradient-to-br from-yellow-500 to-orange-500 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
-                          }
-                          
-                          return (
-                            <div
-                              key={`${rowIndex}-${colIndex}`}
-                              className={`
-                                h-8 rounded flex items-center justify-center 
-                                font-bold text-xs relative transition-all duration-300
-                                ${bgClass}
-                              `}
-                            >
-                              {isFreeSpace ? (
-                                <span className="text-[10px] font-bold">FREE</span>
-                              ) : (
-                                <span className={`font-bold ${
-                                  isWinningPos ? 'text-white' : 'text-white/70'
-                                }`}>
-                                  {number}
-                                </span>
-                              )}
-                              
-                              {/* WINNING POSITION INDICATOR */}
-                              {isWinningPos && (
-                                <>
-                                  <motion.div
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    transition={{ delay: 0.2 }}
-                                    className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)] z-10"
-                                  />
-                                  <motion.div
-                                    animate={{ 
-                                      scale: [1, 1.2, 1],
-                                      opacity: [0.5, 0.8, 0.5]
-                                    }}
-                                    transition={{ 
-                                      repeat: Infinity, 
-                                      duration: 2,
-                                      ease: "easeInOut"
-                                    }}
-                                    className="absolute inset-0 rounded bg-gradient-to-br from-yellow-400/40 to-orange-400/30"
-                                  />
-                                </>
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
+                     {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+  row.map((number: number | string, colIndex: number) => {
+    const flatIndex = rowIndex * 5 + colIndex;
+    const isWinningPos = isWinningPosition(rowIndex, colIndex);
+    const isLastWinningPos = isLastWinningPosition(rowIndex, colIndex); // NEW
+    const isFreeSpace = rowIndex === 2 && colIndex === 2;
+    
+    let bgClass = 'bg-gray-800 text-white/70';
+    
+    if (isFreeSpace) {
+      bgClass = 'bg-purple-700 text-white';
+    } 
+    else if (isLastWinningPos) {
+      // CRITICAL: This is the position that completed the win - make it blink!
+      bgClass = 'bg-gradient-to-br from-yellow-400 to-orange-400 text-white shadow-[0_0_12px_rgba(255,255,0,0.8)] animate-pulse';
+    }
+    else if (isWinningPos) {
+      // Regular winning positions
+      bgClass = 'bg-gradient-to-br from-yellow-600 to-orange-600 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
+    }
+    
+    return (
+      <div
+        key={`${rowIndex}-${colIndex}`}
+        className={`
+          h-8 rounded flex items-center justify-center 
+          font-bold text-xs relative transition-all duration-300
+          ${bgClass}
+          ${isLastWinningPos ? 'border-2 border-white' : ''}
+        `}
+      >
+        {isFreeSpace ? (
+          <span className="text-[10px] font-bold">FREE</span>
+        ) : (
+          <span className={`font-bold ${isWinningPos || isLastWinningPos ? 'text-white' : 'text-white/70'}`}>
+            {number}
+          </span>
+        )}
+        
+        {/* WINNING POSITION INDICATOR */}
+        {isWinningPos && (
+          <>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2 }}
+              className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)] z-10"
+            />
+          </>
+        )}
+        
+        {/* SPECIAL INDICATOR FOR LAST WINNING POSITION */}
+        {isLastWinningPos && (
+          <>
+            {/* Blinking animation */}
+            <motion.div
+              animate={{ 
+                scale: [1, 1.3, 1],
+                opacity: [1, 0.7, 1]
+              }}
+              transition={{ 
+                repeat: Infinity, 
+                duration: 0.8,
+                ease: "easeInOut"
+              }}
+              className="absolute inset-0 rounded bg-gradient-to-br from-yellow-300/40 to-orange-300/40"
+            />
+            
+            {/* Trophy icon indicator */}
+            <motion.div
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 200 }}
+              className="absolute -top-2 -right-2 w-4 h-4 text-yellow-300"
+            >
+              🏆
+            </motion.div>
+            
+            {/* Pulsing ring effect */}
+            <motion.div
+              animate={{ 
+                scale: [1, 1.5, 1],
+                opacity: [0.5, 0, 0.5]
+              }}
+              transition={{ 
+                repeat: Infinity, 
+                duration: 1.5,
+                ease: "easeInOut"
+              }}
+              className="absolute inset-0 rounded-full border-2 border-yellow-400"
+            />
+          </>
+        )}
+      </div>
+    );
+  })
+)}
                     </div>
                     
                     {/* Legend - UPDATED: Only show winning pattern info */}
