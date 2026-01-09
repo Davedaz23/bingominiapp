@@ -258,6 +258,9 @@ export const useGame = (gameId: string) => {
     wsConnected: isConnected,
     wsCurrentNumber,
     wsRecentCalledNumbers,
-    wsCalledNumbers
+    wsCalledNumbers,
+    onMessage // EXPOSE onMessage if still needed
+
+
   };
 };

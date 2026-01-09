@@ -75,7 +75,8 @@ export default function GamePage() {
     wsCurrentNumber,
     wsRecentCalledNumbers,
     wsCalledNumbers,
-    refetchGame
+    refetchGame,
+    onMessage
   } = useGame(id);
   
   const { gameStatus, gameData } = useGameState();
@@ -967,6 +968,7 @@ export default function GamePage() {
   }, [winnerInfo]);
 
   // Add this useEffect after the other useEffects in GamePage
+// Update the WebSocket useEffect in GamePage
 useEffect(() => {
   if (!wsConnected || !game) return;
 
@@ -975,6 +977,13 @@ useEffect(() => {
   // Listen for winner info from WebSocket
   const handleWinnerInfo = (data: any) => {
     console.log('🏆 WebSocket winner info received:', data);
+    
+    // Get winning positions from multiple possible sources
+    const winningPositions = data.winningPositions || 
+                           data.winningCard?.winningPatternPositions || 
+                           [];
+    
+    console.log('💛 Winning positions from WebSocket:', winningPositions);
     
     // Parse winner info from WebSocket
     const winnerInfoFromWs: WinnerInfo = {
@@ -992,7 +1001,7 @@ useEffect(() => {
         cardNumber: data.winningCard.cardNumber || 0,
         numbers: data.winningCard.numbers || [],
         markedPositions: data.winningCard.markedPositions || [],
-        winningPatternPositions: data.winningCard.winningPatternPositions || data.winningPositions || []
+        winningPatternPositions: winningPositions // Use the positions we extracted
       } : undefined,
       message: data.message || 'Game finished!'
     };
@@ -1002,12 +1011,9 @@ useEffect(() => {
     // Set winner info immediately
     setWinnerInfo(winnerInfoFromWs);
     
-    // Store winning pattern positions
-    if (data.winningCard?.winningPatternPositions || data.winningPositions) {
-      const positions = data.winningCard?.winningPatternPositions || data.winningPositions || [];
-      console.log('💛 Storing winning pattern positions from WebSocket:', positions);
-      setWinningPatternPositions(positions);
-    }
+    // Store winning pattern positions - THIS IS CRITICAL
+    console.log('💛 Storing winning pattern positions for display:', winningPositions);
+    setWinningPatternPositions(winningPositions);
     
     // Check if current user is the winner
     const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
@@ -1043,50 +1049,21 @@ useEffect(() => {
     // Show winner modal for ALL players with a delay
     setTimeout(() => {
       console.log('🎉 Showing winner modal for ALL players from WebSocket');
+      console.log('💛 Winning positions available:', winningPatternPositions.length > 0);
       setShowWinnerModal(true);
       setIsWinnerLoading(false);
     }, 1000);
   };
   
-  // You need to integrate with your WebSocket connection
-  // If using useWebSocket hook's onMessage:
-  // const cleanupWinner = onMessage?.('WINNER_INFO', handleWinnerInfo);
-  // const cleanupWinnerDeclared = onMessage?.('WINNER_DECLARED', handleWinnerInfo);
-  // const cleanupNoWinner = onMessage?.('NO_WINNER', (data) => {
-  //   console.log('🏁 NO_WINNER from WebSocket');
-    
-  //   const noWinnerInfo: WinnerInfo = {
-  //     winner: { 
-  //       _id: 'no-winner', 
-  //       username: 'No Winner', 
-  //       firstName: 'No Winner' 
-  //     },
-  //     gameCode: game?.code || 'N/A',
-  //     endedAt: new Date().toISOString(),
-  //     totalPlayers: game?.currentPlayers || 0,
-  //     numbersCalled: allCalledNumbers.length,
-  //     message: 'All 75 numbers called - No winner'
-  //   };
-    
-  //   setWinnerInfo(noWinnerInfo);
-  //   setIsUserWinner(false);
-  //   setWinningAmount(0);
-  //   setWinningPatternPositions([]);
-  //   clearSelectedCard();
-    
-  //   setTimeout(() => {
-  //     console.log('🎉 Showing no-winner modal for ALL players');
-  //     setShowWinnerModal(true);
-  //     setIsWinnerLoading(false);
-  //   }, 1000);
-  // });
+  // Listen for both WINNER_INFO and WINNER_DECLARED messages
+  const cleanupWinnerInfo = onMessage('WINNER_INFO', handleWinnerInfo);
+  const cleanupWinnerDeclared = onMessage('WINNER_DECLARED', handleWinnerInfo);
   
-  // return () => {
-  //   cleanupWinner?.();
-  //   cleanupWinnerDeclared?.();
-  //   cleanupNoWinner?.();
-  // };
-}, [wsConnected, game, allCalledNumbers, clearSelectedCard]);
+  return () => {
+    cleanupWinnerInfo?.();
+    cleanupWinnerDeclared?.();
+  };
+}, [wsConnected, game, allCalledNumbers, clearSelectedCard, onMessage]);
   // Function to get winning pattern type name
   const getPatternName = useCallback((patternType?: string): string => {
     if (!patternType) return 'BINGO Line';
