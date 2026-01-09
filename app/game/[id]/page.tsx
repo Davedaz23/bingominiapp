@@ -520,7 +520,7 @@ export default function GamePage() {
           const platformFee = totalPot * 0.2;
           const winnerPrize = totalPot - platformFee;
           setWinningAmount(winnerPrize);
-          
+          //more
           // Store winning pattern positions
           if (winnerData.winningCard?.winningPatternPositions) {
             console.log('💛 Storing winning pattern positions:', winnerData.winningCard.winningPatternPositions);

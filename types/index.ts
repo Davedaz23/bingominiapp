@@ -176,6 +176,7 @@ export interface Game {
 }
 
 export interface WinnerInfo {
+  winningCard: any;
   winnerId: string;
   winnerName: string;
   prizeAmount: number;
