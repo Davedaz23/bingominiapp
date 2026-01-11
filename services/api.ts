@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// services/api.ts - UPDATED TO MATCH BACKEND ROUTES
+// services/api.ts - UPDATED WITH IMMEDIATE BINGO CLAIM
 import axios from 'axios';
 import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
@@ -128,6 +128,22 @@ export interface HasCardResponse {
   bingoCard: BingoCard | null;
 }
 
+// New types for immediate bingo claim
+export interface ImmediateBingoClaimResponse {
+  success: boolean;
+  immediate: boolean;
+  isWinner: boolean;
+  isDisqualified?: boolean;
+  message: string;
+  patternType?: string;
+  winningPositions?: number[];
+  winningPositionIndex?: number;
+  autoMarkedPositions?: number[];
+  manuallyMarked?: number;
+  prizeAmount?: number;
+  error?: string;
+}
+
 export const authAPI = {
   // Telegram WebApp authentication
   telegramLogin: (initData: string) =>
@@ -217,6 +233,28 @@ export const gameAPI = {
       { userId, number }
     ),
   
+  // ==================== BINGO CLAIMS ====================
+  // Regular bingo claim (legacy)
+  claimBingo: (gameId: string, userId: string, patternType?: string) =>
+    api.post<{
+      success: boolean;
+      message: string;
+      patternType?: string;
+      winningPositions?: number[];
+      prizeAmount?: number;
+      error?: string;
+      isDisqualified?: boolean;
+    }>(`/games/${gameId}/claim-bingo`, { userId, patternType }),
+
+  // 🚨 IMMEDIATE BINGO CLAIM - NEW ENDPOINT
+  claimBingoImmediate: (gameId: string, userId: string, patternType?: string) =>
+    api.post<ImmediateBingoClaimResponse>(`/games/${gameId}/claim-bingo-immediate`, { 
+      userId, 
+      patternType 
+    }, {
+      timeout: 10000, // 10 second timeout for immediate claims
+    }),
+
   // ==================== GAME QUERIES ====================
   getActiveGames: () =>
     api.get<{ success: boolean; games: Game[] }>('/games/active'),
@@ -290,16 +328,6 @@ export const gameAPI = {
   healthCheck: () =>
     api.get<{ status: string; timestamp: string; database: string }>('/health'),
   
-  claimBingo: (gameId: string, userId: string, patternType?: string) =>
-    api.post<{
-      success: boolean;
-      message: string;
-      patternType?: string;
-      winningPositions?: number[];
-      prizeAmount?: number;
-      error?: string;
-    }>(`/games/${gameId}/claim-bingo`, { userId, patternType }),
-
   checkAutoStart: (gameId: string) =>
     api.post<{
       success: boolean;

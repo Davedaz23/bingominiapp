@@ -767,142 +767,181 @@ export default function GamePage() {
   };
 
   // Handle manual Bingo claim
-  const handleClaimBingo = async () => {
-    if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard || isDisqualified) return;
+const handleClaimBingo = async () => {
+  if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard || isDisqualified) return;
 
-    try {
-      setIsClaimingBingo(true);
-      setClaimResult(null);
+  try {
+    setIsClaimingBingo(true);
+    setClaimResult(null);
 
-      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      if (!userId) throw new Error('User ID not found');
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    if (!userId) {
+      throw new Error('User ID not found');
+    }
 
-      const response = await gameAPI.claimBingo(id, userId, 'BINGO');
-
-      if (response.data.success) {
-        // IMMEDIATELY show winner modal for the user who claimed
-        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-        const currentUsername = localStorage.getItem('username') || 'Player';
-        const currentFirstName = localStorage.getItem('firstName') || 'Player';
-        
-        // Store winning pattern positions if available
-        if (response.data.winningPositions) {
-          console.log('💛 Storing winning pattern positions from claim:', response.data.winningPositions);
-          setWinningPatternPositions(response.data.winningPositions);
-        }
-        
-        // Set winner info
-        setWinnerInfo({
-          winner: {
-            _id: userId || 'current-user',
-            username: currentUsername,
-            firstName: currentFirstName,
-            telegramId: userId ?? undefined
-          },
-          gameCode: game?.code || 'N/A',
-          endedAt: new Date().toISOString(),
-          totalPlayers: game?.currentPlayers || 0,
-          numbersCalled: allCalledNumbers.length,
-          winningPattern: response.data.patternType || 'BINGO',
-          winningCard: {
-            cardNumber: localBingoCard.cardNumber || 0,
-            numbers: localBingoCard.numbers,
-            markedPositions: localBingoCard.markedPositions,
-            winningPatternPositions: response.data.winningPositions || []
-          },
-          message: 'Bingo claimed successfully! You are the winner!'
-        });
-        
-        // Set winner state
-        setIsUserWinner(true);
-        
-        // Calculate prize amount
-        const totalPot = (game?.currentPlayers || 0) * 10;
-        const platformFee = totalPot * 0.2;
-        const winnerPrize = totalPot - platformFee;
-        setWinningAmount(winnerPrize);
-        
-        // Clear selected card
-        clearSelectedCard();
-        
-        // Show winner modal immediately
-        setTimeout(() => {
-          console.log('🎉 Showing immediate winner modal after successful claim');
-          setShowWinnerModal(true);
-        }, 300);
-        
-        // Also show success message
-        setClaimResult({
-          success: true,
-          message: response.data.message || 'Bingo claimed successfully! You are the winner!',
-          patternType: response.data.patternType,
-          prizeAmount: winnerPrize
-        });
-
-        // Force refresh game data in background to sync with server
-        setTimeout(() => {
-          if (refetchGame) {
-            refetchGame().then(() => {
-              console.log('✅ Game data refreshed after bingo claim');
-            }).catch(error => {
-              console.error('❌ Failed to refresh game after claim:', error);
-            });
-          }
-        }, 1000);
-      } else {
-        const errorMsg = response.data.message || response.data.error || 'Failed to claim bingo';
-        setClaimResult({
-          success: false,
-          message: errorMsg
-        });
-        
-        if (errorMsg.toLowerCase().includes('disqualified') || 
-            errorMsg.toLowerCase().includes('false bingo claim')) {
-          handleDisqualification(errorMsg, {
-            patternClaimed: 'BINGO',
-            markedPositions: localBingoCard.markedPositions?.length
-          });
-        }
-      }
-    } catch (error: any) {
-      console.error('❌ Bingo claim failed:', error);
+    // 🚨 USE IMMEDIATE CLAIM ENDPOINT
+    const response = await gameAPI.claimBingoImmediate(id, userId, 'BINGO');
+    
+    if (response.data.success && response.data.isWinner) {
+      console.log('✅ IMMEDIATE BINGO CLAIM SUCCESS!');
       
-      let errorMessage = 'Failed to claim bingo';
+      // IMMEDIATELY show winner modal for the user who claimed
+      const currentUsername = localStorage.getItem('username') || 'Player';
+      const currentFirstName = localStorage.getItem('firstName') || 'Player';
       
-      if (error.response?.data) {
-        errorMessage = error.response.data.error || 
-                       error.response.data.message || 
-                       error.message || 
-                       'Failed to claim bingo';
-      } else if (error.message) {
-        errorMessage = error.message;
+      // Store winning pattern positions if available
+      if (response.data.winningPositions) {
+        console.log('💛 Storing winning pattern positions from immediate claim:', response.data.winningPositions);
+        setWinningPatternPositions(response.data.winningPositions);
       }
       
-      setClaimResult({
-        success: false,
-        message: errorMessage
+      // Set winner info
+      setWinnerInfo({
+        winner: {
+          _id: userId,
+          username: currentUsername,
+          firstName: currentFirstName,
+          telegramId: userId
+        },
+        gameCode: game?.code || 'N/A',
+        endedAt: new Date().toISOString(),
+        totalPlayers: game?.currentPlayers || 0,
+        numbersCalled: allCalledNumbers.length,
+        winningPattern: response.data.patternType || 'BINGO',
+        winningCard: {
+          cardNumber: localBingoCard.cardNumber || 0,
+          numbers: localBingoCard.numbers,
+          markedPositions: localBingoCard.markedPositions,
+          winningPatternPositions: response.data.winningPositions || [],
+          winningPositionIndex: response.data.winningPositionIndex
+        },
+        message: response.data.message || 'Bingo claimed successfully! You are the winner!'
       });
       
+      // Set winner state
+      setIsUserWinner(true);
+      
+      // Use prize amount from response or calculate
+      const prizeAmount = response.data.prizeAmount || ((game?.currentPlayers || 0) * 10 * 0.8);
+      setWinningAmount(prizeAmount);
+      
+      // Clear selected card
+      clearSelectedCard();
+      
+      // Show winner modal immediately
+      setTimeout(() => {
+        console.log('🎉 Showing immediate winner modal after successful claim');
+        setShowWinnerModal(true);
+      }, 300);
+      
+      // Also show success message
+      setClaimResult({
+        success: true,
+        message: response.data.message || 'Bingo claimed successfully! You are the winner!',
+        patternType: response.data.patternType,
+        prizeAmount: prizeAmount
+      });
+
+      // Force refresh game data in background to sync with server
+      setTimeout(() => {
+        if (refetchGame) {
+          refetchGame().then(() => {
+            console.log('✅ Game data refreshed after bingo claim');
+          }).catch(error => {
+            console.error('❌ Failed to refresh game after claim:', error);
+          });
+        }
+      }, 1000);
+      
+    } else if (response.data.isDisqualified) {
+      // Handle disqualification
+      const errorMsg = response.data.message || 'Invalid bingo claim - You have been disqualified';
+      setClaimResult({
+        success: false,
+        message: errorMsg
+      });
+      
+      handleDisqualification(errorMsg, {
+        patternClaimed: 'BINGO',
+        markedPositions: localBingoCard.markedPositions?.length
+      });
+      
+    } else {
+      // Valid claim but not winner (shouldn't happen with immediate endpoint)
+      const errorMsg = response.data.message || 'Failed to claim bingo';
+      setClaimResult({
+        success: false,
+        message: errorMsg
+      });
+    }
+  } catch (error: any) {
+    console.error('❌ IMMEDIATE Bingo claim failed:', error);
+    
+    let errorMessage = 'Failed to claim bingo';
+    
+    if (error.response?.data) {
+      errorMessage = error.response.data.error || 
+                     error.response.data.message || 
+                     error.message || 
+                     'Failed to claim bingo';
+      
+      // Check if it's a disqualification error
       const isDisqualifiedError = errorMessage.toLowerCase().includes('disqualified') || 
                                   errorMessage.toLowerCase().includes('false bingo claim');
       
       if (isDisqualifiedError) {
-        handleDisqualification(errorMessage, {
-          patternClaimed: 'BINGO',
-          markedPositions: localBingoCard?.markedPositions?.length
-        });
+        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+        if (userId) {
+          handleDisqualification(errorMessage, {
+            patternClaimed: 'BINGO',
+            markedPositions: localBingoCard?.markedPositions?.length
+          });
+        }
       }
-    } finally {
-      setIsClaimingBingo(false);
-
-      // Clear claim result message after delay (only for non-disqualification cases)
-      if (!isDisqualified) {
-        setTimeout(() => {
-          setClaimResult(null);
-        }, 5000);
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    setClaimResult({
+      success: false,
+      message: errorMessage
+    });
+    
+    // If timeout error, suggest using regular claim as fallback
+    if (error.code === 'ECONNABORTED' || errorMessage.includes('timeout')) {
+      console.warn('⏰ Immediate claim timeout, trying regular claim...');
+      
+      // Fall back to regular claim
+      try {
+        const fallbackUserId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+        
+        if (fallbackUserId && id) {
+          const fallbackResponse = await gameAPI.claimBingo(id, fallbackUserId, 'BINGO');
+          if (fallbackResponse.data.success) {
+            setClaimResult({
+              success: true,
+              message: fallbackResponse.data.message || 'Bingo claimed (via fallback)',
+              patternType: fallbackResponse.data.patternType
+            });
+          }
+        } else {
+          console.error('❌ Cannot fallback: Missing userId or gameId');
+        }
+      } catch (fallbackError) {
+        console.error('❌ Fallback claim also failed:', fallbackError);
       }
     }
-  };
+  } finally {
+    setIsClaimingBingo(false);
+
+    // Clear claim result message after delay (only for non-disqualification cases)
+    if (!isDisqualified) {
+      setTimeout(() => {
+        setClaimResult(null);
+      }, 5000);
+    }
+  }
+};
 
   // Handle returning to lobby
   const handleReturnToLobby = () => {
