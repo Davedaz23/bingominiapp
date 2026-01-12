@@ -130,6 +130,9 @@ export default function GamePage() {
   const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(false);
   const [spectatorMessage, setSpectatorMessage] = useState<string>('');
 
+
+
+
   // Disqualification states
   const [isDisqualified, setIsDisqualified] = useState<boolean>(false);
   const [disqualificationMessage, setDisqualificationMessage] = useState<string>('');
@@ -990,7 +993,7 @@ const handleClaimBingo = async () => {
   }, [localBingoCard, gameBingoCard]);
 
   // Helper function to check if a position is in winning pattern
-  const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
+ const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
   const flatIndex = rowIndex * 5 + colIndex;
   
   // First check local state, then fall back to winnerInfo
@@ -1001,7 +1004,26 @@ const handleClaimBingo = async () => {
   if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
   return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
 }, [winnerInfo, winningPatternPositions]);
+// Function to check if this is the position that completed the win
+const isWinningCompletionPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
+  const flatIndex = rowIndex * 5 + colIndex;
+  
+  // Check winning position index from the backend response
+  if (winnerInfo?.winningCard?.winningPositionIndex !== undefined) {
+    return winnerInfo.winningCard.winningPositionIndex === flatIndex;
+  }
+  
+  return false;
+}, [winnerInfo]);
 
+// NEW: Function to check if the number was recently called (last few numbers)
+const isRecentlyCalledNumber = useCallback((number: number | string): boolean => {
+  if (typeof number !== 'number') return false;
+  
+  // Check if it's in the last 3 called numbers
+  const lastCalledNumbers = allCalledNumbers.slice(-3);
+  return lastCalledNumbers.includes(number);
+}, [allCalledNumbers]);
 // NEW: Function to check if position is the LAST winning position
 const isLastWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
   const flatIndex = rowIndex * 5 + colIndex;
@@ -1385,135 +1407,162 @@ useEffect(() => {
                   </div>
 
                   {/* Mini Bingo Card - SHOW ONLY WINNING POSITIONS */}
-                  <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
-                    {/* Mini BINGO Header */}
-                    <div className="grid grid-cols-5 gap-1 mb-2">
-                      {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                        <div
-                          key={letter}
-                          className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
-                        >
-                          {letter}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Mini Card Numbers - SHOW ONLY WINNING POSITIONS */}
-                    <div className="grid grid-cols-5 gap-1">
-                     {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-  row.map((number: number | string, colIndex: number) => {
-    const flatIndex = rowIndex * 5 + colIndex;
-    const isWinningPos = isWinningPosition(rowIndex, colIndex);
-    const isLastWinningPos = isLastWinningPosition(rowIndex, colIndex); // NEW
-    const isFreeSpace = rowIndex === 2 && colIndex === 2;
-    
-    let bgClass = 'bg-gray-800 text-white/70';
-    
-    if (isFreeSpace) {
-      bgClass = 'bg-purple-700 text-white';
-    } 
-    else if (isLastWinningPos) {
-      // CRITICAL: This is the position that completed the win - make it blink!
-      bgClass = 'bg-gradient-to-br from-yellow-400 to-orange-400 text-white shadow-[0_0_12px_rgba(255,255,0,0.8)] animate-pulse';
-    }
-    else if (isWinningPos) {
-      // Regular winning positions
-      bgClass = 'bg-gradient-to-br from-yellow-600 to-orange-600 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
-    }
-    
-    return (
+               {/* Mini Bingo Card - SHOW ALL NUMBERS WITH WINNING PATTERN HIGHLIGHTED */}
+<div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
+  {/* Mini BINGO Header */}
+  <div className="grid grid-cols-5 gap-1 mb-2">
+    {['B', 'I', 'N', 'G', 'O'].map((letter) => (
       <div
-        key={`${rowIndex}-${colIndex}`}
-        className={`
-          h-8 rounded flex items-center justify-center 
-          font-bold text-xs relative transition-all duration-300
-          ${bgClass}
-          ${isLastWinningPos ? 'border-2 border-white' : ''}
-        `}
+        key={letter}
+        className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
       >
-        {isFreeSpace ? (
-          <span className="text-[10px] font-bold">FREE</span>
-        ) : (
-          <span className={`font-bold ${isWinningPos || isLastWinningPos ? 'text-white' : 'text-white/70'}`}>
-            {number}
-          </span>
-        )}
-        
-        {/* WINNING POSITION INDICATOR */}
-        {isWinningPos && (
-          <>
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.2 }}
-              className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)] z-10"
-            />
-          </>
-        )}
-        
-        {/* SPECIAL INDICATOR FOR LAST WINNING POSITION */}
-        {isLastWinningPos && (
-          <>
-            {/* Blinking animation */}
-            <motion.div
-              animate={{ 
-                scale: [1, 1.3, 1],
-                opacity: [1, 0.7, 1]
-              }}
-              transition={{ 
-                repeat: Infinity, 
-                duration: 0.8,
-                ease: "easeInOut"
-              }}
-              className="absolute inset-0 rounded bg-gradient-to-br from-yellow-300/40 to-orange-300/40"
-            />
-            
-            {/* Trophy icon indicator */}
-            <motion.div
-              initial={{ scale: 0, rotate: -180 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ type: "spring", stiffness: 200 }}
-              className="absolute -top-2 -right-2 w-4 h-4 text-yellow-300"
-            >
-              🏆
-            </motion.div>
-            
-            {/* Pulsing ring effect */}
-            <motion.div
-              animate={{ 
-                scale: [1, 1.5, 1],
-                opacity: [0.5, 0, 0.5]
-              }}
-              transition={{ 
-                repeat: Infinity, 
-                duration: 1.5,
-                ease: "easeInOut"
-              }}
-              className="absolute inset-0 rounded-full border-2 border-yellow-400"
-            />
-          </>
-        )}
+        {letter}
       </div>
-    );
-  })
-)}
-                    </div>
-                    
-                    {/* Legend - UPDATED: Only show winning pattern info */}
-                    <div className="mt-3 pt-3 border-t border-white/20">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center justify-center gap-3">
-                          <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500 shadow-[0_0_4px_rgba(251,191,36,0.6)]"></div>
-                            <span className="text-[10px] text-white/70">Winning Pattern</span>
-                          </div>
-                        </div>
-                        <p className="text-center text-white/50 text-[10px]">
-                          Showing only winning pattern positions
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+    ))}
+  </div>
+
+  {/* Mini Card Numbers - SHOW ALL NUMBERS */}
+  <div className="grid grid-cols-5 gap-1">
+    {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+      row.map((number: number | string, colIndex: number) => {
+        const flatIndex = rowIndex * 5 + colIndex;
+        const isWinningPos = isWinningPosition(rowIndex, colIndex);
+        const isWinningCompletionPos = isWinningCompletionPosition(rowIndex, colIndex);
+        const isFreeSpace = rowIndex === 2 && colIndex === 2;
+        const isCalled = typeof number === 'number' ? allCalledNumbers.includes(number) : true;
+        
+        // Determine background color
+        let bgClass = 'bg-gray-800 text-white/70'; // Default for uncalled
+        
+        if (isFreeSpace) {
+          bgClass = 'bg-purple-700 text-white';
+        } 
+        else if (isWinningCompletionPos) {
+          // This is the position that completed the win - make it blink
+          bgClass = 'bg-gradient-to-br from-yellow-400 to-orange-400 text-white shadow-[0_0_12px_rgba(255,255,0,0.8)] animate-pulse';
+        }
+        else if (isWinningPos) {
+          // Winning positions (but not the completion position)
+          bgClass = 'bg-gradient-to-br from-yellow-600 to-orange-600 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
+        }
+        else if (isCalled) {
+          // Called numbers (not in winning pattern)
+          bgClass = 'bg-gradient-to-br from-green-600 to-emerald-700 text-white';
+        }
+        
+        return (
+          <div
+            key={`${rowIndex}-${colIndex}`}
+            className={`
+              h-8 rounded flex items-center justify-center 
+              font-bold text-xs relative transition-all duration-300
+              ${bgClass}
+              ${isWinningCompletionPos ? 'border-2 border-white' : ''}
+            `}
+          >
+            {isFreeSpace ? (
+              <span className="text-[10px] font-bold">FREE</span>
+            ) : (
+              <span className={`font-bold ${
+                isWinningPos || isWinningCompletionPos || isCalled 
+                  ? 'text-white' 
+                  : 'text-white/70'
+              }`}>
+                {number}
+              </span>
+            )}
+            
+            {/* WINNING POSITION INDICATOR */}
+            {isWinningPos && !isWinningCompletionPos && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2 }}
+                className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)] z-10"
+              />
+            )}
+            
+            {/* SPECIAL INDICATOR FOR WINNING COMPLETION POSITION */}
+            {isWinningCompletionPos && (
+              <>
+                {/* Blinking animation */}
+                <motion.div
+                  animate={{ 
+                    scale: [1, 1.3, 1],
+                    opacity: [1, 0.7, 1]
+                  }}
+                  transition={{ 
+                    repeat: Infinity, 
+                    duration: 0.8,
+                    ease: "easeInOut"
+                  }}
+                  className="absolute inset-0 rounded bg-gradient-to-br from-yellow-300/40 to-orange-300/40"
+                />
+                
+                {/* Trophy icon indicator */}
+                <motion.div
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: "spring", stiffness: 200 }}
+                  className="absolute -top-2 -right-2 w-4 h-4 text-yellow-300"
+                >
+                  🏆
+                </motion.div>
+                
+                {/* Pulsing ring effect */}
+                <motion.div
+                  animate={{ 
+                    scale: [1, 1.5, 1],
+                    opacity: [0.5, 0, 0.5]
+                  }}
+                  transition={{ 
+                    repeat: Infinity, 
+                    duration: 1.5,
+                    ease: "easeInOut"
+                  }}
+                  className="absolute inset-0 rounded-full border-2 border-yellow-400"
+                />
+              </>
+            )}
+            
+            {/* CALLED NUMBER INDICATOR (for non-winning called numbers) */}
+            {isCalled && !isWinningPos && !isWinningCompletionPos && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.1 }}
+                className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"
+              />
+            )}
+          </div>
+        );
+      })
+    )}
+  </div>
+  
+  {/* Legend - UPDATED */}
+  <div className="mt-3 pt-3 border-t border-white/20">
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-3 gap-2">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-green-600 to-emerald-700"></div>
+          <span className="text-[10px] text-white/70">Called</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500 shadow-[0_0_4px_rgba(251,191,36,0.6)]"></div>
+          <span className="text-[10px] text-white/70">Winning</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded-sm bg-yellow-300 animate-pulse"></div>
+          <span className="text-[10px] text-white/70">Completed</span>
+        </div>
+      </div>
+      <p className="text-center text-white/50 text-[10px]">
+        Showing all called numbers with winning pattern highlighted
+      </p>
+    </div>
+  </div>
+</div>
                 </div>
               )}
 
