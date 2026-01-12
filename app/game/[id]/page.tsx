@@ -946,6 +946,7 @@ const handleClaimBingo = async () => {
   }
 };
 
+
   // Handle returning to lobby
   const handleReturnToLobby = () => {
     localStorage.removeItem(`disqualified_${id}`);
@@ -1004,17 +1005,44 @@ const handleClaimBingo = async () => {
   if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
   return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
 }, [winnerInfo, winningPatternPositions]);
+const getWinningNumberAtPosition = useCallback((rowIndex: number, colIndex: number): number | string | null => {
+  const flatIndex = rowIndex * 5 + colIndex;
+  
+  if (!winnerInfo?.winningCard?.numbers) return null;
+  
+  // Flatten the numbers array
+  const numbers = winnerInfo.winningCard.numbers.flat();
+  
+  if (flatIndex >= 0 && flatIndex < numbers.length) {
+    return numbers[flatIndex];
+  }
+  
+  return null;
+}, [winnerInfo]);
 // Function to check if this is the position that completed the win
 const isWinningCompletionPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
   const flatIndex = rowIndex * 5 + colIndex;
   
   // Check winning position index from the backend response
   if (winnerInfo?.winningCard?.winningPositionIndex !== undefined) {
-    return winnerInfo.winningCard.winningPositionIndex === flatIndex;
+    // CRITICAL: Also check if this position contains the winning number
+    const numberAtPosition = getWinningNumberAtPosition(rowIndex, colIndex);
+    const isPositionMatch = winnerInfo.winningCard.winningPositionIndex === flatIndex;
+    
+    console.log(`🔍 Checking position ${flatIndex}:`, {
+      number: numberAtPosition,
+      isPositionMatch,
+      winningPositionIndex: winnerInfo.winningCard.winningPositionIndex
+    });
+    
+    return isPositionMatch;
   }
   
   return false;
-}, [winnerInfo]);
+}, [winnerInfo, getWinningNumberAtPosition]);
+
+
+
 
 // NEW: Function to check if the number was recently called (last few numbers)
 const isRecentlyCalledNumber = useCallback((number: number | string): boolean => {
@@ -1483,47 +1511,52 @@ useEffect(() => {
             )}
             
             {/* SPECIAL INDICATOR FOR WINNING COMPLETION POSITION */}
-            {isWinningCompletionPos && (
-              <>
-                {/* Blinking animation */}
-                <motion.div
-                  animate={{ 
-                    scale: [1, 1.3, 1],
-                    opacity: [1, 0.7, 1]
-                  }}
-                  transition={{ 
-                    repeat: Infinity, 
-                    duration: 0.8,
-                    ease: "easeInOut"
-                  }}
-                  className="absolute inset-0 rounded bg-gradient-to-br from-yellow-300/40 to-orange-300/40"
-                />
-                
-                {/* Trophy icon indicator */}
-                <motion.div
-                  initial={{ scale: 0, rotate: -180 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  transition={{ type: "spring", stiffness: 200 }}
-                  className="absolute -top-2 -right-2 w-4 h-4 text-yellow-300"
-                >
-                  🏆
-                </motion.div>
-                
-                {/* Pulsing ring effect */}
-                <motion.div
-                  animate={{ 
-                    scale: [1, 1.5, 1],
-                    opacity: [0.5, 0, 0.5]
-                  }}
-                  transition={{ 
-                    repeat: Infinity, 
-                    duration: 1.5,
-                    ease: "easeInOut"
-                  }}
-                  className="absolute inset-0 rounded-full border-2 border-yellow-400"
-                />
-              </>
-            )}
+{isWinningCompletionPos && (
+  <>
+    {/* Blinking animation */}
+    <motion.div
+      animate={{ 
+        scale: [1, 1.3, 1],
+        opacity: [1, 0.7, 1]
+      }}
+      transition={{ 
+        repeat: Infinity, 
+        duration: 0.8,
+        ease: "easeInOut"
+      }}
+      className="absolute inset-0 rounded bg-gradient-to-br from-yellow-300/40 to-orange-300/40"
+    />
+    
+    {/* Trophy icon indicator */}
+    <motion.div
+      initial={{ scale: 0, rotate: -180 }}
+      animate={{ scale: 1, rotate: 0 }}
+      transition={{ type: "spring", stiffness: 200 }}
+      className="absolute -top-2 -right-2 w-4 h-4 text-yellow-300"
+    >
+      🏆
+    </motion.div>
+    
+    {/* Pulsing ring effect */}
+    <motion.div
+      animate={{ 
+        scale: [1, 1.5, 1],
+        opacity: [0.5, 0, 0.5]
+      }}
+      transition={{ 
+        repeat: Infinity, 
+        duration: 1.5,
+        ease: "easeInOut"
+      }}
+      className="absolute inset-0 rounded-full border-2 border-yellow-400"
+    />
+    
+    {/* Winning number indicator */}
+    <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-yellow-300 font-bold whitespace-nowrap">
+      Winning Number!
+    </div>
+  </>
+)}
             
             {/* CALLED NUMBER INDICATOR (for non-winning called numbers) */}
             {isCalled && !isWinningPos && !isWinningCompletionPos && (
