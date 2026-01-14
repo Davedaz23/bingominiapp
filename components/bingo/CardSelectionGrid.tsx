@@ -206,7 +206,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
   return (
     <div className="mb-4">
       {/* Connection Status Bar */}
-      <div className="flex items-center justify-between mb-4 bg-white/5 backdrop-blur-lg rounded-xl p-3 border border-white/10">
+      {/* <div className="flex items-center justify-between mb-4 bg-white/5 backdrop-blur-lg rounded-xl p-3 border border-white/10">
         <div className="flex items-center gap-2">
           {wsConnected ? (
             <>
@@ -225,10 +225,10 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
             {wsConnected ? 'Real-time' : 'Manual Refresh'}
           </span>
         </div>
-      </div>
+      </div> */}
 
       {/* User Status Indicator */}
-      {currentUserId && (
+      {/* {currentUserId && (
         <div className="mb-3 bg-gradient-to-r from-telegram-button/10 to-blue-500/10 backdrop-blur-lg rounded-xl p-2 border border-telegram-button/20">
           <div className="flex items-center gap-2 text-xs text-white/70">
             <UserCheck className="w-3 h-3" />
@@ -240,7 +240,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
             )}
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Card Grid */}
       <motion.div 
@@ -341,7 +341,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
       </motion.div>
 
       {/* Real-time statistics */}
-      <div className="bg-white/5 backdrop-blur-lg rounded-xl p-4 mb-4 border border-white/10">
+      {/* <div className="bg-white/5 backdrop-blur-lg rounded-xl p-4 mb-4 border border-white/10">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="text-center">
             <div className="text-green-400 font-bold text-2xl">{cardStats.totalAvailable}</div>
@@ -365,7 +365,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
           </div>
         </div>
         
-        {/* Status indicator */}
+
         <div className="text-center mt-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10">
             <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
@@ -376,10 +376,10 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
             </span>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Legend */}
-      <div className="bg-white/5 backdrop-blur-lg rounded-xl p-3 mb-3 border border-white/10">
+      {/* <div className="bg-white/5 backdrop-blur-lg rounded-xl p-3 mb-3 border border-white/10">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded bg-telegram-button"></div>
@@ -398,7 +398,7 @@ export const CardSelectionGrid: React.FC<CardSelectionGridProps> = ({
             <span className="text-white/70 text-xs">Available</span>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Selection Info */}
       {selectedNumber && (
