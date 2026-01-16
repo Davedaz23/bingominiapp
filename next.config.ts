@@ -1,14 +1,13 @@
+// next.config.js
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "export",
-
-  images: {
-    unoptimized: true,
-  },
-
+  output: 'standalone', // Keep server-side dynamic routing
   eslint: {
     ignoreDuringBuilds: true,
+  },
+  images: {
+    unoptimized: true,
   },
 };
 
