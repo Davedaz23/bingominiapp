@@ -57,6 +57,10 @@ export default function Home() {
   // Track the last valid game status to prevent flickering
   const lastValidStatusRef = useRef<string>(gameStatus || 'LOADING');
 
+  // FIX: Add state to track actual redirect
+  const [hasRedirected, setHasRedirected] = useState<boolean>(false);
+  const [redirectError, setRedirectError] = useState<string>('');
+
   // Sync game status from WebSocket with debouncing
   useEffect(() => {
     if (wsGameStatus?.status) {
@@ -145,7 +149,6 @@ export default function Home() {
   const isCheckingPlayerStatusRef = useRef<boolean>(false);
   const lastPlayerCheckRef = useRef<number>(0);
   const isInitializedRef = useRef<boolean>(false);
-  const redirectAttemptedRef = useRef<boolean>(false);
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const statusUpdateTimeRef = useRef<number>(Date.now());
   const lastCardSyncRef = useRef<number>(0);
@@ -318,25 +321,39 @@ export default function Home() {
     return totalPlayers >= 2;
   }, [totalPlayers]);
 
-  // CRITICAL: Immediate redirect function - ALWAYS redirect if game is ACTIVE
+  // FIXED: Immediate redirect function with proper error handling
   const handleImmediateRedirect = useCallback(() => {
-    if (redirectAttemptedRef.current || isRedirecting) return;
+    // Don't redirect if already redirected
+    if (hasRedirected) {
+      console.log('✅ Already redirected, skipping');
+      return;
+    }
 
     const gameId = gameData?._id;
     if (!gameId) {
       console.warn('No game ID available for redirect');
+      setRedirectError('No game ID found');
       return;
     }
 
     console.log(`🚀 FORCE REDIRECT to game: ${gameId}, status: ${effectiveGameStatus}`);
-    redirectAttemptedRef.current = true;
+    
+    // Set redirecting state
     setIsRedirecting(true);
     
-    // Use replace instead of push to prevent back button issues
+    // Use a timeout to ensure redirect happens
     setTimeout(() => {
-      router.replace(`/game/${gameId}`);
+      try {
+        console.log(`📍 Redirecting to /game/${gameId}`);
+        router.replace(`/game/${gameId}`);
+        setHasRedirected(true);
+      } catch (error) {
+        console.error('❌ Redirect failed:', error);
+        setRedirectError('Redirect failed. Please try again.');
+        setIsRedirecting(false);
+      }
     }, REDIRECT_DEBOUNCE);
-  }, [gameData, router, isRedirecting, effectiveGameStatus]);
+  }, [gameData, router, effectiveGameStatus, hasRedirected]);
 
   // Wrapper function for card selection with immediate UI feedback
   const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
@@ -384,9 +401,7 @@ export default function Home() {
         // CRITICAL: If game is ACTIVE, redirect IMMEDIATELY
         if (effectiveGameStatus === 'ACTIVE') {
           console.log('Game is ACTIVE - Immediate redirect after card selection');
-          setTimeout(() => {
-            handleImmediateRedirect();
-          }, 500);
+          handleImmediateRedirect();
         }
 
         return true;
@@ -477,7 +492,7 @@ export default function Home() {
               setPlayerGameStatus(game.status);
               
               // CRITICAL: If game is ACTIVE, redirect IMMEDIATELY
-              if (game.status === 'ACTIVE' && !redirectAttemptedRef.current) {
+              if (game.status === 'ACTIVE' && !hasRedirected) {
                 console.log('Player has card in ACTIVE game - Force redirect');
                 handleImmediateRedirect();
               }
@@ -499,24 +514,19 @@ export default function Home() {
     } finally {
       isCheckingPlayerStatusRef.current = false;
     }
-  }, [user?.id, hasCardInActiveGame, handleImmediateRedirect]);
+  }, [user?.id, hasCardInActiveGame, handleImmediateRedirect, hasRedirected]);
 
-  // CRITICAL: Auto-redirect when game is ACTIVE - NO CONDITIONS
+  // FIXED: Auto-redirect when game is ACTIVE
   useEffect(() => {
-    if (authLoading || pageLoading || redirectAttemptedRef.current || isRedirecting) return;
+    // Don't redirect if already redirected or still loading
+    if (authLoading || pageLoading || hasRedirected || isRedirecting) return;
     
-    // FORCE REDIRECT if game is ACTIVE - no card required, no conditions
+    // Redirect if game is ACTIVE
     if (effectiveGameStatus === 'ACTIVE') {
       console.log('🚀 Game is ACTIVE - FORCING immediate redirect for everyone');
-      
-      // Small delay to ensure state is consistent
-      const redirectTimer = setTimeout(() => {
-        handleImmediateRedirect();
-      }, 300);
-      
-      return () => clearTimeout(redirectTimer);
+      handleImmediateRedirect();
     }
-  }, [effectiveGameStatus, authLoading, pageLoading, handleImmediateRedirect, isRedirecting]);
+  }, [effectiveGameStatus, authLoading, pageLoading, handleImmediateRedirect, hasRedirected, isRedirecting]);
 
   // Update total players when game data changes
   useEffect(() => {
@@ -540,7 +550,7 @@ export default function Home() {
       }
 
       // CRITICAL: Check if game is already ACTIVE on initialization
-      if (gameData?.status === 'ACTIVE' && !redirectAttemptedRef.current) {
+      if (gameData?.status === 'ACTIVE' && !hasRedirected) {
         console.log('Game is already ACTIVE on initialization - Force redirect');
         setTimeout(() => {
           handleImmediateRedirect();
@@ -555,11 +565,11 @@ export default function Home() {
     };
 
     init();
-  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData]);
+  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData, handleImmediateRedirect, hasRedirected]);
 
   // Set up periodic checks
   useEffect(() => {
-    if (!isAuthenticated || !user || redirectAttemptedRef.current) return;
+    if (!isAuthenticated || !user || hasRedirected) return;
 
     const playerCheckInterval = setInterval(() => {
       checkPlayerCardInActiveGame();
@@ -568,7 +578,7 @@ export default function Home() {
     return () => {
       clearInterval(playerCheckInterval);
     };
-  }, [isAuthenticated, user, checkPlayerCardInActiveGame]);
+  }, [isAuthenticated, user, checkPlayerCardInActiveGame, hasRedirected]);
 
   // Request card availability when WebSocket connects
   useEffect(() => {
@@ -596,8 +606,8 @@ export default function Home() {
     };
   }, []);
 
-  // CRITICAL: Show loading or redirect - if game is ACTIVE, show redirecting message
-  if (authLoading || pageLoading || isRedirecting || effectiveGameStatus === 'ACTIVE') {
+  // FIXED: Show loading or redirect - with manual fallback button
+  if (authLoading || pageLoading || isRedirecting) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
@@ -610,14 +620,43 @@ export default function Home() {
                 : 'Loading...'}
           </p>
           {effectiveGameStatus === 'ACTIVE' && (
-            <p className="text-white/60 text-sm mt-2">
-              You will be redirected automatically
-            </p>
+            <div className="mt-4">
+              <p className="text-white/60 text-sm mb-2">
+                You will be redirected automatically
+              </p>
+              
+              {/* Manual redirect button as fallback */}
+              {gameData?._id && (
+                <button
+                  onClick={() => router.replace(`/game/${gameData._id}`)}
+                  className="mt-4 bg-white text-purple-600 px-6 py-2 rounded-lg font-medium hover:bg-purple-50 transition-all"
+                >
+                  Click here if not redirected
+                </button>
+              )}
+              
+              {/* Show error if any */}
+              {redirectError && (
+                <p className="text-red-300 text-sm mt-2">{redirectError}</p>
+              )}
+            </div>
           )}
         </div>
       </div>
     );
   }
+
+  // FIXED: Add timeout for redirect
+  useEffect(() => {
+    if (effectiveGameStatus === 'ACTIVE' && !hasRedirected && !isRedirecting) {
+      const redirectTimeout = setTimeout(() => {
+        console.log('🕒 Redirect timeout - forcing redirect');
+        handleImmediateRedirect();
+      }, 3000); // 3 second timeout
+
+      return () => clearTimeout(redirectTimeout);
+    }
+  }, [effectiveGameStatus, hasRedirected, isRedirecting, handleImmediateRedirect]);
 
   // Get status message
   const getStatusMessage = () => {
@@ -672,6 +711,27 @@ export default function Home() {
   };
 
   const connectionStatus = getConnectionStatus();
+
+  // If we've redirected or game is active, don't render the normal page
+  if (hasRedirected || effectiveGameStatus === 'ACTIVE') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
+          <p className="mt-4">Redirecting to game...</p>
+          {gameData?._id && (
+            <button
+              onClick={() => router.replace(`/game/${gameData._id}`)}
+              className="mt-4 bg-white text-purple-600 px-6 py-2 rounded-lg font-medium hover:bg-purple-50 transition-all"
+            >
+              Click here if not redirected
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">

@@ -130,7 +130,7 @@ export const useWebSocket = (
         }
 
         const backendUrl = process.env.NODE_ENV === 'production'
-            ? 'wss://telegram-bingo-bot-opj9.onrender.com'
+            ? 'wss://backend.desta.et'
             : 'ws://localhost:3000';
 
         const wsUrl = `${backendUrl}/ws?gameId=${gameId}&userId=${userId}`;
