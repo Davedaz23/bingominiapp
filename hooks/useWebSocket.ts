@@ -131,7 +131,7 @@ export const useWebSocket = (
 
         const backendUrl = process.env.NODE_ENV === 'production'
             ? 'wss://backend.desta.et'
-            : 'ws://localhost:3000';
+            : 'wss://backend.desta.et';
 
         const wsUrl = `${backendUrl}/ws?gameId=${gameId}&userId=${userId}`;
 

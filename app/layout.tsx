@@ -31,7 +31,7 @@ export default function RootLayout({
       <head>
         <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gradient-to-br from-purple-600 to-blue-600 min-h-screen`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gradient-to-br from-purple-600 to-blue-600 min-h-screen`} suppressHydrationWarning>
         <AuthProvider>
           <TelegramInit />
           {children}

@@ -16,7 +16,18 @@ import { useWebSocket } from '../hooks/useWebSocket';
 const PLAYER_CHECK_INTERVAL = 5000;
 const REDIRECT_DEBOUNCE = 1000;
 
+// Track if component has mounted on client
+let didHydrate = false;
+
 export default function Home() {
+  const [mounted, setMounted] = useState(false);
+  
+  // Only run client-side after hydration
+  useEffect(() => {
+    setMounted(true);
+    didHydrate = true;
+  }, []);
+
   const {
     user,
     isAuthenticated,
@@ -35,7 +46,7 @@ export default function Home() {
     setGameStatus: setGlobalGameStatus,
   } = useGameState();
 
-  // WebSocket connection for real-time updates
+  // WebSocket connection for real-time updates - only initialize after mount
   const {
     isConnected: wsConnected,
     takenCards: wsTakenCards,
@@ -47,22 +58,24 @@ export default function Home() {
     requestCardAvailability,
     onMessage: wsOnMessage,
   } = useWebSocket(
-    gameData?._id,
-    user?.id
+    mounted ? gameData?._id : undefined, // Only pass gameId after mount
+    mounted ? user?.id : undefined // Only pass userId after mount
   );
 
   // Combined game status with WebSocket priority
-  const [effectiveGameStatus, setEffectiveGameStatus] = useState<string>(gameStatus || 'LOADING');
+  const [effectiveGameStatus, setEffectiveGameStatus] = useState<string>('LOADING');
   
   // Track the last valid game status to prevent flickering
-  const lastValidStatusRef = useRef<string>(gameStatus || 'LOADING');
+  const lastValidStatusRef = useRef<string>('LOADING');
 
   // FIX: Add state to track actual redirect
   const [hasRedirected, setHasRedirected] = useState<boolean>(false);
   const [redirectError, setRedirectError] = useState<string>('');
 
-  // Sync game status from WebSocket with debouncing
+  // Sync game status from WebSocket with debouncing - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     if (wsGameStatus?.status) {
       console.log('📡 WebSocket game status update:', wsGameStatus.status);
       
@@ -75,10 +88,12 @@ export default function Home() {
         setGlobalGameStatus(wsGameStatus.status);
       }
     }
-  }, [wsGameStatus?.status, setGlobalGameStatus]);
+  }, [wsGameStatus?.status, setGlobalGameStatus, mounted]);
 
-  // Sync with API game status when WebSocket is not available
+  // Sync with API game status when WebSocket is not available - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     if (gameStatus && (!wsGameStatus?.status || wsGameStatus.status === 'LOADING')) {
       console.log('📊 Using API game status:', gameStatus);
       
@@ -95,10 +110,12 @@ export default function Home() {
         }
       }
     }
-  }, [gameStatus, wsGameStatus?.status, effectiveGameStatus]);
+  }, [gameStatus, wsGameStatus?.status, effectiveGameStatus, mounted]);
 
-  // Listen for card released events
+  // Listen for card released events - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     const cleanup = wsOnMessage('CARD_RELEASED', (data) => {
       console.log('🗑️ WebSocket: CARD_RELEASED event received:', data.cardNumber);
       
@@ -115,7 +132,7 @@ export default function Home() {
     });
 
     return cleanup;
-  }, [wsOnMessage, gameData?._id, user?.id]);
+  }, [wsOnMessage, gameData?._id, user?.id, mounted]);
 
   // Card selection - Use the hook's handleCardSelect
   const {
@@ -128,7 +145,10 @@ export default function Home() {
     cardSelectionError,
     shouldEnableCardSelection,
     wsConnected: cardSelectionWsConnected,
-  } = useCardSelection(gameData, effectiveGameStatus);
+  } = useCardSelection(
+    mounted ? gameData : null, // Only pass gameData after mount
+    mounted ? effectiveGameStatus : 'LOADING' // Only pass status after mount
+  );
 
   // Local states
   const [hasCardInActiveGame, setHasCardInActiveGame] = useState<boolean>(false);
@@ -154,8 +174,10 @@ export default function Home() {
   const lastCardSyncRef = useRef<number>(0);
   const cardSyncCooldownRef = useRef<boolean>(false);
 
-  // CRITICAL: Listen for game started events
+  // CRITICAL: Listen for game started events - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     const cleanup = wsOnMessage('GAME_STARTED', (data) => {
       console.log('🚀 WebSocket: GAME_STARTED event received:', data);
       if (gameData?._id === data.gameId) {
@@ -170,10 +192,12 @@ export default function Home() {
     });
 
     return cleanup;
-  }, [wsOnMessage, gameData?._id]);
+  }, [wsOnMessage, gameData?._id, mounted]);
 
-  // CRITICAL: Listen for number called events (to show game is active)
+  // CRITICAL: Listen for number called events (to show game is active) - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     const cleanup = wsOnMessage('NUMBER_CALLED', (data) => {
       console.log('🔢 WebSocket: NUMBER_CALLED event received:', data.number);
       
@@ -189,10 +213,12 @@ export default function Home() {
     });
 
     return cleanup;
-  }, [wsOnMessage, gameData?._id]);
+  }, [wsOnMessage, gameData?._id, mounted]);
 
-  // Listen for card selection started
+  // Listen for card selection started - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     const cleanup = wsOnMessage('CARD_SELECTION_STARTED', (data) => {
       console.log('🎲 WebSocket: CARD_SELECTION_STARTED event received:', data);
       if (gameData?._id === data.gameId) {
@@ -203,10 +229,12 @@ export default function Home() {
     });
 
     return cleanup;
-  }, [wsOnMessage, gameData?._id]);
+  }, [wsOnMessage, gameData?._id, mounted]);
 
-  // Listen for card availability updates
+  // Listen for card availability updates - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     const cleanup = wsOnMessage('TAKEN_CARDS_UPDATE', (data) => {
       console.log('🔄 WebSocket: TAKEN_CARDS_UPDATE received:', data.takenCards?.length, 'cards');
       
@@ -220,10 +248,12 @@ export default function Home() {
     });
 
     return cleanup;
-  }, [wsOnMessage, gameData?._id]);
+  }, [wsOnMessage, gameData?._id, mounted]);
 
-  // Listen for individual card selections
+  // Listen for individual card selections - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     const cleanup = wsOnMessage('CARD_SELECTED', (data) => {
       console.log('🎯 WebSocket: CARD_SELECTED event received:', data.cardNumber);
       
@@ -240,7 +270,7 @@ export default function Home() {
     });
 
     return cleanup;
-  }, [wsOnMessage, gameData?._id, user?.id]);
+  }, [wsOnMessage, gameData?._id, user?.id, mounted]);
 
   // Combine all sources of taken cards
   const getCombinedTakenCards = useCallback(() => {
@@ -323,9 +353,9 @@ export default function Home() {
 
   // FIXED: Immediate redirect function with proper error handling
   const handleImmediateRedirect = useCallback(() => {
-    // Don't redirect if already redirected
-    if (hasRedirected) {
-      console.log('✅ Already redirected, skipping');
+    // Don't redirect if not mounted or already redirected
+    if (!mounted || hasRedirected) {
+      console.log('✅ Already redirected or not mounted, skipping');
       return;
     }
 
@@ -353,10 +383,12 @@ export default function Home() {
         setIsRedirecting(false);
       }
     }, REDIRECT_DEBOUNCE);
-  }, [gameData, router, effectiveGameStatus, hasRedirected]);
+  }, [gameData, router, effectiveGameStatus, hasRedirected, mounted]);
 
   // Wrapper function for card selection with immediate UI feedback
   const handleCardSelectWithFeedback = useCallback(async (cardNumber: number): Promise<boolean> => {
+    if (!mounted) return false;
+    
     if (processingTimeoutRef.current) {
       clearTimeout(processingTimeoutRef.current);
     }
@@ -456,12 +488,13 @@ export default function Home() {
     wsConnected, 
     sendMessage, 
     gameData, 
-    handleImmediateRedirect
+    handleImmediateRedirect,
+    mounted
   ]);
 
   // Check player card status
   const checkPlayerCardInActiveGame = useCallback(async (force = false) => {
-    if (!user?.id || isCheckingPlayerStatusRef.current) return false;
+    if (!user?.id || isCheckingPlayerStatusRef.current || !mounted) return false;
 
     const now = Date.now();
     const timeSinceLastCheck = now - lastPlayerCheckRef.current;
@@ -514,10 +547,12 @@ export default function Home() {
     } finally {
       isCheckingPlayerStatusRef.current = false;
     }
-  }, [user?.id, hasCardInActiveGame, handleImmediateRedirect, hasRedirected]);
+  }, [user?.id, hasCardInActiveGame, handleImmediateRedirect, hasRedirected, mounted]);
 
-  // FIXED: Auto-redirect when game is ACTIVE
+  // FIXED: Auto-redirect when game is ACTIVE - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     // Don't redirect if already redirected or still loading
     if (authLoading || pageLoading || hasRedirected || isRedirecting) return;
     
@@ -526,7 +561,7 @@ export default function Home() {
       console.log('🚀 Game is ACTIVE - FORCING immediate redirect for everyone');
       handleImmediateRedirect();
     }
-  }, [effectiveGameStatus, authLoading, pageLoading, handleImmediateRedirect, hasRedirected, isRedirecting]);
+  }, [effectiveGameStatus, authLoading, pageLoading, handleImmediateRedirect, hasRedirected, isRedirecting, mounted]);
 
   // Update total players when game data changes
   useEffect(() => {
@@ -535,9 +570,9 @@ export default function Home() {
     }
   }, [gameData?.currentPlayers]);
 
-  // Initialize
+  // Initialize - only after mount
   useEffect(() => {
-    if (authLoading || isInitializedRef.current) return;
+    if (!mounted || authLoading || isInitializedRef.current) return;
 
     const init = async () => {
       isInitializedRef.current = true;
@@ -565,11 +600,11 @@ export default function Home() {
     };
 
     init();
-  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData, handleImmediateRedirect, hasRedirected]);
+  }, [authLoading, isAuthenticated, user, initializeGameState, checkPlayerCardInActiveGame, gameData, handleImmediateRedirect, hasRedirected, mounted]);
 
-  // Set up periodic checks
+  // Set up periodic checks - only after mount
   useEffect(() => {
-    if (!isAuthenticated || !user || hasRedirected) return;
+    if (!mounted || !isAuthenticated || !user || hasRedirected) return;
 
     const playerCheckInterval = setInterval(() => {
       checkPlayerCardInActiveGame();
@@ -578,10 +613,12 @@ export default function Home() {
     return () => {
       clearInterval(playerCheckInterval);
     };
-  }, [isAuthenticated, user, checkPlayerCardInActiveGame, hasRedirected]);
+  }, [isAuthenticated, user, checkPlayerCardInActiveGame, hasRedirected, mounted]);
 
-  // Request card availability when WebSocket connects
+  // Request card availability when WebSocket connects - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     if (wsConnected && gameData?._id && !cardSyncCooldownRef.current) {
       cardSyncCooldownRef.current = true;
       
@@ -595,7 +632,7 @@ export default function Home() {
         cardSyncCooldownRef.current = false;
       }, 2000);
     }
-  }, [wsConnected, gameData?._id, sendMessage]);
+  }, [wsConnected, gameData?._id, sendMessage, mounted]);
 
   // Cleanup
   useEffect(() => {
@@ -606,48 +643,10 @@ export default function Home() {
     };
   }, []);
 
-  // FIXED: Show loading or redirect - with manual fallback button
-  if (authLoading || pageLoading || isRedirecting) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
-          <p className="mt-4">
-            {effectiveGameStatus === 'ACTIVE' 
-              ? 'Game is active - Redirecting to game...' 
-              : isRedirecting 
-                ? 'Redirecting to game...' 
-                : 'Loading...'}
-          </p>
-          {effectiveGameStatus === 'ACTIVE' && (
-            <div className="mt-4">
-              <p className="text-white/60 text-sm mb-2">
-                You will be redirected automatically
-              </p>
-              
-              {/* Manual redirect button as fallback */}
-              {gameData?._id && (
-                <button
-                  onClick={() => router.replace(`/game/${gameData._id}`)}
-                  className="mt-4 bg-white text-purple-600 px-6 py-2 rounded-lg font-medium hover:bg-purple-50 transition-all"
-                >
-                  Click here if not redirected
-                </button>
-              )}
-              
-              {/* Show error if any */}
-              {redirectError && (
-                <p className="text-red-300 text-sm mt-2">{redirectError}</p>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // FIXED: Add timeout for redirect
+  // FIXED: Add timeout for redirect - only after mount
   useEffect(() => {
+    if (!mounted) return;
+    
     if (effectiveGameStatus === 'ACTIVE' && !hasRedirected && !isRedirecting) {
       const redirectTimeout = setTimeout(() => {
         console.log('🕒 Redirect timeout - forcing redirect');
@@ -656,7 +655,7 @@ export default function Home() {
 
       return () => clearTimeout(redirectTimeout);
     }
-  }, [effectiveGameStatus, hasRedirected, isRedirecting, handleImmediateRedirect]);
+  }, [effectiveGameStatus, hasRedirected, isRedirecting, handleImmediateRedirect, mounted]);
 
   // Get status message
   const getStatusMessage = () => {
@@ -686,7 +685,7 @@ export default function Home() {
   };
 
   // CRITICAL: Show card selection ONLY when NOT ACTIVE
-  const showCardSelection = (
+  const showCardSelection = mounted && (
     (effectiveGameStatus === 'WAITING_FOR_PLAYERS' || 
      effectiveGameStatus === 'CARD_SELECTION' || 
      effectiveGameStatus === 'FINISHED' ||
@@ -696,6 +695,8 @@ export default function Home() {
 
   // Show WebSocket connection status
   const getConnectionStatus = () => {
+    if (!mounted) return { text: 'Loading...', color: 'bg-gray-500/20 text-gray-300' };
+    
     if (!wsConnected) {
       return { text: 'Connecting...', color: 'bg-yellow-500/20 text-yellow-300' };
     }
@@ -713,7 +714,7 @@ export default function Home() {
   const connectionStatus = getConnectionStatus();
 
   // If we've redirected or game is active, don't render the normal page
-  if (hasRedirected || effectiveGameStatus === 'ACTIVE') {
+  if (hasRedirected || (mounted && effectiveGameStatus === 'ACTIVE')) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
         <div className="text-white text-center">
@@ -732,6 +733,47 @@ export default function Home() {
     );
   }
 
+  // FIXED: Show loading or redirect - with manual fallback button
+  if (!mounted || authLoading || pageLoading || isRedirecting) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
+          <p className="mt-4">
+            {!mounted 
+              ? 'Loading...' 
+              : effectiveGameStatus === 'ACTIVE' 
+                ? 'Game is active - Redirecting to game...' 
+                : isRedirecting 
+                  ? 'Redirecting to game...' 
+                  : 'Loading...'}
+          </p>
+          {mounted && effectiveGameStatus === 'ACTIVE' && (
+            <div className="mt-4">
+              <p className="text-white/60 text-sm mb-2">
+                You will be redirected automatically
+              </p>
+              
+              {/* Manual redirect button as fallback */}
+              {gameData?._id && (
+                <button
+                  onClick={() => router.replace(`/game/${gameData._id}`)}
+                  className="mt-4 bg-white text-purple-600 px-6 py-2 rounded-lg font-medium hover:bg-purple-50 transition-all"
+                >
+                  Click here if not redirected
+                </button>
+              )}
+              
+              {/* Show error if any */}
+              {redirectError && (
+                <p className="text-red-300 text-sm mt-2">{redirectError}</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 p-4">
@@ -761,7 +803,7 @@ export default function Home() {
             <h1 className="text-white font-bold text-xl">Bingo Game</h1>
             <p className="text-white/60 text-sm">
               {getStatusMessage()}
-              {wsGameStatus?.status && wsGameStatus.status !== effectiveGameStatus && (
+              {mounted && wsGameStatus?.status && wsGameStatus.status !== effectiveGameStatus && (
                 <span className="ml-2 text-xs text-yellow-300">
                   (Live: {wsGameStatus.status})
                 </span>
@@ -770,9 +812,11 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-4">
             {/* WebSocket status indicator */}
-            <div className={`px-3 py-1 rounded-lg text-xs ${connectionStatus.color}`}>
-              {wsConnected ? '🟢' : '🟡'} {connectionStatus.text}
-            </div>
+            {mounted && (
+              <div className={`px-3 py-1 rounded-lg text-xs ${connectionStatus.color}`}>
+                {wsConnected ? '🟢' : '🟡'} {connectionStatus.text}
+              </div>
+            )}
             
             <div className="text-right">
               <p className="text-white font-bold text-sm">{walletBalance} ብር</p>
@@ -788,122 +832,10 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Game status info with WebSocket indicator */}
-      {/* <motion.div
-        className="bg-gradient-to-r from-blue-500/20 to-purple-600/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-blue-500/30"
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Info className="w-5 h-5 text-blue-300" />
-            <div>
-              <p className="text-blue-300 font-bold text-sm">
-                {effectiveGameStatus === 'CARD_SELECTION' 
-                  ? 'Card Selection Phase' 
-                  : effectiveGameStatus === 'WAITING_FOR_PLAYERS'
-                  ? 'Waiting for Players'
-                  : 'Game Status'}
-              </p>
-              <p className="text-blue-200 text-xs">
-                {effectiveGameStatus === 'CARD_SELECTION' 
-                  ? 'Select your card before the game starts'
-                  : effectiveGameStatus === 'WAITING_FOR_PLAYERS'
-                  ? hasMinimumPlayers()
-                    ? `Ready to start (${totalPlayers}/2 players)`
-                    : `Need ${2 - totalPlayers} more players to start`
-                  : getStatusMessage()}
-              </p>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-white text-sm font-bold">{cardStats.totalAvailable} available</p>
-            <p className="text-white/60 text-xs">cards remaining</p>
-            {wsConnected && (
-              <p className="text-green-300 text-xs mt-1">Live updates active</p>
-            )}
-          </div>
-        </div>
-      </motion.div> */}
-
-      {/* Real-time card stats */}
-      {/* {showCardSelection && wsConnected && (
-        <motion.div
-          className="bg-white/5 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-white/10"
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="grid grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-green-400 font-bold text-lg">{cardStats.totalAvailable}</div>
-              <div className="text-white/60 text-xs">Available</div>
-            </div>
-            <div className="text-center">
-              <div className="text-red-400 font-bold text-lg">{cardStats.totalTaken}</div>
-              <div className="text-white/60 text-xs">Taken</div>
-            </div>
-            <div className="text-center">
-              <div className="text-yellow-400 font-bold text-lg">{cardStats.takenByOthers}</div>
-              <div className="text-white/60 text-xs">Taken by Others</div>
-            </div>
-            <div className="text-center">
-              <div className="text-telegram-button font-bold text-lg">{cardStats.takenByUser}</div>
-              <div className="text-white/60 text-xs">Your Cards</div>
-            </div>
-          </div>
-          <div className="text-center mt-2">
-            <div className="text-white/40 text-xs">
-              Updates in real-time • {wsConnected ? 'Live' : 'Refreshing every 5s'}
-            </div>
-          </div>
-        </motion.div>
-      )} */}
-
-      {/* Player status notification */}
-      {/* {hasCardInActiveGame && (
-        <motion.div
-          className={`backdrop-blur-lg rounded-2xl p-4 mb-4 border ${
-            playerGameStatus === 'ACTIVE'
-              ? 'bg-gradient-to-r from-green-500/20 to-emerald-600/20 border-green-500/30'
-              : 'bg-gradient-to-r from-yellow-500/20 to-amber-600/20 border-yellow-500/30'
-          }`}
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {playerGameStatus === 'ACTIVE' ? (
-                <Check className="w-5 h-5 text-green-300" />
-              ) : (
-                <Clock className="w-5 h-5 text-yellow-300" />
-              )}
-              <div>
-                <p className={`font-bold text-sm ${
-                  playerGameStatus === 'ACTIVE' ? 'text-green-300' : 'text-yellow-300'
-                }`}>
-                  {playerGameStatus === 'ACTIVE'
-                    ? 'Active Game - Ready to Play!'
-                    : 'Waiting for game to start'}
-                </p>
-                <p className="text-xs opacity-75">
-                  Card #{playerCardNumber}
-                </p>
-              </div>
-            </div>
-            {playerGameStatus === 'ACTIVE' && (
-              <button
-                onClick={handleImmediateRedirect}
-                className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-lg text-xs hover:from-green-600 hover:to-emerald-700 transition-all"
-              >
-                Join Game Now
-              </button>
-            )}
-          </div>
-        </motion.div>
-      )} */}
+      {/* Game status info with WebSocket indicator - commented out as in original */}
 
       {/* Balance warning */}
-      {walletBalance < 10 && (effectiveGameStatus === 'WAITING_FOR_PLAYERS' || effectiveGameStatus === 'CARD_SELECTION') && (
+      {mounted && walletBalance < 10 && (effectiveGameStatus === 'WAITING_FOR_PLAYERS' || effectiveGameStatus === 'CARD_SELECTION') && (
         <motion.div
           className="bg-gradient-to-r from-red-500/20 to-rose-600/20 backdrop-blur-lg rounded-2xl p-4 mb-4 border border-red-500/30"
           initial={{ opacity: 0, y: -10 }}
@@ -1001,27 +933,6 @@ export default function Home() {
           )}
         </>
       )}
-
-      {/* NO "Select Card" button for ACTIVE game - Users are redirected automatically */}
-
-      {/* Footer info */}
-      {/* {effectiveGameStatus === 'FINISHED' && !showCardSelection && (
-        <motion.div
-          className="bg-gradient-to-r from-gray-700/20 to-gray-900/20 backdrop-blur-lg rounded-2xl p-4 mt-6 border border-white/10"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="text-center">
-            <h3 className="text-white font-bold text-sm mb-2">Game Finished</h3>
-            <p className="text-white/60 text-xs">
-              The previous game has ended. A new game will start soon.
-            </p>
-            <p className="text-white/40 text-xs mt-2">
-              Check back in a few minutes to select a card for the next game.  
-            </p>
-          </div>
-        </motion.div>
-      )} */}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { Game, User, BingoCard, WinnerInfo, GameStats } from '../types';
 
 // Use your Render backend URL directly
 const API_BASE_URL = 'https://backend.desta.et/api';
+// const API_BASE_URL = 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
