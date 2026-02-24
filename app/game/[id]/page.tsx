@@ -40,7 +40,8 @@ interface WinnerInfo {
     numbers: (number | string)[][];
     markedPositions: number[];
     winningPatternPositions?: number[];
-    winningPositionIndex?: number;
+        winningPositionIndex?: number;
+
   };
   message?: string;
 }
@@ -77,7 +78,8 @@ export default function GamePage() {
     wsRecentCalledNumbers,
     wsCalledNumbers,
     refetchGame,
-    registerMessageHandler
+      registerMessageHandler // Add this
+
   } = useGame(id);
   
   const { gameStatus, gameData } = useGameState();
@@ -128,6 +130,9 @@ export default function GamePage() {
   const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(false);
   const [spectatorMessage, setSpectatorMessage] = useState<string>('');
 
+
+
+
   // Disqualification states
   const [isDisqualified, setIsDisqualified] = useState<boolean>(false);
   const [disqualificationMessage, setDisqualificationMessage] = useState<string>('');
@@ -148,8 +153,40 @@ export default function GamePage() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const disqualificationCheckRef = useRef<boolean>(false);
   const initializationCompleteRef = useRef<boolean>(false);
-  const lastWinnerCheckRef = useRef<string>('');
+  const lastWinnerCheckRef = useRef<string>(''); // Track last winner check
   const calledNumbersInitializedRef = useRef(false);
+  const gameStatusPollingRef = useRef<NodeJS.Timeout | null>(null);
+  const forceGameRefreshRef = useRef(false);
+
+  // Add this useEffect to poll for game status changes
+  useEffect(() => {
+    if (!game || isDisqualified || showWinnerModal) return;
+
+    // Clear any existing polling
+    if (gameStatusPollingRef.current) {
+      clearInterval(gameStatusPollingRef.current);
+    }
+
+    // Start polling for game status updates
+    gameStatusPollingRef.current = setInterval(() => {
+      console.log('🔄 Polling game status...');
+      
+      // Force a refresh of game data
+      if (refetchGame) {
+        refetchGame().then(() => {
+          console.log('✅ Game data refreshed via polling');
+        }).catch(error => {
+          console.error('❌ Failed to refresh game data:', error);
+        });
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => {
+      if (gameStatusPollingRef.current) {
+        clearInterval(gameStatusPollingRef.current);
+      }
+    };
+  }, [game, isDisqualified, showWinnerModal, refetchGame]);
 
   // Helper function to get BINGO letter
   const getNumberLetter = useCallback((num: number): string => {
@@ -251,92 +288,6 @@ export default function GamePage() {
       }, 1000);
     }
   }, [wsConnected, wsCalledNumbers, wsCurrentNumber, game, isDisqualified, getNumberLetter, allCalledNumbers]);
-
-  // Listen for winner info from WebSocket
-  useEffect(() => {
-    if (!wsConnected || !game || !registerMessageHandler) return;
-
-    console.log('🎯 Setting up WebSocket winner listener');
-    
-    const handleWinnerInfo = (data: any) => {
-      console.log('🏆 WebSocket winner info received:', data);
-      
-      const winningPositions = data.winningPositions || 
-                             data.winningCard?.winningPatternPositions || 
-                             [];
-      const winningPositionIndex = data.winningPositionIndex || 
-                               data.winningCard?.winningPositionIndex || 
-                               null;
-      
-      console.log('💛 Winning positions from WebSocket:', winningPositions);
-      
-      const winnerInfoFromWs: WinnerInfo = {
-        winner: data.winner || { 
-          _id: data.winnerId || 'unknown', 
-          username: 'Winner', 
-          firstName: 'Bingo Winner' 
-        },
-        gameCode: data.gameCode || game?.code || 'N/A',
-        endedAt: data.endedAt || new Date().toISOString(),
-        totalPlayers: data.totalPlayers || game?.currentPlayers || 0,
-        numbersCalled: data.numbersCalled || allCalledNumbers.length,
-        winningPattern: data.winningPattern || data.patternType || 'BINGO',
-        winningCard: data.winningCard ? {
-          cardNumber: data.winningCard.cardNumber || 0,
-          numbers: data.winningCard.numbers || [],
-          markedPositions: data.winningCard.markedPositions || [],
-          winningPatternPositions: winningPositions,
-          winningPositionIndex: winningPositionIndex
-        } : undefined,
-        message: data.message || 'Game finished!'
-      };
-      
-      setWinnerInfo(winnerInfoFromWs);
-      setWinningPatternPositions(winningPositions);
-      
-      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      let isWinner = false;
-      
-      if (userId && winnerInfoFromWs.winner) {
-        const winner = winnerInfoFromWs.winner;
-        const userIdStr = String(userId).trim();
-        const winnerIdStr = winner._id ? String(winner._id).trim() : '';
-        const winnerTelegramIdStr = winner.telegramId ? String(winner.telegramId).trim() : '';
-        
-        isWinner = (
-          winnerIdStr === userIdStr ||
-          winnerTelegramIdStr === userIdStr
-        );
-      }
-      
-      setIsUserWinner(isWinner);
-      
-      if (isWinner || winnerInfoFromWs.winner._id !== 'no-winner') {
-        const totalPot = (winnerInfoFromWs.totalPlayers || 0) * 10;
-        const platformFee = totalPot * 0.2;
-        const winnerPrize = totalPot - platformFee;
-        setWinningAmount(winnerPrize);
-      } else {
-        setWinningAmount(0);
-      }
-      
-      clearSelectedCard();
-      
-      setTimeout(() => {
-        console.log('🎉 Showing winner modal from WebSocket');
-        setShowWinnerModal(true);
-        setIsWinnerLoading(false);
-      }, 1000);
-    };
-    
-    const cleanupWinnerInfo = registerMessageHandler('WINNER_INFO', handleWinnerInfo);
-    const cleanupWinnerDeclared = registerMessageHandler('WINNER_DECLARED', handleWinnerInfo);
-    
-    return () => {
-      cleanupWinnerInfo?.();
-      cleanupWinnerDeclared?.();
-    };
-  }, [wsConnected, game, allCalledNumbers, clearSelectedCard, registerMessageHandler]);
 
   // Helper function to handle disqualification
   const handleDisqualification = useCallback((errorMessage: string, details?: any) => {
@@ -506,13 +457,14 @@ export default function GamePage() {
     }
   }, [checkUserHasCard, isSpectatorMode, isDisqualified]);
 
-  // Check for winner via API (fallback)
+  // Check for winner
   const checkForWinner = useCallback(async (gameData?: Game, force = false) => {
     if (!gameData) {
       console.log('❌ No game data provided');
       return;
     }
 
+    // Check for game end conditions
     const shouldCheckForWinner = 
       force || 
       gameData.status === 'FINISHED' || 
@@ -526,6 +478,7 @@ export default function GamePage() {
       return;
     }
 
+    // Prevent duplicate calls
     if (abortControllerRef.current) {
       console.log('⏸️ Previous winner check still in progress');
       return;
@@ -553,6 +506,7 @@ export default function GamePage() {
         if (hasWinner) {
           const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
           
+          // Check if current user is the winner
           let isWinner = false;
           if (userId) {
             const winner = winnerData.winner;
@@ -568,16 +522,19 @@ export default function GamePage() {
 
           setIsUserWinner(isWinner);
 
+          // Calculate prize amount
           const totalPot = (gameData.currentPlayers || 0) * 10;
           const platformFee = totalPot * 0.2;
           const winnerPrize = totalPot - platformFee;
           setWinningAmount(winnerPrize);
-
+          //more
+          // Store winning pattern positions
           if (winnerData.winningCard?.winningPatternPositions) {
             console.log('💛 Storing winning pattern positions:', winnerData.winningCard.winningPatternPositions);
             setWinningPatternPositions(winnerData.winningCard.winningPatternPositions);
           }
         } else {
+          // No winner scenario
           setIsUserWinner(false);
           setWinningAmount(0);
           setWinningPatternPositions([]);
@@ -585,6 +542,7 @@ export default function GamePage() {
 
         clearSelectedCard();
 
+        // Show modal immediately
         setTimeout(() => {
           console.log('🎉 Showing winner modal');
           setShowWinnerModal(true);
@@ -594,6 +552,7 @@ export default function GamePage() {
       } else {
         console.log('⚠️ No winner data from API');
         
+        // If game has winnerId or is finished, show generic modal
         if (gameData.winnerId || gameData.status === 'FINISHED') {
           setWinnerInfo({
             winner: {
@@ -642,6 +601,7 @@ export default function GamePage() {
       lastWinnerCheck: lastWinnerCheckRef.current
     });
 
+    // Check for game end conditions
     if ((game.status === 'FINISHED' || game.status === 'NO_WINNER' || game.status === 'COOLDOWN') && !showWinnerModal) {
       console.log('🎮 Game ended, checking for winner');
       
@@ -755,6 +715,7 @@ export default function GamePage() {
       const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
       if (!userId) throw new Error('User ID not found');
 
+      // Update UI first
       if (localBingoCard) {
         const numbers = localBingoCard.numbers.flat();
         const position = numbers.indexOf(number);
@@ -768,9 +729,11 @@ export default function GamePage() {
         }
       }
 
+      // Send to backend
       gameAPI.markNumber(id, userId, number)
         .then(response => {
           if (!response.data.success && localBingoCard) {
+            // Revert on failure
             const numbers = localBingoCard.numbers.flat();
             const position = numbers.indexOf(number);
             
@@ -784,6 +747,7 @@ export default function GamePage() {
           }
         })
         .catch(() => {
+          // Revert on error
           if (localBingoCard) {
             const numbers = localBingoCard.numbers.flat();
             const position = numbers.indexOf(number);
@@ -806,165 +770,182 @@ export default function GamePage() {
   };
 
   // Handle manual Bingo claim
-  const handleClaimBingo = async () => {
-    if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard || isDisqualified) return;
+const handleClaimBingo = async () => {
+  if (isClaimingBingo || !id || game?.status !== 'ACTIVE' || !localBingoCard || isDisqualified) return;
 
-    try {
-      setIsClaimingBingo(true);
-      setClaimResult(null);
+  try {
+    setIsClaimingBingo(true);
+    setClaimResult(null);
 
-      const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-      if (!userId) {
-        throw new Error('User ID not found');
-      }
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    if (!userId) {
+      throw new Error('User ID not found');
+    }
 
-      const response = await gameAPI.claimBingoImmediate(id, userId, 'BINGO');
+    // 🚨 USE IMMEDIATE CLAIM ENDPOINT
+    const response = await gameAPI.claimBingoImmediate(id, userId, 'BINGO');
+    
+    if (response.data.success && response.data.isWinner) {
+      console.log('✅ IMMEDIATE BINGO CLAIM SUCCESS!');
       
-      if (response.data.success && response.data.isWinner) {
-        console.log('✅ IMMEDIATE BINGO CLAIM SUCCESS!');
-        
-        const currentUsername = localStorage.getItem('username') || 'Player';
-        const currentFirstName = localStorage.getItem('firstName') || 'Player';
-        
-        if (response.data.winningPositions) {
-          console.log('💛 Storing winning pattern positions from immediate claim:', response.data.winningPositions);
-          setWinningPatternPositions(response.data.winningPositions);
-        }
-        
-        setWinnerInfo({
-          winner: {
-            _id: userId,
-            username: currentUsername,
-            firstName: currentFirstName,
-            telegramId: userId
-          },
-          gameCode: game?.code || 'N/A',
-          endedAt: new Date().toISOString(),
-          totalPlayers: game?.currentPlayers || 0,
-          numbersCalled: allCalledNumbers.length,
-          winningPattern: response.data.patternType || 'BINGO',
-          winningCard: {
-            cardNumber: localBingoCard.cardNumber || 0,
-            numbers: localBingoCard.numbers,
-            markedPositions: localBingoCard.markedPositions,
-            winningPatternPositions: response.data.winningPositions || [],
-            winningPositionIndex: response.data.winningPositionIndex
-          },
-          message: response.data.message || 'Bingo claimed successfully! You are the winner!'
-        });
-        
-        setIsUserWinner(true);
-        
-        const prizeAmount = response.data.prizeAmount || ((game?.currentPlayers || 0) * 10 * 0.8);
-        setWinningAmount(prizeAmount);
-        
-        clearSelectedCard();
-        
-        setTimeout(() => {
-          console.log('🎉 Showing immediate winner modal after successful claim');
-          setShowWinnerModal(true);
-        }, 300);
-        
-        setClaimResult({
-          success: true,
-          message: response.data.message || 'Bingo claimed successfully! You are the winner!',
-          patternType: response.data.patternType,
-          prizeAmount: prizeAmount
-        });
-
-        setTimeout(() => {
-          if (refetchGame) {
-            refetchGame().then(() => {
-              console.log('✅ Game data refreshed after bingo claim');
-            }).catch(error => {
-              console.error('❌ Failed to refresh game after claim:', error);
-            });
-          }
-        }, 1000);
-        
-      } else if (response.data.isDisqualified) {
-        const errorMsg = response.data.message || 'Invalid bingo claim - You have been disqualified';
-        setClaimResult({
-          success: false,
-          message: errorMsg
-        });
-        
-        handleDisqualification(errorMsg, {
-          patternClaimed: 'BINGO',
-          markedPositions: localBingoCard.markedPositions?.length
-        });
-        
-      } else {
-        const errorMsg = response.data.message || 'Failed to claim bingo';
-        setClaimResult({
-          success: false,
-          message: errorMsg
-        });
-      }
-    } catch (error: any) {
-      console.error('❌ IMMEDIATE Bingo claim failed:', error);
+      // IMMEDIATELY show winner modal for the user who claimed
+      const currentUsername = localStorage.getItem('username') || 'Player';
+      const currentFirstName = localStorage.getItem('firstName') || 'Player';
       
-      let errorMessage = 'Failed to claim bingo';
-      
-      if (error.response?.data) {
-        errorMessage = error.response.data.error || 
-                       error.response.data.message || 
-                       error.message || 
-                       'Failed to claim bingo';
-        
-        const isDisqualifiedError = errorMessage.toLowerCase().includes('disqualified') || 
-                                    errorMessage.toLowerCase().includes('false bingo claim');
-        
-        if (isDisqualifiedError) {
-          const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-          if (userId) {
-            handleDisqualification(errorMessage, {
-              patternClaimed: 'BINGO',
-              markedPositions: localBingoCard?.markedPositions?.length
-            });
-          }
-        }
-      } else if (error.message) {
-        errorMessage = error.message;
+      // Store winning pattern positions if available
+      if (response.data.winningPositions) {
+        console.log('💛 Storing winning pattern positions from immediate claim:', response.data.winningPositions);
+        setWinningPatternPositions(response.data.winningPositions);
       }
       
-      setClaimResult({
-        success: false,
-        message: errorMessage
+      // Set winner info
+      setWinnerInfo({
+        winner: {
+          _id: userId,
+          username: currentUsername,
+          firstName: currentFirstName,
+          telegramId: userId
+        },
+        gameCode: game?.code || 'N/A',
+        endedAt: new Date().toISOString(),
+        totalPlayers: game?.currentPlayers || 0,
+        numbersCalled: allCalledNumbers.length,
+        winningPattern: response.data.patternType || 'BINGO',
+        winningCard: {
+          cardNumber: localBingoCard.cardNumber || 0,
+          numbers: localBingoCard.numbers,
+          markedPositions: localBingoCard.markedPositions,
+          winningPatternPositions: response.data.winningPositions || [],
+          winningPositionIndex: response.data.winningPositionIndex
+        },
+        message: response.data.message || 'Bingo claimed successfully! You are the winner!'
       });
       
-      if (error.code === 'ECONNABORTED' || errorMessage.includes('timeout')) {
-        console.warn('⏰ Immediate claim timeout, trying regular claim...');
-        
-        try {
-          const fallbackUserId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
-          
-          if (fallbackUserId && id) {
-            const fallbackResponse = await gameAPI.claimBingo(id, fallbackUserId, 'BINGO');
-            if (fallbackResponse.data.success) {
-              setClaimResult({
-                success: true,
-                message: fallbackResponse.data.message || 'Bingo claimed (via fallback)',
-                patternType: fallbackResponse.data.patternType
-              });
-            }
-          } else {
-            console.error('❌ Cannot fallback: Missing userId or gameId');
-          }
-        } catch (fallbackError) {
-          console.error('❌ Fallback claim also failed:', fallbackError);
+      // Set winner state
+      setIsUserWinner(true);
+      
+      // Use prize amount from response or calculate
+      const prizeAmount = response.data.prizeAmount || ((game?.currentPlayers || 0) * 10 * 0.8);
+      setWinningAmount(prizeAmount);
+      
+      // Clear selected card
+      clearSelectedCard();
+      
+      // Show winner modal immediately
+      setTimeout(() => {
+        console.log('🎉 Showing immediate winner modal after successful claim');
+        setShowWinnerModal(true);
+      }, 300);
+      
+      // Also show success message
+      setClaimResult({
+        success: true,
+        message: response.data.message || 'Bingo claimed successfully! You are the winner!',
+        patternType: response.data.patternType,
+        prizeAmount: prizeAmount
+      });
+
+      // Force refresh game data in background to sync with server
+      setTimeout(() => {
+        if (refetchGame) {
+          refetchGame().then(() => {
+            console.log('✅ Game data refreshed after bingo claim');
+          }).catch(error => {
+            console.error('❌ Failed to refresh game after claim:', error);
+          });
+        }
+      }, 1000);
+      
+    } else if (response.data.isDisqualified) {
+      // Handle disqualification
+      const errorMsg = response.data.message || 'Invalid bingo claim - You have been disqualified';
+      setClaimResult({
+        success: false,
+        message: errorMsg
+      });
+      
+      handleDisqualification(errorMsg, {
+        patternClaimed: 'BINGO',
+        markedPositions: localBingoCard.markedPositions?.length
+      });
+      
+    } else {
+      // Valid claim but not winner (shouldn't happen with immediate endpoint)
+      const errorMsg = response.data.message || 'Failed to claim bingo';
+      setClaimResult({
+        success: false,
+        message: errorMsg
+      });
+    }
+  } catch (error: any) {
+    console.error('❌ IMMEDIATE Bingo claim failed:', error);
+    
+    let errorMessage = 'Failed to claim bingo';
+    
+    if (error.response?.data) {
+      errorMessage = error.response.data.error || 
+                     error.response.data.message || 
+                     error.message || 
+                     'Failed to claim bingo';
+      
+      // Check if it's a disqualification error
+      const isDisqualifiedError = errorMessage.toLowerCase().includes('disqualified') || 
+                                  errorMessage.toLowerCase().includes('false bingo claim');
+      
+      if (isDisqualifiedError) {
+        const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+        if (userId) {
+          handleDisqualification(errorMessage, {
+            patternClaimed: 'BINGO',
+            markedPositions: localBingoCard?.markedPositions?.length
+          });
         }
       }
-    } finally {
-      setIsClaimingBingo(false);
-
-      if (!isDisqualified) {
-        setTimeout(() => {
-          setClaimResult(null);
-        }, 5000);
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    setClaimResult({
+      success: false,
+      message: errorMessage
+    });
+    
+    // If timeout error, suggest using regular claim as fallback
+    if (error.code === 'ECONNABORTED' || errorMessage.includes('timeout')) {
+      console.warn('⏰ Immediate claim timeout, trying regular claim...');
+      
+      // Fall back to regular claim
+      try {
+        const fallbackUserId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+        
+        if (fallbackUserId && id) {
+          const fallbackResponse = await gameAPI.claimBingo(id, fallbackUserId, 'BINGO');
+          if (fallbackResponse.data.success) {
+            setClaimResult({
+              success: true,
+              message: fallbackResponse.data.message || 'Bingo claimed (via fallback)',
+              patternType: fallbackResponse.data.patternType
+            });
+          }
+        } else {
+          console.error('❌ Cannot fallback: Missing userId or gameId');
+        }
+      } catch (fallbackError) {
+        console.error('❌ Fallback claim also failed:', fallbackError);
       }
     }
-  };
+  } finally {
+    setIsClaimingBingo(false);
+
+    // Clear claim result message after delay (only for non-disqualification cases)
+    if (!isDisqualified) {
+      setTimeout(() => {
+        setClaimResult(null);
+      }, 5000);
+    }
+  }
+};
+
 
   // Handle returning to lobby
   const handleReturnToLobby = () => {
@@ -984,13 +965,15 @@ export default function GamePage() {
     setClaimResult(null);
     setCountdown(10);
     setShowDisqualificationModal(false);
-    setWinningPatternPositions([]);
+    setWinningPatternPositions([]); // Clear winning positions
 
+    // Reset states
     setIsDisqualified(false);
     setDisqualificationMessage('');
     setDisqualificationDetails(null);
     disqualificationCheckRef.current = false;
 
+    // Reset refs
     hasCardCheckedRef.current = false;
     updateInProgressRef.current = false;
     initializationCompleteRef.current = false;
@@ -1011,73 +994,84 @@ export default function GamePage() {
   }, [localBingoCard, gameBingoCard]);
 
   // Helper function to check if a position is in winning pattern
-  const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
-    const flatIndex = rowIndex * 5 + colIndex;
+ const isWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
+  const flatIndex = rowIndex * 5 + colIndex;
+  
+  // First check local state, then fall back to winnerInfo
+  if (winningPatternPositions.length > 0) {
+    return winningPatternPositions.includes(flatIndex);
+  }
+  
+  if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
+  return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
+}, [winnerInfo, winningPatternPositions]);
+const getWinningNumberAtPosition = useCallback((rowIndex: number, colIndex: number): number | string | null => {
+  const flatIndex = rowIndex * 5 + colIndex;
+  
+  if (!winnerInfo?.winningCard?.numbers) return null;
+  
+  // Flatten the numbers array
+  const numbers = winnerInfo.winningCard.numbers.flat();
+  
+  if (flatIndex >= 0 && flatIndex < numbers.length) {
+    return numbers[flatIndex];
+  }
+  
+  return null;
+}, [winnerInfo]);
+// Function to check if this is the position that completed the win
+const isWinningCompletionPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
+  const flatIndex = rowIndex * 5 + colIndex;
+  
+  // Check winning position index from the backend response
+  if (winnerInfo?.winningCard?.winningPositionIndex !== undefined) {
+    // CRITICAL: Also check if this position contains the winning number
+    const numberAtPosition = getWinningNumberAtPosition(rowIndex, colIndex);
+    const isPositionMatch = winnerInfo.winningCard.winningPositionIndex === flatIndex;
     
-    if (winningPatternPositions.length > 0) {
-      return winningPatternPositions.includes(flatIndex);
-    }
+    console.log(`🔍 Checking position ${flatIndex}:`, {
+      number: numberAtPosition,
+      isPositionMatch,
+      winningPositionIndex: winnerInfo.winningCard.winningPositionIndex
+    });
     
-    if (!winnerInfo?.winningCard?.winningPatternPositions) return false;
-    return winnerInfo.winningCard.winningPatternPositions.includes(flatIndex);
-  }, [winnerInfo, winningPatternPositions]);
+    return isPositionMatch;
+  }
+  
+  return false;
+}, [winnerInfo, getWinningNumberAtPosition]);
 
-  const getWinningNumberAtPosition = useCallback((rowIndex: number, colIndex: number): number | string | null => {
-    const flatIndex = rowIndex * 5 + colIndex;
-    
-    if (!winnerInfo?.winningCard?.numbers) return null;
-    
-    const numbers = winnerInfo.winningCard.numbers.flat();
-    
-    if (flatIndex >= 0 && flatIndex < numbers.length) {
-      return numbers[flatIndex];
-    }
-    
-    return null;
-  }, [winnerInfo]);
 
-  const isWinningCompletionPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
-    const flatIndex = rowIndex * 5 + colIndex;
-    
-    if (winnerInfo?.winningCard?.winningPositionIndex !== undefined) {
-      const numberAtPosition = getWinningNumberAtPosition(rowIndex, colIndex);
-      const isPositionMatch = winnerInfo.winningCard.winningPositionIndex === flatIndex;
-      
-      console.log(`🔍 Checking position ${flatIndex}:`, {
-        number: numberAtPosition,
-        isPositionMatch,
-        winningPositionIndex: winnerInfo.winningCard.winningPositionIndex
-      });
-      
-      return isPositionMatch;
-    }
-    
-    return false;
-  }, [winnerInfo, getWinningNumberAtPosition]);
 
-  const isRecentlyCalledNumber = useCallback((number: number | string): boolean => {
-    if (typeof number !== 'number') return false;
-    
-    const lastCalledNumbers = allCalledNumbers.slice(-3);
-    return lastCalledNumbers.includes(number);
-  }, [allCalledNumbers]);
 
-  const isLastWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
-    const flatIndex = rowIndex * 5 + colIndex;
-    
-    if (winnerInfo?.winningCard?.winningPositionIndex !== undefined) {
-      return winnerInfo.winningCard.winningPositionIndex === flatIndex;
-    }
-    
-    if (winnerInfo?.winningCard?.winningPatternPositions) {
-      const positions = winnerInfo.winningCard.winningPatternPositions;
-      return positions.length > 0 && positions[positions.length - 1] === flatIndex;
-    }
-    
-    return false;
-  }, [winnerInfo]);
+// NEW: Function to check if the number was recently called (last few numbers)
+const isRecentlyCalledNumber = useCallback((number: number | string): boolean => {
+  if (typeof number !== 'number') return false;
+  
+  // Check if it's in the last 3 called numbers
+  const lastCalledNumbers = allCalledNumbers.slice(-3);
+  return lastCalledNumbers.includes(number);
+}, [allCalledNumbers]);
+// NEW: Function to check if position is the LAST winning position
+const isLastWinningPosition = useCallback((rowIndex: number, colIndex: number): boolean => {
+  const flatIndex = rowIndex * 5 + colIndex;
+  
+  // Check if this is the position that completed the win
+  if (winnerInfo?.winningCard?.winningPositionIndex !== undefined) {
+    return winnerInfo.winningCard.winningPositionIndex === flatIndex;
+  }
+  
+  // Fallback: If we don't have specific index, check if it's the last in the pattern
+  if (winnerInfo?.winningCard?.winningPatternPositions) {
+    const positions = winnerInfo.winningCard.winningPatternPositions;
+    return positions.length > 0 && positions[positions.length - 1] === flatIndex;
+  }
+  
+  return false;
+}, [winnerInfo]);
 
-  // Update winner info to store positions
+
+  // Update the useEffect that handles winner info to store the positions
   useEffect(() => {
     if (winnerInfo?.winningCard?.winningPatternPositions) {
       console.log('💛 Storing winning pattern positions from winnerInfo:', winnerInfo.winningCard.winningPatternPositions);
@@ -1085,6 +1079,106 @@ export default function GamePage() {
     }
   }, [winnerInfo]);
 
+  // Add this useEffect after the other useEffects in GamePage
+// Update the WebSocket useEffect in GamePage
+useEffect(() => {
+  if (!wsConnected || !game || !registerMessageHandler) return;
+
+  console.log('🎯 Setting up WebSocket winner listener');
+  
+  // Listen for winner info from WebSocket
+  const handleWinnerInfo = (data: any) => {
+    console.log('🏆 WebSocket winner info received:', data);
+    
+    // Get winning positions from multiple possible sources
+    const winningPositions = data.winningPositions || 
+                           data.winningCard?.winningPatternPositions || 
+                           [];
+     const winningPositionIndex = data.winningPositionIndex || 
+                             data.winningCard?.winningPositionIndex || 
+                             null;
+    console.log('💛 Winning positions from WebSocket:', winningPositions);
+    
+    // Parse winner info from WebSocket
+    const winnerInfoFromWs: WinnerInfo = {
+      winner: data.winner || { 
+        _id: data.winnerId || 'unknown', 
+        username: 'Winner', 
+        firstName: 'Bingo Winner' 
+      },
+      gameCode: data.gameCode || game?.code || 'N/A',
+      endedAt: data.endedAt || new Date().toISOString(),
+      totalPlayers: data.totalPlayers || game?.currentPlayers || 0,
+      numbersCalled: data.numbersCalled || allCalledNumbers.length,
+      winningPattern: data.winningPattern || data.patternType || 'BINGO',
+      winningCard: data.winningCard ? {
+        cardNumber: data.winningCard.cardNumber || 0,
+        numbers: data.winningCard.numbers || [],
+        markedPositions: data.winningCard.markedPositions || [],
+        winningPatternPositions: winningPositions ,// Use the positions we extracted
+        winningPositionIndex: winningPositionIndex // Use the positions we extracted
+      } : undefined,
+      message: data.message || 'Game finished!'
+    };
+    
+    console.log('📊 Processed winner info:', winnerInfoFromWs);
+    
+    // Set winner info immediately
+    setWinnerInfo(winnerInfoFromWs);
+    
+    // Store winning pattern positions - THIS IS CRITICAL
+    console.log('💛 Storing winning pattern positions for display:', winningPositions);
+    setWinningPatternPositions(winningPositions);
+    
+    // Check if current user is the winner
+    const userId = localStorage.getItem('user_id') || localStorage.getItem('telegram_user_id');
+    let isWinner = false;
+    
+    if (userId && winnerInfoFromWs.winner) {
+      const winner = winnerInfoFromWs.winner;
+      const userIdStr = String(userId).trim();
+      const winnerIdStr = winner._id ? String(winner._id).trim() : '';
+      const winnerTelegramIdStr = winner.telegramId ? String(winner.telegramId).trim() : '';
+      
+      isWinner = (
+        winnerIdStr === userIdStr ||
+        winnerTelegramIdStr === userIdStr
+      );
+    }
+    
+    console.log('👑 Is user winner?', isWinner);
+    setIsUserWinner(isWinner);
+    
+    // Calculate prize amount (only for actual winners)
+    if (isWinner || winnerInfoFromWs.winner._id !== 'no-winner') {
+      const totalPot = (winnerInfoFromWs.totalPlayers || 0) * 10;
+      const platformFee = totalPot * 0.2;
+      const winnerPrize = totalPot - platformFee;
+      setWinningAmount(winnerPrize);
+    } else {
+      setWinningAmount(0);
+    }
+    
+    clearSelectedCard();
+    
+    // Show winner modal for ALL players with a delay
+    setTimeout(() => {
+      console.log('🎉 Showing winner modal for ALL players from WebSocket');
+      console.log('💛 Winning positions available:', winningPatternPositions.length > 0);
+      setShowWinnerModal(true);
+      setIsWinnerLoading(false);
+    }, 1000);
+  };
+  
+  // Listen for both WINNER_INFO and WINNER_DECLARED messages
+  const cleanupWinnerInfo = registerMessageHandler('WINNER_INFO', handleWinnerInfo);
+  const cleanupWinnerDeclared = registerMessageHandler('WINNER_DECLARED', handleWinnerInfo);
+  
+  return () => {
+    cleanupWinnerInfo?.();
+    cleanupWinnerDeclared?.();
+  };
+}, [wsConnected, game, allCalledNumbers, clearSelectedCard, registerMessageHandler]);
   // Function to get winning pattern type name
   const getPatternName = useCallback((patternType?: string): string => {
     if (!patternType) return 'BINGO Line';
@@ -1223,7 +1317,7 @@ export default function GamePage() {
         )}
       </AnimatePresence>
 
-      {/* Winner Modal */}
+      {/* Winner Modal - MODIFIED: SHOW ONLY WINNING POSITIONS */}
       <AnimatePresence>
         {showWinnerModal && winnerInfo && (
           <motion.div
@@ -1321,7 +1415,7 @@ export default function GamePage() {
                 )}
               </div>
 
-              {/* Mini Card Section - SHOW WINNING CARD */}
+              {/* Mini Card Section - MODIFIED: SHOW ONLY WINNING POSITIONS */}
               {winnerInfo.winner._id !== 'no-winner' && winnerInfo.winningCard?.numbers && (
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-2">
@@ -1340,155 +1434,168 @@ export default function GamePage() {
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
-                    {/* Mini BINGO Header */}
-                    <div className="grid grid-cols-5 gap-1 mb-2">
-                      {['B', 'I', 'N', 'G', 'O'].map((letter) => (
-                        <div
-                          key={letter}
-                          className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
-                        >
-                          {letter}
-                        </div>
-                      ))}
-                    </div>
+                  {/* Mini Bingo Card - SHOW ONLY WINNING POSITIONS */}
+               {/* Mini Bingo Card - SHOW ALL NUMBERS WITH WINNING PATTERN HIGHLIGHTED */}
+<div className="bg-gradient-to-br from-gray-900 to-black rounded-xl p-3 border border-yellow-500/30">
+  {/* Mini BINGO Header */}
+  <div className="grid grid-cols-5 gap-1 mb-2">
+    {['B', 'I', 'N', 'G', 'O'].map((letter) => (
+      <div
+        key={letter}
+        className="h-6 rounded flex items-center justify-center font-bold text-xs text-white bg-gradient-to-b from-purple-700 to-blue-800"
+      >
+        {letter}
+      </div>
+    ))}
+  </div>
 
-                    {/* Mini Card Numbers */}
-                    <div className="grid grid-cols-5 gap-1">
-                      {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
-                        row.map((number: number | string, colIndex: number) => {
-                          const flatIndex = rowIndex * 5 + colIndex;
-                          const isWinningPos = isWinningPosition(rowIndex, colIndex);
-                          const isWinningCompletionPos = isWinningCompletionPosition(rowIndex, colIndex);
-                          const isFreeSpace = rowIndex === 2 && colIndex === 2;
-                          const isCalled = typeof number === 'number' ? allCalledNumbers.includes(number) : true;
-                          
-                          let bgClass = 'bg-gray-800 text-white/70';
-                          
-                          if (isFreeSpace) {
-                            bgClass = 'bg-purple-700 text-white';
-                          } 
-                          else if (isWinningCompletionPos) {
-                            bgClass = 'bg-gradient-to-br from-yellow-400 to-orange-400 text-white shadow-[0_0_12px_rgba(255,255,0,0.8)] animate-pulse';
-                          }
-                          else if (isWinningPos) {
-                            bgClass = 'bg-gradient-to-br from-yellow-600 to-orange-600 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
-                          }
-                          else if (isCalled) {
-                            bgClass = 'bg-gradient-to-br from-green-600 to-emerald-700 text-white';
-                          }
-                          
-                          return (
-                            <div
-                              key={`${rowIndex}-${colIndex}`}
-                              className={`
-                                h-8 rounded flex items-center justify-center 
-                                font-bold text-xs relative transition-all duration-300
-                                ${bgClass}
-                                ${isWinningCompletionPos ? 'border-2 border-white' : ''}
-                              `}
-                            >
-                              {isFreeSpace ? (
-                                <span className="text-[10px] font-bold">FREE</span>
-                              ) : (
-                                <span className={`font-bold ${
-                                  isWinningPos || isWinningCompletionPos || isCalled 
-                                    ? 'text-white' 
-                                    : 'text-white/70'
-                                }`}>
-                                  {number}
-                                </span>
-                              )}
-                              
-                              {isWinningPos && !isWinningCompletionPos && (
-                                <motion.div
-                                  initial={{ scale: 0 }}
-                                  animate={{ scale: 1 }}
-                                  transition={{ delay: 0.2 }}
-                                  className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)] z-10"
-                                />
-                              )}
-                              
-                              {isWinningCompletionPos && (
-                                <>
-                                  <motion.div
-                                    animate={{ 
-                                      scale: [1, 1.3, 1],
-                                      opacity: [1, 0.7, 1]
-                                    }}
-                                    transition={{ 
-                                      repeat: Infinity, 
-                                      duration: 0.8,
-                                      ease: "easeInOut"
-                                    }}
-                                    className="absolute inset-0 rounded bg-gradient-to-br from-yellow-300/40 to-orange-300/40"
-                                  />
-                                  
-                                  <motion.div
-                                    initial={{ scale: 0, rotate: -180 }}
-                                    animate={{ scale: 1, rotate: 0 }}
-                                    transition={{ type: "spring", stiffness: 200 }}
-                                    className="absolute -top-2 -right-2 w-4 h-4 text-yellow-300"
-                                  >
-                                    🏆
-                                  </motion.div>
-                                  
-                                  <motion.div
-                                    animate={{ 
-                                      scale: [1, 1.5, 1],
-                                      opacity: [0.5, 0, 0.5]
-                                    }}
-                                    transition={{ 
-                                      repeat: Infinity, 
-                                      duration: 1.5,
-                                      ease: "easeInOut"
-                                    }}
-                                    className="absolute inset-0 rounded-full border-2 border-yellow-400"
-                                  />
-                                  
-                                  <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-yellow-300 font-bold whitespace-nowrap">
-                                    Winning Number!
-                                  </div>
-                                </>
-                              )}
-                              
-                              {isCalled && !isWinningPos && !isWinningCompletionPos && (
-                                <motion.div
-                                  initial={{ scale: 0 }}
-                                  animate={{ scale: 1 }}
-                                  transition={{ delay: 0.1 }}
-                                  className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"
-                                />
-                              )}
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                    
-                    {/* Legend */}
-                    <div className="mt-3 pt-3 border-t border-white/20">
-                      <div className="flex flex-col gap-2">
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-green-600 to-emerald-700"></div>
-                            <span className="text-[10px] text-white/70">Called</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500 shadow-[0_0_4px_rgba(251,191,36,0.6)]"></div>
-                            <span className="text-[10px] text-white/70">Winning</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded-sm bg-yellow-300 animate-pulse"></div>
-                            <span className="text-[10px] text-white/70">Completed</span>
-                          </div>
-                        </div>
-                        <p className="text-center text-white/50 text-[10px]">
-                          Showing all called numbers with winning pattern highlighted
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+  {/* Mini Card Numbers - SHOW ALL NUMBERS */}
+  <div className="grid grid-cols-5 gap-1">
+    {winnerInfo.winningCard.numbers.map((row: (number | string)[], rowIndex: number) =>
+      row.map((number: number | string, colIndex: number) => {
+        const flatIndex = rowIndex * 5 + colIndex;
+        const isWinningPos = isWinningPosition(rowIndex, colIndex);
+        const isWinningCompletionPos = isWinningCompletionPosition(rowIndex, colIndex);
+        const isFreeSpace = rowIndex === 2 && colIndex === 2;
+        const isCalled = typeof number === 'number' ? allCalledNumbers.includes(number) : true;
+        
+        // Determine background color
+        let bgClass = 'bg-gray-800 text-white/70'; // Default for uncalled
+        
+        if (isFreeSpace) {
+          bgClass = 'bg-purple-700 text-white';
+        } 
+        else if (isWinningCompletionPos) {
+          // This is the position that completed the win - make it blink
+          bgClass = 'bg-gradient-to-br from-yellow-400 to-orange-400 text-white shadow-[0_0_12px_rgba(255,255,0,0.8)] animate-pulse';
+        }
+        else if (isWinningPos) {
+          // Winning positions (but not the completion position)
+          bgClass = 'bg-gradient-to-br from-yellow-600 to-orange-600 text-white shadow-[0_0_8px_rgba(251,191,36,0.6)]';
+        }
+        else if (isCalled) {
+          // Called numbers (not in winning pattern)
+          bgClass = 'bg-gradient-to-br from-green-600 to-emerald-700 text-white';
+        }
+        
+        return (
+          <div
+            key={`${rowIndex}-${colIndex}`}
+            className={`
+              h-8 rounded flex items-center justify-center 
+              font-bold text-xs relative transition-all duration-300
+              ${bgClass}
+              ${isWinningCompletionPos ? 'border-2 border-white' : ''}
+            `}
+          >
+            {isFreeSpace ? (
+              <span className="text-[10px] font-bold">FREE</span>
+            ) : (
+              <span className={`font-bold ${
+                isWinningPos || isWinningCompletionPos || isCalled 
+                  ? 'text-white' 
+                  : 'text-white/70'
+              }`}>
+                {number}
+              </span>
+            )}
+            
+            {/* WINNING POSITION INDICATOR */}
+            {isWinningPos && !isWinningCompletionPos && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.2 }}
+                className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-300 rounded-full shadow-[0_0_4px_rgba(251,191,36,0.8)] z-10"
+              />
+            )}
+            
+            {/* SPECIAL INDICATOR FOR WINNING COMPLETION POSITION */}
+{isWinningCompletionPos && (
+  <>
+    {/* Blinking animation */}
+    <motion.div
+      animate={{ 
+        scale: [1, 1.3, 1],
+        opacity: [1, 0.7, 1]
+      }}
+      transition={{ 
+        repeat: Infinity, 
+        duration: 0.8,
+        ease: "easeInOut"
+      }}
+      className="absolute inset-0 rounded bg-gradient-to-br from-yellow-300/40 to-orange-300/40"
+    />
+    
+    {/* Trophy icon indicator */}
+    <motion.div
+      initial={{ scale: 0, rotate: -180 }}
+      animate={{ scale: 1, rotate: 0 }}
+      transition={{ type: "spring", stiffness: 200 }}
+      className="absolute -top-2 -right-2 w-4 h-4 text-yellow-300"
+    >
+      🏆
+    </motion.div>
+    
+    {/* Pulsing ring effect */}
+    <motion.div
+      animate={{ 
+        scale: [1, 1.5, 1],
+        opacity: [0.5, 0, 0.5]
+      }}
+      transition={{ 
+        repeat: Infinity, 
+        duration: 1.5,
+        ease: "easeInOut"
+      }}
+      className="absolute inset-0 rounded-full border-2 border-yellow-400"
+    />
+    
+    {/* Winning number indicator */}
+    <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-yellow-300 font-bold whitespace-nowrap">
+      Winning Number!
+    </div>
+  </>
+)}
+            
+            {/* CALLED NUMBER INDICATOR (for non-winning called numbers) */}
+            {isCalled && !isWinningPos && !isWinningCompletionPos && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.1 }}
+                className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full"
+              />
+            )}
+          </div>
+        );
+      })
+    )}
+  </div>
+  
+  {/* Legend - UPDATED */}
+  <div className="mt-3 pt-3 border-t border-white/20">
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-3 gap-2">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-green-600 to-emerald-700"></div>
+          <span className="text-[10px] text-white/70">Called</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded-sm bg-gradient-to-br from-yellow-500 to-orange-500 shadow-[0_0_4px_rgba(251,191,36,0.6)]"></div>
+          <span className="text-[10px] text-white/70">Winning</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded-sm bg-yellow-300 animate-pulse"></div>
+          <span className="text-[10px] text-white/70">Completed</span>
+        </div>
+      </div>
+      <p className="text-center text-white/50 text-[10px]">
+        Showing all called numbers with winning pattern highlighted
+      </p>
+    </div>
+  </div>
+</div>
                 </div>
               )}
 
@@ -1916,6 +2023,22 @@ export default function GamePage() {
                 </>
               )}
             </button>
+
+            {/* {claimResult && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`
+                  mt-2 p-2 rounded-lg text-center text-xs font-medium max-w-[200px]
+                  ${claimResult.success
+                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                    : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                  }
+                `}
+              >
+                {claimResult.message}
+              </motion.div>
+            )} */}
           </div>
         </div>
       )}
